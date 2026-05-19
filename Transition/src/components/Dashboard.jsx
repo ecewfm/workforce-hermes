@@ -67,18 +67,29 @@ export default function Dashboard({ onShowAllLinks }) {
                       <a 
                         href={p.webappLink.startsWith("http") ? p.webappLink : `https://${p.webappLink}`} 
                         target="_blank" rel="noopener noreferrer" 
-                        style={{ flex: 1, textAlign: "center", background: "var(--color-accent)", color: "white", padding: "8px 0", borderRadius: 8, fontSize: "0.7rem", fontWeight: 900, textDecoration: "none", letterSpacing: "0.3px", transition: "background 0.2s ease" }}
+                        className="btn-modern btn-modern-project"
+                        style={{ flex: 1, padding: "8px 0" }}
                       >
-                        VIEW PROJECT
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                          <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                          <polyline points="15 3 21 3 21 9" />
+                          <line x1="10" y1="14" x2="21" y2="3" />
+                        </svg>
+                        View Project
                       </a>
                     )}
                     {p.appscriptLink && (
                       <a 
                         href={p.appscriptLink.startsWith("http") ? p.appscriptLink : `https://${p.appscriptLink}`} 
                         target="_blank" rel="noopener noreferrer" 
-                        style={{ flex: 1, textAlign: "center", background: "#4285f4", color: "white", padding: "8px 0", borderRadius: 8, fontSize: "0.7rem", fontWeight: 900, textDecoration: "none", letterSpacing: "0.3px", transition: "background 0.2s ease" }}
+                        className="btn-modern btn-modern-appscript"
+                        style={{ flex: 1, padding: "8px 0" }}
                       >
-                        APPSCRIPT
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                          <polyline points="16 18 22 12 16 6" />
+                          <polyline points="8 6 2 12 8 18" />
+                        </svg>
+                        Appscript
                       </a>
                     )}
                   </div>

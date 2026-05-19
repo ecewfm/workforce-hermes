@@ -1819,19 +1819,84 @@ body.role-programmer .kanban-col.col-scrap {
 }
 
 .btn-danger {
-  background: #ef4444;
+  background: linear-gradient(135deg, #ef4444, #dc2626);
   color: white;
-  padding: 6px 12px;
-  font-size: 0.65rem;
-  border-radius: 6px;
+  padding: 8px 16px;
+  font-size: 0.7rem;
+  border-radius: 8px;
+  font-weight: 800;
+  border: none;
+  cursor: pointer;
+  letter-spacing: 0.5px;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 4px 10px rgba(239, 68, 68, 0.15);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.btn-danger:hover {
+  background: linear-gradient(135deg, #f87171, #ef4444);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 14px rgba(239, 68, 68, 0.25);
+}
+
+.btn-danger:active {
+  transform: scale(0.96);
 }
 
 .btn-primary {
-  background: #4355f1;
+  background: linear-gradient(135deg, #4355f1, #3142d1);
   color: white;
-  padding: 6px 12px;
-  font-size: 0.65rem;
-  border-radius: 6px;
+  padding: 8px 16px;
+  font-size: 0.7rem;
+  border-radius: 8px;
+  font-weight: 800;
+  border: none;
+  cursor: pointer;
+  letter-spacing: 0.5px;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 4px 10px rgba(67, 85, 241, 0.15);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.btn-primary:hover {
+  background: linear-gradient(135deg, #6366f1, #4355f1);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 14px rgba(67, 85, 241, 0.25);
+}
+
+.btn-primary:active {
+  transform: scale(0.96);
+}
+
+.btn-secondary {
+  background: linear-gradient(135deg, #64748b, #475569);
+  color: white;
+  padding: 8px 16px;
+  font-size: 0.7rem;
+  border-radius: 8px;
+  font-weight: 800;
+  border: none;
+  cursor: pointer;
+  letter-spacing: 0.5px;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 4px 10px rgba(100, 116, 139, 0.15);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.btn-secondary:hover {
+  background: linear-gradient(135deg, #94a3b8, #64748b);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 14px rgba(100, 116, 139, 0.25);
+}
+
+.btn-secondary:active {
+  transform: scale(0.96);
 }
 
 /* ============================================================
@@ -4921,4 +4986,91 @@ body.role-programmer .kanban-col.col-scrap {
     opacity: 1;
     transform: translateY(0);
   }
+}
+
+/* ============================================================
+   PREMIUM MODERN BUTTONS - FACELIFT
+   ============================================================ */
+
+.btn-modern {
+  font-family: "Outfit", "Inter", sans-serif;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 20px;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  text-decoration: none;
+  border-radius: 10px;
+  border: none;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  user-select: none;
+}
+
+.btn-modern:active {
+  transform: scale(0.96);
+}
+
+.btn-modern-project {
+  background: linear-gradient(135deg, #10b981, #059669);
+  color: white !important;
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.2);
+}
+
+.btn-modern-project:hover {
+  background: linear-gradient(135deg, #34d399, #10b981);
+  box-shadow: 0 6px 16px rgba(16, 185, 129, 0.35);
+  transform: translateY(-1.5px);
+}
+
+.btn-modern-appscript {
+  background: linear-gradient(135deg, #4285f4, #2b66cb);
+  color: white !important;
+  box-shadow: 0 4px 12px rgba(66, 133, 244, 0.2);
+}
+
+.btn-modern-appscript:hover {
+  background: linear-gradient(135deg, #669df6, #4285f4);
+  box-shadow: 0 6px 16px rgba(66, 133, 244, 0.35);
+  transform: translateY(-1.5px);
+}
+
+.btn-modern-delete {
+  background: linear-gradient(135deg, #f87171, #ef4444);
+  color: white !important;
+  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.2);
+}
+
+.btn-modern-delete:hover {
+  background: linear-gradient(135deg, #fca5a5, #f87171);
+  box-shadow: 0 6px 16px rgba(239, 68, 68, 0.35);
+  transform: translateY(-1.5px);
+}
+
+.btn-modern-save {
+  background: linear-gradient(135deg, #064e3b, #047857);
+  color: white !important;
+  box-shadow: 0 4px 12px rgba(6, 78, 59, 0.2);
+}
+
+.btn-modern-save:hover {
+  background: linear-gradient(135deg, #047857, #10b981);
+  box-shadow: 0 6px 16px rgba(6, 78, 59, 0.35);
+  transform: translateY(-1.5px);
+}
+
+.btn-modern svg {
+  width: 14px;
+  height: 14px;
+  stroke-width: 2.5;
+  transition: transform 0.2s ease;
+}
+
+.btn-modern:hover svg {
+  transform: translateX(1px);
 }

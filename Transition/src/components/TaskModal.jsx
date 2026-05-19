@@ -797,8 +797,13 @@ export default function TaskModal({ taskId, isEditMode, userRole, actualRole, us
                   <h1 className="modal-title" style={{ marginBottom: 0, fontSize: "1.3rem", letterSpacing: "-0.5px" }}>{task.title}</h1>
                 )}
                 {isEditMode ? (
-                  <button className="btn-primary" style={{ background: "var(--color-accent)", color: "white", padding: "8px 16px", fontSize: "0.65rem", borderRadius: 8, width: "auto", fontWeight: 800 }} onClick={handleSaveEdits}>
-                    SAVE CHANGES
+                  <button className="btn-modern btn-modern-save" onClick={handleSaveEdits}>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                      <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
+                      <polyline points="17 21 17 13 7 13 7 21" />
+                      <polyline points="7 3 7 8 15 8" />
+                    </svg>
+                    Save Changes
                   </button>
                 ) : (
                   <div style={{ display: "flex", gap: 10 }}>
@@ -806,24 +811,39 @@ export default function TaskModal({ taskId, isEditMode, userRole, actualRole, us
                       <a
                         href={(task.webappLink || task.projectLink).startsWith("http") ? (task.webappLink || task.projectLink) : `https://${(task.webappLink || task.projectLink)}`}
                         target="_blank" rel="noopener noreferrer"
-                        className="btn-primary"
-                        style={{ background: "var(--color-accent)", color: "white", padding: "8px 16px", fontSize: "0.65rem", borderRadius: 8, textDecoration: "none", fontWeight: 800, textAlign: "center", display: "inline-flex", alignItems: "center" }}
+                        className="btn-modern btn-modern-project"
                       >
-                        VIEW PROJECT
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                          <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                          <polyline points="15 3 21 3 21 9" />
+                          <line x1="10" y1="14" x2="21" y2="3" />
+                        </svg>
+                        View Project
                       </a>
                     )}
                     {task.appscriptLink && (
                       <a
                         href={task.appscriptLink.startsWith("http") ? task.appscriptLink : `https://${task.appscriptLink}`}
                         target="_blank" rel="noopener noreferrer"
-                        className="btn-primary"
-                        style={{ background: "#4285f4", color: "white", padding: "8px 16px", fontSize: "0.65rem", borderRadius: 8, textDecoration: "none", fontWeight: 800, textAlign: "center", display: "inline-flex", alignItems: "center" }}
+                        className="btn-modern btn-modern-appscript"
                       >
-                        VIEW APPSCRIPT
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                          <polyline points="16 18 22 12 16 6" />
+                          <polyline points="8 6 2 12 8 18" />
+                        </svg>
+                        View Appscript
                       </a>
                     )}
                     {userRole === "Admin" && (
-                      <button className="btn-danger" onClick={handleDelete}>DELETE TASK</button>
+                      <button className="btn-modern btn-modern-delete" onClick={handleDelete}>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                          <polyline points="3 6 5 6 21 6" />
+                          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                          <line x1="10" y1="11" x2="10" y2="17" />
+                          <line x1="14" y1="11" x2="14" y2="17" />
+                        </svg>
+                        Delete Task
+                      </button>
                     )}
                   </div>
                 )}
