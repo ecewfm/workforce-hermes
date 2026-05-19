@@ -199,14 +199,12 @@ export default function KanbanBoard({ userRole, actualRole, userName, openTaskMo
     );
   }
 
-  if (searchQuery && searchQuery.trim().length > 0) {
-    const sq = searchQuery.toLowerCase().trim();
-    filtered = filtered.filter(
-      (t) => 
-        (t.title && t.title.toLowerCase().includes(sq)) || 
-        (t.assignee && t.assignee.toLowerCase().includes(sq))
-    );
-  }
+  // Search is visual-only on the board — doesn't filter cards out
+  const searchActive = searchQuery && searchQuery.trim().length > 0;
+  const sq = searchActive ? searchQuery.toLowerCase().trim() : "";
+  const isSearchMatch = (t) => !searchActive || 
+    (t.title && t.title.toLowerCase().includes(sq)) || 
+    (t.assignee && t.assignee.toLowerCase().includes(sq));
 
   // Count per column
   const totals = {};
@@ -300,7 +298,7 @@ export default function KanbanBoard({ userRole, actualRole, userName, openTaskMo
     setDraggedMilestoneIdx(null);
   }
 
-  function renderTaskCard(t, isFullView = false) {
+  function renderTaskCard(t, isFullView = false, dimmed = false) {
     const milestones = t.milestones || [];
     const totalM = milestones.length > 0 ? milestones.length : 10;
     const doneM = t.completedMilestones || 0;
@@ -337,7 +335,10 @@ export default function KanbanBoard({ userRole, actualRole, userName, openTaskMo
         style={{
           boxShadow: isOverdue ? "0 0 15px rgba(239, 68, 68, 0.35)" : undefined,
           border: isOverdue ? "1px solid #fee2e2" : undefined,
-          position: "relative"
+          position: "relative",
+          opacity: dimmed ? 0.35 : 1,
+          filter: dimmed ? "grayscale(0.4)" : undefined,
+          transition: "opacity 0.2s, filter 0.2s"
         }}
       >
         <div className="card-header" style={{ marginBottom: 12, display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
@@ -600,7 +601,7 @@ export default function KanbanBoard({ userRole, actualRole, userName, openTaskMo
                   return s === col;
                 })
                 .slice(0, 5) // Show only latest 5
-                .map((t) => renderTaskCard(t))}
+                .map((t) => renderTaskCard(t, false, !isSearchMatch(t)))}
             </div>
           </div>
         ))}
@@ -631,7 +632,7 @@ export default function KanbanBoard({ userRole, actualRole, userName, openTaskMo
                   if (fullViewColumn === "development") return s === "development" || s === "inprogress";
                   return s === fullViewColumn;
                 })
-                .map((t) => renderTaskCard(t, true))}
+                .map((t) => renderTaskCard(t, true, !isSearchMatch(t)))}
             </div>
           </div>
         </div>
