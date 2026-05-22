@@ -5,13 +5,27 @@ import { notifyNoteAdded, notifyMilestoneCompleted } from "../utils/notification
 import FeatureModal from "./FeatureModal";
 
 function deobfuscate(str) {
-  if (!str || typeof str !== "string" || !str.startsWith("obf_")) return str;
+  if (!str || typeof str !== "string") return str;
+  const s = str.trim();
+  if (!s.startsWith("obf_")) return s;
   try {
-    const reversed = str.substring(4);
-    const encoded = reversed.split('').reverse().join('');
-    return atob(encoded);
+    const reversed = s.substring(4);
+    let encoded = reversed.split('').reverse().join('').trim();
+    // Strip any potential whitespace or non-base64 characters that might have crept in
+    encoded = encoded.replace(/[^A-Za-z0-9+/=]/g, "");
+    
+    // Use a more robust atob call and handle potential encoding issues
+    return decodeURIComponent(escape(atob(encoded)));
   } catch (e) {
-    return str;
+    try {
+      const reversed = s.substring(4);
+      let encoded = reversed.split('').reverse().join('').trim();
+      encoded = encoded.replace(/[^A-Za-z0-9+/=]/g, "");
+      return atob(encoded);
+    } catch (err) {
+      console.error("Deobfuscation failed:", err);
+      return s;
+    }
   }
 }
 

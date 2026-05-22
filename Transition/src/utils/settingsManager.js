@@ -22,6 +22,8 @@ const ACCENT_PALETTES = {
     colDev: "#059669",
     colTest: "#34d399",
     colDone: "#064e3b",
+    colImplemented: "#047857",
+    colScrap: "#94a3b8",
   },
   "#6366f1": {
     accent: "#6366f1",
@@ -34,6 +36,8 @@ const ACCENT_PALETTES = {
     colDev: "#4f46e5",
     colTest: "#818cf8",
     colDone: "#312e81",
+    colImplemented: "#1e1b4b",
+    colScrap: "#64748b",
   },
   "#f43f5e": {
     accent: "#f43f5e",
@@ -46,6 +50,8 @@ const ACCENT_PALETTES = {
     colDev: "#e11d48",
     colTest: "#fb7185",
     colDone: "#881337",
+    colImplemented: "#4c0519",
+    colScrap: "#64748b",
   },
   "#f59e0b": {
     accent: "#f59e0b",
@@ -58,6 +64,8 @@ const ACCENT_PALETTES = {
     colDev: "#d97706",
     colTest: "#fbbf24",
     colDone: "#78350f",
+    colImplemented: "#451a03",
+    colScrap: "#64748b",
   },
   "#06b6d4": {
     accent: "#06b6d4",
@@ -70,6 +78,8 @@ const ACCENT_PALETTES = {
     colDev: "#0891b2",
     colTest: "#22d3ee",
     colDone: "#164e63",
+    colImplemented: "#083344",
+    colScrap: "#64748b",
   },
 };
 
@@ -156,6 +166,8 @@ export function applySettings(settings) {
   root.style.setProperty("--col-dev", palette.colDev);
   root.style.setProperty("--col-test", palette.colTest);
   root.style.setProperty("--col-done", palette.colDone);
+  root.style.setProperty("--col-implemented", palette.colImplemented);
+  root.style.setProperty("--col-scrap", palette.colScrap);
 
   // In dark mode, bgSubtle should be dark regardless of the palette's light bgSubtle
   const effectiveBgSubtle = (effectiveTheme === "dark") ? "#1e293b" : palette.bgSubtle;

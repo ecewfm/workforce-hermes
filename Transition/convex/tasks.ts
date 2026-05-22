@@ -47,18 +47,25 @@ function obfuscate(str: string | undefined) {
 }
 
 function deobfuscate(str: string | undefined) {
-  if (!str || typeof str !== "string" || !str.startsWith("obf_")) return str;
+  if (!str || typeof str !== "string") return str;
+  const s = str.trim();
+  if (!s.startsWith("obf_")) return s;
   try {
-    const reversed = str.substring(4);
-    const encoded = reversed.split('').reverse().join('');
-    // Use a try-catch specifically for atob as it might be missing in some Convex environments
+    const reversed = s.substring(4);
+    let encoded = reversed.split('').reverse().join('').trim();
+    // Strip any potential whitespace or non-base64 characters
+    encoded = encoded.replace(/[^A-Za-z0-9+/=]/g, "");
+
     if (typeof atob === 'function') {
-      return atob(encoded);
+      try {
+        return decodeURIComponent(escape(atob(encoded)));
+      } catch (e) {
+        return atob(encoded);
+      }
     }
-    // Fallback? or just return the original string if atob is missing
-    return str; 
+    return s;
   } catch (e) {
-    return str;
+    return s;
   }
 }
 

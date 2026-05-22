@@ -345,11 +345,11 @@ header {
 }
 
 .col-scrap {
-  background: linear-gradient(to bottom, #f3f4f6, white);
+  background: linear-gradient(to bottom, var(--color-bg-subtle), white);
 }
 
 .col-implemented {
-  background: linear-gradient(to bottom, #d1fae5, white);
+  background: linear-gradient(to bottom, var(--color-bg-subtle), white);
 }
 
 .col-content {
