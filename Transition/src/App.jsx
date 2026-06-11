@@ -688,21 +688,21 @@ export default function App() {
                     border: "1px solid var(--color-accent)",
                     outline: "none",
                     fontSize: "0.8rem",
-                    background: "white",
+                    background: "var(--color-card-bg)",
                     color: "var(--color-text-primary)",
                     boxShadow: "0 4px 12px rgba(0,0,0,0.05)",
                     boxSizing: "border-box"
                   }}
                 />
                 {showSearch && searchQuery.trim().length > 0 && (
-                  <div style={{ 
-                    position: "absolute", 
-                    top: "100%", 
-                    left: 0, 
-                    width: "250px", 
-                    background: "white", 
-                    borderRadius: "12px", 
-                    border: "1px solid #f1f5f9", 
+                  <div style={{
+                    position: "absolute",
+                    top: "100%",
+                    left: 0,
+                    width: "250px",
+                    background: "var(--color-card-bg)",
+                    borderRadius: "12px",
+                    border: "1px solid var(--glass-border)",
                     boxShadow: "0 10px 25px rgba(0,0,0,0.1)", 
                     marginTop: "8px", 
                     maxHeight: "300px", 
@@ -714,7 +714,7 @@ export default function App() {
                     {/* Staff matches */}
                     {staff?.filter(s => s.name.toLowerCase().includes(searchQuery.toLowerCase()) || s.email.toLowerCase().includes(searchQuery.toLowerCase())).map(s => (
                       <div key={s._id || s.email} style={{ padding: "8px", cursor: "pointer", borderRadius: "6px", fontSize: "0.8rem", display: "flex", alignItems: "center", gap: "8px" }}
-                        onMouseEnter={e => e.currentTarget.style.background = "#f8fafc"}
+                        onMouseEnter={e => e.currentTarget.style.background = "var(--color-bg-subtle)"}
                         onMouseLeave={e => e.currentTarget.style.background = "transparent"}
                         onClick={() => { setViewingStaff(s); setShowSearch(false); setSearchQuery(""); }}
                       >
@@ -725,7 +725,7 @@ export default function App() {
                     {/* Task matches */}
                     {tasks?.filter(t => t.title.toLowerCase().includes(searchQuery.toLowerCase()) || (searchQuery.toLowerCase() === "priority" && t.isPrioritized)).map(t => (
                       <div key={t._id} style={{ padding: "8px", cursor: "pointer", borderRadius: "6px", fontSize: "0.8rem", display: "flex", flexDirection: "column" }}
-                        onMouseEnter={e => e.currentTarget.style.background = "#f8fafc"}
+                        onMouseEnter={e => e.currentTarget.style.background = "var(--color-bg-subtle)"}
                         onMouseLeave={e => e.currentTarget.style.background = "transparent"}
                         onClick={() => { openTaskModal(t._id); setShowSearch(false); setSearchQuery(""); }}
                       >
@@ -1281,11 +1281,11 @@ export default function App() {
                   return (
                     <div 
                       key={t._id} 
-                      style={{ 
-                        background: "white", 
-                        padding: "16px", 
-                        borderRadius: "16px", 
-                        border: isOverdue ? "1px solid #fca5a5" : "1px solid #e2e8f0", 
+                      style={{
+                        background: "var(--color-card-bg)",
+                        padding: "16px",
+                        borderRadius: "16px",
+                        border: isOverdue ? "1px solid #fca5a5" : "1px solid var(--glass-border)",
                         boxShadow: isOverdue ? "0 0 10px rgba(239, 68, 68, 0.1)" : "0 4px 12px rgba(0,0,0,0.03)",
                         cursor: "pointer", 
                         transition: "all 0.2s" 
@@ -1313,7 +1313,7 @@ export default function App() {
 
                       {/* Milestones grid */}
                       {t.milestones && t.milestones.length > 0 && (
-                        <div style={{ marginTop: "12px", background: "#f8fafc", padding: "10px", borderRadius: "10px" }}>
+                        <div style={{ marginTop: "12px", background: "var(--color-bg-subtle)", padding: "10px", borderRadius: "10px" }}>
                           <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
                             {t.milestones.map((m, idx) => {
                               const activeIdx = t.milestones.findIndex(ms => !ms.completed);

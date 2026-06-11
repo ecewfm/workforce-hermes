@@ -5945,3 +5945,84 @@ body.role-programmer .kanban-col.col-scrap {
 }
 [data-skin="aurora"] .modal-close,
 [data-skin="glass"] .modal-close { box-shadow: 0 4px 12px color-mix(in srgb, var(--color-text-primary) 16%, transparent) !important; }
+
+/* ============================================================
+   DARK MODE — REFINEMENTS & MISSED SURFACES
+   ------------------------------------------------------------
+   Fixes modals the original dark theme never targeted (alert /
+   confirm / input / announcement / task-notif / note-thread /
+   profile popover), and refines the palette + glow so depth and
+   shadows read cleanly instead of harsh pure-black.
+   Appended last so it wins on equal specificity.
+   ============================================================ */
+
+/* ---- Refined depth tokens (softer, cool-tinted shadows; no harsh glow) ---- */
+[data-theme="dark"] {
+  --shadow-sm: 0 1px 2px 0 rgba(2, 6, 23, 0.4);
+  --shadow-md: 0 4px 14px -2px rgba(2, 6, 23, 0.5);
+  --shadow-lg: 0 12px 28px -6px rgba(2, 6, 23, 0.55);
+  --shadow-xl: 0 24px 48px -12px rgba(2, 6, 23, 0.65);
+}
+
+/* ---- Alert / Confirm / Input modal (was targeting a non-existent class) ---- */
+[data-theme="dark"] .custom-modal-content {
+  background: #1e293b;
+  border: 1px solid #334155;
+  box-shadow: 0 24px 48px -12px rgba(2, 6, 23, 0.7);
+}
+[data-theme="dark"] .custom-modal-icon { background: #0f172a; }
+[data-theme="dark"] .custom-modal-title { color: #f1f5f9; }
+[data-theme="dark"] .custom-modal-message { color: #94a3b8; }
+[data-theme="dark"] .btn-modal-cancel { background: #334155; color: #cbd5e1; }
+[data-theme="dark"] .btn-modal-cancel:hover { background: #475569; }
+[data-theme="dark"] .input-modal-fields label,
+[data-theme="dark"] .input-modal-fields .form-label { color: #94a3b8; }
+
+/* ---- Announcement popup ---- */
+[data-theme="dark"] .announcement-popup { background: #1e293b; }
+[data-theme="dark"] .announcement-popup-title { color: #f1f5f9; }
+[data-theme="dark"] .announcement-popup-body { color: #cbd5e1; }
+[data-theme="dark"] .announcement-popup-body b,
+[data-theme="dark"] .announcement-popup-body strong { color: #f8fafc; }
+[data-theme="dark"] .announcement-popup-footer { border-color: #334155; }
+[data-theme="dark"] .announcement-popup-meta { color: #64748b; }
+
+/* ---- Login-time task notification popup ---- */
+[data-theme="dark"] .task-notif-popup { background: #1e293b; }
+[data-theme="dark"] .task-notif-item:hover { background: #334155; border-color: #475569; }
+[data-theme="dark"] .task-notif-icon-box { background: #1e3a5f; color: #93c5fd; }
+[data-theme="dark"] .task-notif-footer { border-color: #334155; }
+[data-theme="dark"] .task-notif-dismiss-btn { background: #334155; color: #cbd5e1; }
+
+/* ---- Note thread modal + note context menu (Task modal) ---- */
+[data-theme="dark"] .thread-modal-content { background: #1e293b; border-color: #334155; }
+[data-theme="dark"] .note-context-menu { background: #1e293b; border-color: #334155; color: #e2e8f0; }
+[data-theme="dark"] .note-context-menu *:hover { background: #334155; }
+[data-theme="dark"] .system-links-box { background: #0f172a; border-color: #334155; }
+
+/* ---- Profile popover ---- */
+[data-theme="dark"] .profile-popover-content { background: #1e293b; border: 1px solid #334155; }
+[data-theme="dark"] .profile-popover-header { background: linear-gradient(135deg, #0f172a, #1e293b); }
+[data-theme="dark"] .profile-popover-name-row h3 { color: #f8fafc; }
+[data-theme="dark"] .profile-popover-email { color: #94a3b8; }
+[data-theme="dark"] .profile-popover-status,
+[data-theme="dark"] .profile-popover-status.location { background: #334155 !important; color: #e2e8f0 !important; border-color: #475569 !important; }
+[data-theme="dark"] .profile-popover-close { background: rgba(15, 23, 42, 0.6); color: #f1f5f9; }
+
+/* ---- Search dropdown + small inline panels ---- */
+[data-theme="dark"] .nav-bar { box-shadow: inset 0 -1px 0 rgba(0,0,0,0.25); }
+
+/* ---- Softer, on-brand glow (was a hard 10px halo + drop-shadow) ---- */
+[data-theme="dark"] .milestone-dot.active {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 35%, transparent);
+  filter: none;
+}
+
+/* ---- Accent-tinted focus ring instead of flat slate ---- */
+[data-theme="dark"] .form-input:focus,
+[data-theme="dark"] .settings-input:focus,
+[data-theme="dark"] .settings-textarea:focus,
+[data-theme="dark"] .settings-select:focus {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 18%, transparent);
+}

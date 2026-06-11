@@ -19,7 +19,7 @@ export default function Dashboard({ onShowAllLinks }) {
       <div className="container">
         {/* Consolidated System Links */}
         {stats.projectsWithLinks && stats.projectsWithLinks.length > 0 ? (
-          <div className="section-card" style={{ marginBottom: 25, background: "linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)", border: "1.5px solid #e2e8f0", boxShadow: "var(--shadow-sm)" }}>
+          <div className="section-card" style={{ marginBottom: 25, background: "var(--color-card-bg)", border: "1.5px solid var(--glass-border)", boxShadow: "var(--shadow-sm)" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 15, flexWrap: "wrap", gap: 10 }}>
               <h2 style={{ fontWeight: 900, margin: 0, textTransform: "uppercase", fontSize: "1.2rem", color: "var(--color-text-secondary)", display: "flex", alignItems: "center", gap: 10, letterSpacing: "0.5px" }}>
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
@@ -53,7 +53,7 @@ export default function Dashboard({ onShowAllLinks }) {
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 15 }}>
               {visibleProjects.map(p => (
-                <div key={p.id} style={{ background: "white", padding: "15px 20px", borderRadius: 12, border: "1px solid #e2e8f0", transition: "transform 0.2s ease, box-shadow 0.2s ease", display: "flex", flexDirection: "column", gap: 12 }}>
+                <div key={p.id} style={{ background: "var(--color-bg-subtle)", padding: "15px 20px", borderRadius: 12, border: "1px solid var(--glass-border)", transition: "transform 0.2s ease, box-shadow 0.2s ease", display: "flex", flexDirection: "column", gap: 12 }}>
                   <div>
                     <div style={{ fontWeight: 900, fontSize: "0.95rem", color: "var(--color-nav-bg)", borderBottom: "2px solid #f1f5f9", paddingBottom: 8, marginBottom: 8, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                       {p.title}
