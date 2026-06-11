@@ -19,6 +19,10 @@
   /* For highlights */
   --color-accent-hover: #059669;
   --color-logout: #64748b;
+  /* Brand-colored TEXT (titles, headings, accents printed as text). Deep green
+     on light; flips to a readable light emerald in dark mode so it never sinks
+     into the background. Use this instead of --color-nav-bg for text color. */
+  --color-brand-text: #064e3b;
 
   /* Refined Kanban Colors */
   --col-todo: #065f46;
@@ -5138,9 +5142,9 @@ body.role-programmer .kanban-col.col-scrap {
 [data-skin="glass"] .timeline-summary-box,
 [data-skin="glass"] .hb-block,
 [data-skin="glass"] .hb-template-card {
-  background: color-mix(in srgb, var(--color-card-bg) 62%, transparent) !important;
-  backdrop-filter: blur(16px) saturate(160%);
-  -webkit-backdrop-filter: blur(16px) saturate(160%);
+  background: color-mix(in srgb, var(--color-card-bg) 50%, transparent) !important;
+  backdrop-filter: blur(20px) saturate(165%);
+  -webkit-backdrop-filter: blur(20px) saturate(165%);
   border: 1px solid color-mix(in srgb, var(--color-text-primary) 12%, transparent) !important;
   box-shadow: 0 8px 32px color-mix(in srgb, var(--color-text-primary) 16%, transparent) !important;
   border-radius: 18px !important;
@@ -5962,6 +5966,8 @@ body.role-programmer .kanban-col.col-scrap {
   --shadow-md: 0 4px 14px -2px rgba(2, 6, 23, 0.5);
   --shadow-lg: 0 12px 28px -6px rgba(2, 6, 23, 0.55);
   --shadow-xl: 0 24px 48px -12px rgba(2, 6, 23, 0.65);
+  /* Brand text becomes a bright, readable emerald (follows the chosen accent). */
+  --color-brand-text: var(--color-accent-lighter);
 }
 
 /* ---- Alert / Confirm / Input modal (was targeting a non-existent class) ---- */
@@ -6025,4 +6031,283 @@ body.role-programmer .kanban-col.col-scrap {
 [data-theme="dark"] .settings-select:focus {
   border-color: var(--color-accent);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 18%, transparent);
+}
+
+/* ============================================================
+   LIQUID GLASS SKIN  +  iOS-STYLE MOTION
+   ------------------------------------------------------------
+   Apple-inspired translucent "liquid glass": deep blur, specular
+   edge highlights (inset light top / dark bottom), squircle radii,
+   a slow moving sheen on major panels, and springy hover/press.
+   ============================================================ */
+
+/* iOS spring timing tokens */
+:root {
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ease-smooth: cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+@keyframes liquidSheen {
+  0%   { background-position: 140% 0; }
+  100% { background-position: -40% 0; }
+}
+@keyframes liquidPop {
+  0%   { opacity: 0; transform: translateY(14px) scale(0.96); }
+  60%  { opacity: 1; transform: translateY(-2px) scale(1.008); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* ---- Overlays: brighter, more refractive scrim ---- */
+[data-skin="liquid"] .modal-overlay,
+[data-skin="liquid"] .custom-modal-overlay,
+[data-skin="liquid"] .announcement-overlay,
+[data-skin="liquid"] .profile-popover-overlay,
+[data-skin="liquid"] .settings-overlay,
+[data-skin="liquid"] .notif-modal-overlay,
+[data-skin="liquid"] .notes-fullscreen-overlay,
+[data-skin="liquid"] .handbook-overlay {
+  background: color-mix(in srgb, var(--color-bg-primary) 28%, transparent) !important;
+  backdrop-filter: blur(22px) saturate(180%) !important;
+  -webkit-backdrop-filter: blur(22px) saturate(180%) !important;
+}
+
+/* ---- Surfaces (panels + cards) ---- */
+[data-skin="liquid"] .modal-content,
+[data-skin="liquid"] .custom-modal-content,
+[data-skin="liquid"] .announcement-popup,
+[data-skin="liquid"] .task-notif-popup,
+[data-skin="liquid"] .settings-panel,
+[data-skin="liquid"] .profile-popover-content,
+[data-skin="liquid"] .notif-dropdown,
+[data-skin="liquid"] .notif-modal-content,
+[data-skin="liquid"] .context-menu,
+[data-skin="liquid"] .note-context-menu,
+[data-skin="liquid"] .thread-modal-content,
+[data-skin="liquid"] .notes-fullscreen-card,
+[data-skin="liquid"] .login-box,
+[data-skin="liquid"] .handbook-panel,
+[data-skin="liquid"] .section-card,
+[data-skin="liquid"] .stat-card,
+[data-skin="liquid"] .total-card,
+[data-skin="liquid"] .idea-card,
+[data-skin="liquid"] .task-card,
+[data-skin="liquid"] .programmer-card,
+[data-skin="liquid"] .rounded-task-card,
+[data-skin="liquid"] .feature-card,
+[data-skin="liquid"] .note-item,
+[data-skin="liquid"] .settings-card,
+[data-skin="liquid"] .milestone-list-item,
+[data-skin="liquid"] .announcement-history-card,
+[data-skin="liquid"] .system-links-box,
+[data-skin="liquid"] .timeline-summary-box,
+[data-skin="liquid"] .hb-block,
+[data-skin="liquid"] .hb-template-card {
+  background: color-mix(in srgb, var(--color-card-bg) 42%, transparent) !important;
+  backdrop-filter: blur(26px) saturate(190%) brightness(1.04);
+  -webkit-backdrop-filter: blur(26px) saturate(190%) brightness(1.04);
+  border: 1px solid color-mix(in srgb, #ffffff 38%, transparent) !important;
+  border-radius: 24px !important;
+  box-shadow:
+    0 14px 44px -8px color-mix(in srgb, var(--color-text-primary) 20%, transparent),
+    inset 0 1px 1px rgba(255, 255, 255, 0.55),
+    inset 0 -1px 1px rgba(0, 0, 0, 0.07) !important;
+}
+[data-skin="liquid"] .kanban-col {
+  background: color-mix(in srgb, var(--color-card-bg) 38%, transparent) !important;
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border-radius: 22px !important;
+  box-shadow: 0 14px 44px -8px color-mix(in srgb, var(--color-text-primary) 18%, transparent), inset 0 1px 1px rgba(255,255,255,0.45) !important;
+}
+[data-skin="liquid"] header {
+  background: color-mix(in srgb, var(--color-card-bg) 55%, transparent) !important;
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+}
+
+/* ---- Moving specular sheen on the large panels ---- */
+[data-skin="liquid"] .modal-content,
+[data-skin="liquid"] .custom-modal-content,
+[data-skin="liquid"] .settings-panel,
+[data-skin="liquid"] .handbook-panel,
+[data-skin="liquid"] .announcement-popup,
+[data-skin="liquid"] .task-notif-popup {
+  position: relative;
+  isolation: isolate;
+}
+[data-skin="liquid"] .modal-content::before,
+[data-skin="liquid"] .custom-modal-content::before,
+[data-skin="liquid"] .settings-panel::before,
+[data-skin="liquid"] .handbook-panel::before,
+[data-skin="liquid"] .announcement-popup::before,
+[data-skin="liquid"] .task-notif-popup::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: 0;
+  background: linear-gradient(115deg, transparent 32%, rgba(255, 255, 255, 0.16) 48%, rgba(255,255,255,0.05) 54%, transparent 64%);
+  background-size: 260% 100%;
+  animation: liquidSheen 8s ease-in-out infinite;
+}
+
+/* Entrance: springy pop */
+[data-skin="liquid"] .modal-content,
+[data-skin="liquid"] .custom-modal-content,
+[data-skin="liquid"] .handbook-panel,
+[data-skin="liquid"] .settings-panel,
+[data-skin="liquid"] .announcement-popup,
+[data-skin="liquid"] .task-notif-popup,
+[data-skin="liquid"] .profile-popover-content {
+  animation: liquidPop 0.5s var(--ease-spring) both;
+}
+
+/* ---- Springy hover/press on cards ---- */
+[data-skin="liquid"] .task-card,
+[data-skin="liquid"] .rounded-task-card,
+[data-skin="liquid"] .programmer-card,
+[data-skin="liquid"] .stat-card,
+[data-skin="liquid"] .total-card,
+[data-skin="liquid"] .hb-template-card,
+[data-skin="liquid"] .feature-card {
+  transition: transform 0.5s var(--ease-spring), box-shadow 0.4s var(--ease-smooth) !important;
+}
+[data-skin="liquid"] .task-card:hover,
+[data-skin="liquid"] .rounded-task-card:hover,
+[data-skin="liquid"] .programmer-card:hover,
+[data-skin="liquid"] .total-card:hover,
+[data-skin="liquid"] .hb-template-card:hover {
+  transform: translateY(-4px) scale(1.015) !important;
+}
+
+/* ---- Liquid buttons + inputs ---- */
+[data-skin="liquid"] .btn-primary,
+[data-skin="liquid"] .btn-secondary,
+[data-skin="liquid"] .btn-danger,
+[data-skin="liquid"] .btn-add-milestone,
+[data-skin="liquid"] .btn-add-note,
+[data-skin="liquid"] .btn-add-feature,
+[data-skin="liquid"] .btn-modal-cancel,
+[data-skin="liquid"] .btn-modal-confirm,
+[data-skin="liquid"] .settings-btn-ghost,
+[data-skin="liquid"] .settings-btn-primary,
+[data-skin="liquid"] .hb-btn,
+[data-skin="liquid"] .btn-project-consolidation,
+[data-skin="liquid"] .announcement-dismiss-btn,
+[data-skin="liquid"] .btn-modern {
+  border-radius: 999px !important;
+  border: 1px solid rgba(255, 255, 255, 0.35) !important;
+  box-shadow: 0 6px 18px color-mix(in srgb, var(--color-text-primary) 14%, transparent), inset 0 1px 1px rgba(255,255,255,0.6) !important;
+  backdrop-filter: blur(10px) saturate(170%);
+  -webkit-backdrop-filter: blur(10px) saturate(170%);
+  transition: transform 0.45s var(--ease-spring), box-shadow 0.35s var(--ease-smooth), filter 0.2s ease !important;
+}
+[data-skin="liquid"] .btn-primary:hover,
+[data-skin="liquid"] .btn-secondary:hover,
+[data-skin="liquid"] .btn-danger:hover,
+[data-skin="liquid"] .hb-btn:hover,
+[data-skin="liquid"] .btn-project-consolidation:hover,
+[data-skin="liquid"] .announcement-dismiss-btn:hover,
+[data-skin="liquid"] .btn-modern:hover {
+  transform: translateY(-2px) scale(1.04) !important;
+  filter: brightness(1.06);
+}
+[data-skin="liquid"] .btn-primary:active,
+[data-skin="liquid"] .btn-secondary:active,
+[data-skin="liquid"] .btn-danger:active,
+[data-skin="liquid"] .hb-btn:active,
+[data-skin="liquid"] .btn-project-consolidation:active,
+[data-skin="liquid"] .btn-modern:active {
+  transform: scale(0.95) !important;
+}
+[data-skin="liquid"] .nav-bar {
+  background: color-mix(in srgb, var(--color-nav-bg) 72%, transparent) !important;
+  backdrop-filter: blur(18px) saturate(170%);
+  -webkit-backdrop-filter: blur(18px) saturate(170%);
+}
+[data-skin="liquid"] .nav-btn { border-radius: 999px !important; transition: transform 0.4s var(--ease-spring), background 0.2s ease !important; }
+[data-skin="liquid"] .nav-btn:hover { transform: translateY(-1px) scale(1.05) !important; }
+[data-skin="liquid"] .form-input,
+[data-skin="liquid"] .settings-input,
+[data-skin="liquid"] .settings-select,
+[data-skin="liquid"] .settings-textarea,
+[data-skin="liquid"] .note-input,
+[data-skin="liquid"] .multiselect-trigger,
+[data-skin="liquid"] .hb-edit-input,
+[data-skin="liquid"] .hb-edit-area,
+[data-skin="liquid"] .composer-editor {
+  border-radius: 16px !important;
+  border: 1px solid rgba(255, 255, 255, 0.3) !important;
+  background: color-mix(in srgb, var(--color-card-bg) 45%, transparent) !important;
+  backdrop-filter: blur(10px) saturate(160%);
+  -webkit-backdrop-filter: blur(10px) saturate(160%);
+}
+[data-skin="liquid"] .modal-close,
+[data-skin="liquid"] .settings-close-btn {
+  border-radius: 999px !important;
+  box-shadow: inset 0 1px 1px rgba(255,255,255,0.6), 0 4px 12px color-mix(in srgb, var(--color-text-primary) 14%, transparent) !important;
+}
+
+/* ---- Settings preview chip for the Liquid Glass option ---- */
+.skin-card--liquid .skin-chip {
+  background: color-mix(in srgb, var(--color-accent) 42%, transparent);
+  backdrop-filter: blur(3px);
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7), 0 2px 6px rgba(0,0,0,0.12);
+}
+.skin-card--liquid .skin-card-preview { background: linear-gradient(135deg, color-mix(in srgb, var(--color-accent) 20%, var(--color-card-bg)), var(--color-card-bg)); }
+
+/* ============================================================
+   LIVING BACKDROP — drifting color blobs behind glass surfaces
+   ------------------------------------------------------------
+   Glass only looks like glass when there's something behind it to
+   refract. This paints a slow, blurred "lava-lamp" of accent light
+   on a fixed layer (z-index -1, behind the app, above the grid),
+   so every translucent panel/card frosts real, shifting color.
+   Transform-only animation = composited & cheap despite the blur.
+   ============================================================ */
+[data-skin="glass"] body::after,
+[data-skin="liquid"] body::after,
+[data-skin="aurora"] body::after {
+  content: "";
+  position: fixed;
+  inset: -25%;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(38% 48% at 18% 28%, color-mix(in srgb, var(--color-accent) 60%, transparent), transparent 70%),
+    radial-gradient(34% 42% at 82% 22%, color-mix(in srgb, var(--color-nav-bg) 60%, transparent), transparent 70%),
+    radial-gradient(46% 52% at 62% 82%, color-mix(in srgb, var(--color-accent-lighter) 55%, transparent), transparent 72%),
+    radial-gradient(30% 40% at 28% 88%, color-mix(in srgb, var(--color-accent) 45%, transparent), transparent 70%);
+  filter: blur(48px) saturate(150%);
+  will-change: transform;
+  animation: bgFloat 28s ease-in-out infinite;
+}
+/* Liquid leans brighter/more saturated for a wetter, glassier read */
+[data-skin="liquid"] body::after { filter: blur(54px) saturate(170%) brightness(1.08); opacity: 0.95; }
+[data-skin="glass"] body::after { opacity: 0.85; }
+
+@keyframes bgFloat {
+  0%   { transform: translate3d(-3%, -2%, 0) rotate(0deg)  scale(1.10); }
+  50%  { transform: translate3d(3%,  2%, 0)  rotate(4deg)  scale(1.20); }
+  100% { transform: translate3d(-3%, -2%, 0) rotate(0deg)  scale(1.10); }
+}
+
+/* Respect reduced-motion: kill the sheen + spring + drifting backdrop */
+@media (prefers-reduced-motion: reduce) {
+  [data-skin="glass"] body::after,
+  [data-skin="liquid"] body::after,
+  [data-skin="aurora"] body::after { animation: none; }
+  [data-skin="liquid"] .modal-content::before,
+  [data-skin="liquid"] .custom-modal-content::before,
+  [data-skin="liquid"] .settings-panel::before,
+  [data-skin="liquid"] .handbook-panel::before,
+  [data-skin="liquid"] .announcement-popup::before,
+  [data-skin="liquid"] .task-notif-popup::before { animation: none; }
+  [data-skin="liquid"] .modal-content,
+  [data-skin="liquid"] .custom-modal-content,
+  [data-skin="liquid"] .handbook-panel,
+  [data-skin="liquid"] .settings-panel,
+  [data-skin="aurora"] body { animation: none !important; }
 }

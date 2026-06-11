@@ -55,7 +55,7 @@ export default function Dashboard({ onShowAllLinks }) {
               {visibleProjects.map(p => (
                 <div key={p.id} style={{ background: "var(--color-bg-subtle)", padding: "15px 20px", borderRadius: 12, border: "1px solid var(--glass-border)", transition: "transform 0.2s ease, box-shadow 0.2s ease", display: "flex", flexDirection: "column", gap: 12 }}>
                   <div>
-                    <div style={{ fontWeight: 900, fontSize: "0.95rem", color: "var(--color-nav-bg)", borderBottom: "2px solid #f1f5f9", paddingBottom: 8, marginBottom: 8, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    <div style={{ fontWeight: 900, fontSize: "0.95rem", color: "var(--color-brand-text)", borderBottom: "2px solid var(--glass-border)", paddingBottom: 8, marginBottom: 8, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                       {p.title}
                     </div>
                     <div style={{ fontSize: "0.8rem", color: "var(--color-text-secondary)", display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical", overflow: "hidden", lineHeight: 1.4 }}>
@@ -117,7 +117,7 @@ export default function Dashboard({ onShowAllLinks }) {
             <div className="stat-label">Deployed</div>
           </div>
           <div className="stat-card">
-            <div className="stat-value" style={{ color: "var(--color-nav-bg)" }}>{stats.overallCompletion || 0}%</div>
+            <div className="stat-value" style={{ color: "var(--color-brand-text)" }}>{stats.overallCompletion || 0}%</div>
             <div className="stat-label">Efficiency</div>
           </div>
         </div>

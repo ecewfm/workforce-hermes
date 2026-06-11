@@ -98,6 +98,7 @@ const FONT_SCALES = {
 export const SKINS = [
   { id: "default", label: "Classic", desc: "The signature Hermes look — crisp cards and soft shadows.", icon: "✦" },
   { id: "glass", label: "Glassmorphism", desc: "Frosted translucent surfaces, blur and soft glow.", icon: "❖" },
+  { id: "liquid", label: "Liquid Glass", desc: "Apple-style translucent glass with a moving sheen and springy motion.", icon: "💧" },
   { id: "cubic", label: "Cubic", desc: "Solid blocks, bold borders and hard offset shadows.", icon: "◼" },
   { id: "aurora", label: "Aurora", desc: "Soft animated gradients and luminous accents.", icon: "🌈" },
   { id: "minimal", label: "Minimal", desc: "Flat surfaces, hairline borders, distraction-free.", icon: "—" },

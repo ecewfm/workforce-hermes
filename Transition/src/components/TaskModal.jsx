@@ -1085,7 +1085,7 @@ export default function TaskModal({ taskId, isEditMode, userRole, actualRole, us
                     <button
                       type="button"
                       className="btn-primary"
-                      style={{ marginTop: 10, alignSelf: "flex-start", width: "auto", padding: "6px 12px", fontSize: "0.75rem", background: "var(--color-bg-subtle)", color: "var(--color-nav-bg)", border: "2px dashed var(--color-accent-lighter)" }}
+                      style={{ marginTop: 10, alignSelf: "flex-start", width: "auto", padding: "6px 12px", fontSize: "0.75rem", background: "var(--color-bg-subtle)", color: "var(--color-brand-text)", border: "2px dashed var(--color-accent-lighter)" }}
                       onClick={appendEditableMilestone}
                     >
                       + ADD MILESTONE
@@ -1192,7 +1192,7 @@ export default function TaskModal({ taskId, isEditMode, userRole, actualRole, us
                     </svg>
                     SYSTEM LINKS
                   </div>
-                  <div className="creds-content" style={{ padding: "8px 12px", color: "var(--color-nav-bg)" }}>
+                  <div className="creds-content" style={{ padding: "8px 12px", color: "var(--color-brand-text)" }}>
                     <div style={{ display: "grid", gridTemplateColumns: "100px 1fr", gap: "4px 10px", alignItems: "center" }}>
                       <span style={{ fontSize: "0.6rem", fontWeight: 900, textTransform: "uppercase", color: "#3b82f6" }}>Appscript:</span>
                       {task.appscriptLink ? (
@@ -1215,7 +1215,7 @@ export default function TaskModal({ taskId, isEditMode, userRole, actualRole, us
                     </svg>
                     ADMIN CREDENTIALS (SENSITIVE)
                   </div>
-                  <div className="creds-content" style={{ padding: "8px 12px", color: "var(--color-nav-bg)" }}>
+                  <div className="creds-content" style={{ padding: "8px 12px", color: "var(--color-brand-text)" }}>
                     <div style={{ display: "grid", gridTemplateColumns: "80px 1fr", gap: "2px 10px", alignItems: "center" }}>
                       <span style={{ fontSize: "0.6rem", fontWeight: 900, textTransform: "uppercase", color: "var(--color-accent)" }}>Email:</span>
                       <span style={{ fontWeight: 700, fontSize: "0.8rem", fontFamily: "monospace" }}>
@@ -1322,7 +1322,7 @@ export default function TaskModal({ taskId, isEditMode, userRole, actualRole, us
                   >
                     <div style={{ flex: 1 }}>
                       <div className="note-date" style={{ color: "var(--color-accent)", marginBottom: 4, fontSize: "0.65rem", fontWeight: 700 }}>
-                        {n.date} {n.writer && <span style={{ color: "var(--color-nav-bg)", fontWeight: 900 }}>- {n.writer}</span>}
+                        {n.date} {n.writer && <span style={{ color: "var(--color-brand-text)", fontWeight: 900 }}>- {n.writer}</span>}
                       </div>
                       <div className="note-text" style={{ fontSize: "0.8rem", lineHeight: 1.4, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{n.text}</div>
                       

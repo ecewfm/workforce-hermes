@@ -764,9 +764,9 @@ export default function App() {
               style={{
                 padding: "8px 16px",
                 borderRadius: "12px",
-                border: "1px solid var(--color-nav-bg)",
+                border: "1px solid var(--color-brand-text)",
                 background: "var(--color-card-bg)",
-                color: "var(--color-nav-bg)",
+                color: "var(--color-brand-text)",
                 fontSize: "0.7rem",
                 fontWeight: 900,
                 cursor: "pointer",
