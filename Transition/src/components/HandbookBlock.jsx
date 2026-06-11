@@ -10,6 +10,38 @@ const WIDTH_OPTS = [
 
 const HEADING_ICONS = ["book", "layers", "steps", "timeline", "callout", "cardgrid", "kpi", "chart"];
 
+const TEXT_COLORS = ["#0f172a", "#475569", "#10b981", "#059669", "#6366f1", "#f59e0b", "#f43f5e", "#06b6d4", "#8b5cf6", "#ffffff"];
+
+/* Inline text-color picker: preset swatches + native picker + reset to theme default. */
+function ColorRow({ value, onChange }) {
+  return (
+    <div style={{ marginTop: 10 }}>
+      <div className="hb-mini-label">Text color</div>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
+        <button
+          type="button"
+          title="Theme default"
+          onClick={() => onChange(undefined)}
+          style={{ width: 22, height: 22, borderRadius: 6, cursor: "pointer", border: !value ? "2px solid var(--color-accent)" : "1px solid var(--glass-border)", background: "var(--color-bg-subtle)", fontSize: 10, fontWeight: 800, color: "var(--color-text-secondary)" }}
+        >A</button>
+        {TEXT_COLORS.map((c) => (
+          <button
+            key={c}
+            type="button"
+            title={c}
+            onClick={() => onChange(c)}
+            style={{ width: 22, height: 22, borderRadius: 6, cursor: "pointer", background: c, border: value === c ? "2px solid var(--color-accent)" : "1px solid var(--glass-border)" }}
+          />
+        ))}
+        <label title="Custom color" style={{ width: 22, height: 22, borderRadius: 6, overflow: "hidden", border: "1px solid var(--glass-border)", cursor: "pointer", position: "relative", display: "inline-flex" }}>
+          <span style={{ fontSize: 12, lineHeight: "20px", width: "100%", textAlign: "center" }}>🎨</span>
+          <input type="color" value={value || "#10b981"} onChange={(e) => onChange(e.target.value)} style={{ position: "absolute", inset: 0, opacity: 0, cursor: "pointer" }} />
+        </label>
+      </div>
+    </div>
+  );
+}
+
 export default function HandbookBlock({
   block, editing, index, total, isDragOver,
   onUpdate, onSetWidth, onRemove, onDuplicate, onMove,
@@ -58,31 +90,38 @@ function BlockContent({ type, props, editing, onUpdate }) {
         <>
           <input className="hb-edit-input" style={{ fontSize: "1.3rem", fontWeight: 900, marginBottom: 8 }} value={props.title} placeholder="Banner title" onChange={(e) => onUpdate({ title: e.target.value })} />
           <input className="hb-edit-input" value={props.subtitle} placeholder="Subtitle" onChange={(e) => onUpdate({ subtitle: e.target.value })} />
+          <ColorRow value={props.color} onChange={(c) => onUpdate({ color: c })} />
         </>
       ) : (
         <>
-          <h1><Icon name="layers" size={22} />{props.title}</h1>
+          <h1 style={props.color ? { color: props.color } : undefined}><Icon name="layers" size={22} />{props.title}</h1>
           {props.subtitle ? <p>{props.subtitle}</p> : null}
         </>
       );
 
     case "heading":
       return editing ? (
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <select className="hb-edit-input" style={{ width: 70 }} value={props.icon || "book"} onChange={(e) => onUpdate({ icon: e.target.value })}>
-            {HEADING_ICONS.map((ic) => <option key={ic} value={ic}>{ic}</option>)}
-          </select>
-          <input className="hb-edit-input" style={{ fontWeight: 800 }} value={props.text} placeholder="Heading text" onChange={(e) => onUpdate({ text: e.target.value })} />
+        <div>
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <select className="hb-edit-input" style={{ width: 70 }} value={props.icon || "book"} onChange={(e) => onUpdate({ icon: e.target.value })}>
+              {HEADING_ICONS.map((ic) => <option key={ic} value={ic}>{ic}</option>)}
+            </select>
+            <input className="hb-edit-input" style={{ fontWeight: 800 }} value={props.text} placeholder="Heading text" onChange={(e) => onUpdate({ text: e.target.value })} />
+          </div>
+          <ColorRow value={props.color} onChange={(c) => onUpdate({ color: c })} />
         </div>
       ) : (
-        <h3 className="hb-heading"><Icon name={props.icon || "book"} size={20} />{props.text}</h3>
+        <h3 className="hb-heading" style={props.color ? { color: props.color } : undefined}><Icon name={props.icon || "book"} size={20} />{props.text}</h3>
       );
 
     case "text":
       return editing ? (
-        <textarea className="hb-edit-area" rows={5} value={props.body} placeholder="Write your content…" onChange={(e) => onUpdate({ body: e.target.value })} />
+        <>
+          <textarea className="hb-edit-area" rows={5} value={props.body} placeholder="Write your content…" onChange={(e) => onUpdate({ body: e.target.value })} />
+          <ColorRow value={props.color} onChange={(c) => onUpdate({ color: c })} />
+        </>
       ) : (
-        <div className="hb-text">{props.body}</div>
+        <div className="hb-text" style={props.color ? { color: props.color } : undefined}>{props.body}</div>
       );
 
     case "callout":
@@ -92,16 +131,37 @@ function BlockContent({ type, props, editing, onUpdate }) {
           <input className="hb-edit-input" value={props.title} placeholder="Title" onChange={(e) => onUpdate({ title: e.target.value })} />
           <div className="hb-mini-label">Body</div>
           <textarea className="hb-edit-area" rows={2} value={props.body} placeholder="Reminder text" onChange={(e) => onUpdate({ body: e.target.value })} />
+          <ColorRow value={props.color} onChange={(c) => onUpdate({ color: c })} />
         </div>
       ) : (
         <>
           <span className="ic"><Icon name="callout" size={20} /></span>
           <div>
-            <div className="hb-callout-title">{props.title}</div>
-            <div className="hb-callout-body">{props.body}</div>
+            <div className="hb-callout-title" style={props.color ? { color: props.color } : undefined}>{props.title}</div>
+            <div className="hb-callout-body" style={props.color ? { color: props.color } : undefined}>{props.body}</div>
           </div>
         </>
       );
+
+    case "quote":
+      return editing ? (
+        <div>
+          <div className="hb-mini-label">Quote</div>
+          <textarea className="hb-edit-area" rows={3} value={props.text} placeholder="Quote text" onChange={(e) => onUpdate({ text: e.target.value })} />
+          <div className="hb-mini-label">Attribution</div>
+          <input className="hb-edit-input" value={props.author} placeholder="Author / source" onChange={(e) => onUpdate({ author: e.target.value })} />
+          <ColorRow value={props.color} onChange={(c) => onUpdate({ color: c })} />
+        </div>
+      ) : (
+        <blockquote className="hb-quote" style={props.color ? { color: props.color } : undefined}>
+          <span className="hb-quote-mark">“</span>
+          <span className="hb-quote-text">{props.text}</span>
+          {props.author ? <cite className="hb-quote-author">— {props.author}</cite> : null}
+        </blockquote>
+      );
+
+    case "checklist":
+      return <ChecklistBlock props={props} editing={editing} onUpdate={onUpdate} />;
 
     case "timeline":
       return <ListEditor
@@ -250,6 +310,48 @@ function ListEditor({ editing, items, fields, onChange, render, newItem }) {
   );
 }
 
+function ChecklistBlock({ props, editing, onUpdate }) {
+  const items = props.items || [];
+  if (!editing) {
+    return (
+      <div>
+        {props.title ? <div className="hb-heading" style={{ fontSize: "0.95rem", marginBottom: 12 }}><Icon name="check" size={18} />{props.title}</div> : null}
+        <div className="hb-checklist">
+          {items.map((it, i) => (
+            <div key={i} className={`hb-check-item ${it.done ? "done" : ""}`}>
+              <span className="hb-check-box">{it.done ? <Icon name="check" size={12} /> : null}</span>
+              <span className="hb-check-text">{it.text}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+  function patch(i, key, val) { onUpdate({ items: items.map((it, idx) => (idx === i ? { ...it, [key]: val } : it)) }); }
+  function remove(i) { onUpdate({ items: items.filter((_, idx) => idx !== i) }); }
+  function add() { onUpdate({ items: [...items, { text: "New item", done: false }] }); }
+  return (
+    <div>
+      <div className="hb-mini-label">Checklist title</div>
+      <input className="hb-edit-input" value={props.title || ""} placeholder="Title (optional)" onChange={(e) => onUpdate({ title: e.target.value })} />
+      <div className="hb-mini-label">Items</div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        {items.map((it, i) => (
+          <div key={i} style={{ display: "flex", gap: 6, alignItems: "center" }}>
+            <button className={`hb-tool-btn ${it.done ? "" : ""}`} title="Toggle done" onClick={() => patch(i, "done", !it.done)}
+              style={{ background: it.done ? "var(--color-accent)" : "var(--color-bg-subtle)", color: it.done ? "#fff" : "var(--color-text-secondary)", flexShrink: 0 }}>
+              <Icon name="check" size={12} />
+            </button>
+            <input className="hb-edit-input" value={it.text} placeholder="Item text" onChange={(e) => patch(i, "text", e.target.value)} />
+            <button className="hb-tool-btn danger" onClick={() => remove(i)}><Icon name="trash" size={12} /></button>
+          </div>
+        ))}
+        <button className="hb-btn hb-btn-ghost" style={{ justifyContent: "center" }} onClick={add}><Icon name="plus" size={14} /> Add item</button>
+      </div>
+    </div>
+  );
+}
+
 function ChartEditor({ props, editing, onUpdate }) {
   if (!editing) return <HandbookChart kind={props.kind} title={props.title} data={props.data} />;
 
@@ -266,10 +368,14 @@ function ChartEditor({ props, editing, onUpdate }) {
       <input className="hb-edit-input" value={props.title || ""} placeholder="Chart title" onChange={(e) => onUpdate({ title: e.target.value })} />
       <div className="hb-mini-label">Chart type</div>
       <select className="hb-edit-input" value={props.kind} onChange={(e) => onUpdate({ kind: e.target.value })}>
-        <option value="bar">Bar</option>
-        <option value="pie">Pie</option>
+        <option value="bar">Bar (vertical)</option>
+        <option value="hbar">Bar (horizontal)</option>
         <option value="line">Line</option>
+        <option value="area">Area</option>
+        <option value="pie">Pie</option>
+        <option value="donut">Donut</option>
         <option value="progress">Progress bars</option>
+        <option value="radial">Radial rings</option>
       </select>
       <div className="hb-mini-label">Data points</div>
       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>

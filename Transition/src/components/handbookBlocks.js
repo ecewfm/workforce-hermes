@@ -63,13 +63,28 @@ const DEFAULTS = {
   chart: {
     w: 3,
     props: {
-      kind: "bar", // bar | pie | line | progress
+      kind: "bar", // bar | hbar | line | area | pie | donut | progress | radial
       title: "Workload Distribution",
       data: [
         { label: "Queue", value: 8 },
         { label: "Active", value: 12 },
         { label: "Testing", value: 5 },
         { label: "Done", value: 15 },
+      ],
+    },
+  },
+  quote: {
+    w: 6,
+    props: { text: "Code is read far more often than it is written — optimize for the next person.", author: "Engineering Principle" },
+  },
+  checklist: {
+    w: 3,
+    props: {
+      title: "Definition of Done",
+      items: [
+        { text: "Code reviewed & approved", done: true },
+        { text: "Milestones updated in Hermes", done: true },
+        { text: "Deployed & smoke-tested", done: false },
       ],
     },
   },
@@ -87,20 +102,35 @@ export function makeBlock(type) {
   };
 }
 
-// Palette ordering + labels + icons.
+// Palette ordering + labels + icons, organized into groups so the picker reads
+// as a curated set rather than a flat, repetitive list.
 export const BLOCK_DEFS = [
-  { type: "banner", label: "Banner", icon: "banner" },
-  { type: "heading", label: "Heading", icon: "heading" },
-  { type: "text", label: "Text", icon: "text" },
-  { type: "callout", label: "Callout / Reminder", icon: "callout" },
-  { type: "timeline", label: "Timeline", icon: "timeline" },
-  { type: "steps", label: "Numbered Steps", icon: "steps" },
-  { type: "cardgrid", label: "Card Grid", icon: "cardgrid" },
-  { type: "kpis", label: "KPI Stats", icon: "kpi" },
-  { type: "chart", label: "Chart", icon: "chart" },
-  { type: "image", label: "Image", icon: "image" },
-  { type: "divider", label: "Divider", icon: "divider" },
+  { type: "banner", label: "Banner", icon: "banner", group: "Headers" },
+  { type: "heading", label: "Section Heading", icon: "heading", group: "Headers" },
+
+  { type: "text", label: "Paragraph", icon: "text", group: "Content" },
+  { type: "callout", label: "Callout / Reminder", icon: "callout", group: "Content" },
+  { type: "quote", label: "Quote", icon: "quote", group: "Content" },
+
+  { type: "timeline", label: "Timeline (flow)", icon: "timeline", group: "Lists" },
+  { type: "steps", label: "Numbered Steps", icon: "steps", group: "Lists" },
+  { type: "checklist", label: "Checklist", icon: "check", group: "Lists" },
+  { type: "cardgrid", label: "Card Grid", icon: "cardgrid", group: "Lists" },
+
+  { type: "kpis", label: "KPI Stats", icon: "kpi", group: "Data" },
+  { type: "chart", label: "Chart", icon: "chart", group: "Data" },
+
+  { type: "image", label: "Image", icon: "image", group: "Media" },
+  { type: "divider", label: "Divider", icon: "divider", group: "Media" },
 ];
+
+// Grouped view for the palette (preserves order, de-duplicates group headers).
+export const BLOCK_GROUPS = BLOCK_DEFS.reduce((acc, def) => {
+  const g = acc.find((x) => x.group === def.group);
+  if (g) g.items.push(def);
+  else acc.push({ group: def.group, items: [def] });
+  return acc;
+}, []);
 
 // Templates: arrays of partial blocks (type/w/props). cloneTemplate assigns ids.
 export const TEMPLATES = [

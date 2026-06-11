@@ -5680,6 +5680,17 @@ body.role-programmer .kanban-col.col-scrap {
 .hb-image-wrap img { width: 100%; border-radius: 10px; display: block; }
 .hb-image-empty { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 30px; color: var(--color-text-secondary); border: 2px dashed var(--glass-border); border-radius: 10px; font-size: 0.78rem; }
 
+.hb-quote { margin: 0; position: relative; padding: 4px 4px 4px 8px; display: flex; flex-direction: column; gap: 8px; }
+.hb-quote-mark { position: absolute; top: -18px; left: -4px; font-size: 3.2rem; line-height: 1; color: var(--color-accent); opacity: 0.35; font-family: Georgia, serif; }
+.hb-quote-text { font-size: 1.05rem; font-style: italic; line-height: 1.6; color: inherit; font-weight: 500; padding-left: 14px; border-left: 3px solid var(--color-accent); }
+.hb-quote-author { font-size: 0.78rem; font-weight: 800; color: var(--color-text-secondary); font-style: normal; text-transform: uppercase; letter-spacing: 0.5px; padding-left: 17px; }
+
+.hb-checklist { display: flex; flex-direction: column; gap: 9px; }
+.hb-check-item { display: flex; align-items: center; gap: 10px; font-size: 0.85rem; color: var(--color-text-primary); }
+.hb-check-box { width: 19px; height: 19px; border-radius: 6px; border: 2px solid var(--glass-border); display: inline-flex; align-items: center; justify-content: center; color: #fff; flex-shrink: 0; }
+.hb-check-item.done .hb-check-box { background: var(--color-accent); border-color: var(--color-accent); }
+.hb-check-item.done .hb-check-text { color: var(--color-text-secondary); text-decoration: line-through; }
+
 .hb-chart-title { font-size: 0.85rem; font-weight: 800; color: var(--color-text-primary); margin-bottom: 12px; text-align: center; }
 .hb-chart-legend { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; margin-top: 12px; }
 .hb-chart-legend span { display: inline-flex; align-items: center; gap: 5px; font-size: 0.7rem; font-weight: 700; color: var(--color-text-secondary); }

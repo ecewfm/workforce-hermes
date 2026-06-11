@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import {
-  BLOCK_DEFS,
+  BLOCK_GROUPS,
   TEMPLATES,
   STARTER_BLOCKS,
   makeBlock,
@@ -190,15 +190,17 @@ export default function Handbook({ onClose, canEdit, userName, showModal }) {
               </div>
 
               {paletteTab === "blocks" ? (
-                <div className="hb-palette-section">
-                  <h4>Add a block</h4>
-                  {BLOCK_DEFS.map((def) => (
-                    <button key={def.type} className="hb-palette-item" onClick={() => addBlock(def.type)}>
-                      <Icon name={def.icon} size={16} />
-                      {def.label}
-                    </button>
-                  ))}
-                </div>
+                BLOCK_GROUPS.map((grp) => (
+                  <div className="hb-palette-section" key={grp.group}>
+                    <h4>{grp.group}</h4>
+                    {grp.items.map((def) => (
+                      <button key={def.type} className="hb-palette-item" onClick={() => addBlock(def.type)}>
+                        <Icon name={def.icon} size={16} />
+                        {def.label}
+                      </button>
+                    ))}
+                  </div>
+                ))
               ) : (
                 <div className="hb-palette-section">
                   <h4>Insert a template</h4>

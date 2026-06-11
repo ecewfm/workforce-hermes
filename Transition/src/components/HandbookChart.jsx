@@ -23,15 +23,23 @@ export default function HandbookChart({ kind = "bar", title, data = [] }) {
         </div>
       ) : kind === "bar" ? (
         <BarChart clean={clean} max={max} />
+      ) : kind === "hbar" ? (
+        <HBarChart clean={clean} max={max} />
       ) : kind === "pie" ? (
         <PieChart clean={clean} total={total} />
+      ) : kind === "donut" ? (
+        <PieChart clean={clean} total={total} donut />
       ) : kind === "line" ? (
         <LineChart clean={clean} max={max} />
+      ) : kind === "area" ? (
+        <LineChart clean={clean} max={max} area />
+      ) : kind === "radial" ? (
+        <RadialChart clean={clean} max={max} />
       ) : (
         <ProgressChart clean={clean} max={max} />
       )}
 
-      {(kind === "pie") && (
+      {(kind === "pie" || kind === "donut" || kind === "radial") && (
         <div className="hb-chart-legend">
           {clean.map((d, i) => (
             <span key={i}><i style={{ background: PALETTE[i % PALETTE.length] }} />{d.label} ({Math.round((d.value / total) * 100)}%)</span>
@@ -66,7 +74,7 @@ function BarChart({ clean, max }) {
   );
 }
 
-function PieChart({ clean, total }) {
+function PieChart({ clean, total, donut }) {
   const cx = 90, cy = 90, r = 80;
   let acc = 0;
   return (
@@ -85,11 +93,59 @@ function PieChart({ clean, total }) {
           <path key={i} d={`M ${cx} ${cy} L ${x1} ${y1} A ${r} ${r} 0 ${large} 1 ${x2} ${y2} Z`} fill={PALETTE[i % PALETTE.length]} stroke="var(--color-card-bg)" strokeWidth="1.5" />
         );
       })}
+      {donut && (
+        <>
+          <circle cx={cx} cy={cy} r={r * 0.58} fill="var(--color-card-bg)" />
+          <text x={cx} y={cy - 2} textAnchor="middle" fontSize="22" fontWeight="900" fill="var(--color-text-primary)">{total}</text>
+          <text x={cx} y={cy + 14} textAnchor="middle" fontSize="9" fill="var(--color-text-secondary)">TOTAL</text>
+        </>
+      )}
     </svg>
   );
 }
 
-function LineChart({ clean, max }) {
+function HBarChart({ clean, max }) {
+  const rowH = 30, gap = 10, labelW = 80, W = 320;
+  const H = clean.length * (rowH + gap);
+  const barMax = W - labelW - 36;
+  return (
+    <svg width="100%" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMid meet" style={{ display: "block" }}>
+      {clean.map((d, i) => {
+        const y = i * (rowH + gap);
+        const w = Math.max(2, (d.value / max) * barMax);
+        return (
+          <g key={i}>
+            <text x={labelW - 6} y={y + rowH / 2 + 3} textAnchor="end" fontSize="9.5" fontWeight="600" fill="var(--color-text-secondary)">{truncate(d.label, 11)}</text>
+            <rect x={labelW} y={y + 4} width={w} height={rowH - 8} rx="4" fill={PALETTE[i % PALETTE.length]} />
+            <text x={labelW + w + 5} y={y + rowH / 2 + 3} fontSize="9.5" fontWeight="700" fill="var(--color-text-secondary)">{d.value}</text>
+          </g>
+        );
+      })}
+    </svg>
+  );
+}
+
+function RadialChart({ clean, max }) {
+  const cx = 90, cy = 90;
+  const rings = clean.slice(0, 5);
+  return (
+    <svg width="100%" viewBox="0 0 180 180" preserveAspectRatio="xMidYMid meet" style={{ display: "block", maxWidth: 220, margin: "0 auto" }}>
+      {rings.map((d, i) => {
+        const r = 78 - i * 15;
+        const circ = 2 * Math.PI * r;
+        const pct = Math.min(1, d.value / max);
+        return (
+          <g key={i} transform={`rotate(-90 ${cx} ${cy})`}>
+            <circle cx={cx} cy={cy} r={r} fill="none" stroke="var(--color-bg-subtle)" strokeWidth="9" />
+            <circle cx={cx} cy={cy} r={r} fill="none" stroke={PALETTE[i % PALETTE.length]} strokeWidth="9" strokeLinecap="round" strokeDasharray={`${circ * pct} ${circ}`} />
+          </g>
+        );
+      })}
+    </svg>
+  );
+}
+
+function LineChart({ clean, max, area: isArea }) {
   const W = 320, H = 180, pad = 28;
   const chartH = H - pad - 24;
   const n = clean.length;
@@ -104,7 +160,7 @@ function LineChart({ clean, max }) {
   return (
     <svg width="100%" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMid meet" style={{ display: "block" }}>
       <line x1={pad} y1={H - 24} x2={W - pad} y2={H - 24} stroke="var(--glass-border)" strokeWidth="1" />
-      <path d={area} fill={PALETTE[0]} opacity="0.12" />
+      <path d={area} fill={PALETTE[0]} opacity={isArea ? 0.28 : 0.12} />
       <path d={path} fill="none" stroke={PALETTE[0]} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
       {pts.map((p, i) => (
         <g key={i}>
