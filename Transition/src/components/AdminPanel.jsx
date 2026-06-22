@@ -1,5 +1,6 @@
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
+import { ASSIGNABLE_ROLES } from "../utils/roles";
 
 export default function AdminPanel({ staff, showModal, onViewProfile }) {
   const addStaffMut = useMutation(api.staff.addStaff);
@@ -176,9 +177,7 @@ export default function AdminPanel({ staff, showModal, onViewProfile }) {
                           });
                         }}
                       >
-                        <option value="Programmer">Programmer</option>
-                        <option value="Admin">Admin</option>
-                        <option value="Admin+">Admin+</option>
+                        {ASSIGNABLE_ROLES.map((r) => (<option key={r} value={r}>{r}</option>))}
                       </select>
                     </td>
                     <td style={{ color: "#64748b" }}>{s.email}</td>

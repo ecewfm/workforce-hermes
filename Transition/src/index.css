@@ -879,6 +879,22 @@ header {
   box-shadow: 0 2px 5px rgba(30, 41, 59, 0.3);
 }
 
+/* Manager — the top role gets a distinct gold gradient + shimmer */
+.role-badge--manager {
+  background: linear-gradient(110deg, #b8860b 0%, #f5c451 30%, #fff3c4 45%, #f5c451 60%, #b8860b 100%);
+  background-size: 220% 100%;
+  color: #4a2f00;
+  box-shadow: 0 2px 8px rgba(184, 134, 11, 0.5), inset 0 1px 1px rgba(255, 255, 255, 0.55);
+  animation: managerShimmer 6s linear infinite;
+}
+@keyframes managerShimmer {
+  0% { background-position: 180% 0; }
+  100% { background-position: -80% 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .role-badge--manager { animation: none; }
+}
+
 .role-switcher {
   background: white;
   border: 2px solid #e2e8f0;

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { getProjectDeadlines, deadlineTone, fmtDate, DAY_MS } from "../utils/deadlines";
+import { isAdminPlusOrAbove } from "../utils/roles";
 
 export default function Dashboard({ onShowAllLinks, actualRole, userName, openTaskModal }) {
   const stats = useQuery(api.tasks.getProjectStats);
@@ -9,7 +10,7 @@ export default function Dashboard({ onShowAllLinks, actualRole, userName, openTa
   const appConfig = useQuery(api.appConfig.getAppConfig);
   const saveAppConfigMut = useMutation(api.appConfig.saveAppConfig);
 
-  const isAdminPlus = actualRole === "Admin+";
+  const isAdminPlus = isAdminPlusOrAbove(actualRole);
   const [editingDeadline, setEditingDeadline] = useState(false);
   const [deadlineDraft, setDeadlineDraft] = useState("");
   const [showAllDeadlines, setShowAllDeadlines] = useState(false);

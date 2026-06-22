@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { notifyNoteAdded, notifyMilestoneCompleted } from "../utils/notifications";
+import { isAdminPlusOrAbove, isAdminLevel as isAdminLevelRole, canEditAnyCard } from "../utils/roles";
 import FeatureModal from "./FeatureModal";
 
 function deobfuscate(str) {
@@ -294,11 +295,13 @@ export default function TaskModal({ taskId, isEditMode, userRole, actualRole, us
   const doneM = task?.completedMilestones || 0;
   const progressPercent = milestones.length > 0 ? Math.round((doneM / milestones.length) * 100) : 0;
 
-  const isAdminPlus = actualRole === "Admin+";
-  const isAdminLevel = actualRole === "Admin" || isAdminPlus;
+  const isAdminPlus = isAdminPlusOrAbove(actualRole);   // Admin+ or Manager
+  const isAdminLevel = isAdminLevelRole(actualRole);    // Admin, Admin+, Manager
 
   let canEditMilestone = true;
-  if (isAdminLevel) {
+  // Admin/Admin+ may only edit cards they're assigned to. Managers bypass this
+  // entirely (they can edit ANY card); Programmers are unrestricted as before.
+  if ((actualRole === "Admin" || actualRole === "Admin+") && !canEditAnyCard(actualRole)) {
     const assigneeVal = (task?.assignee || "").toLowerCase();
     const userNameVal = (userName || "").toLowerCase();
     if (!assigneeVal.includes(userNameVal)) canEditMilestone = false;

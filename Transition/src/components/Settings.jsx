@@ -3,6 +3,7 @@ import { useQuery, useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { loadSettings, saveSettings, applySettings, DEFAULT_SETTINGS, SKINS } from "../utils/settingsManager";
 import { FALLBACK_MILESTONES } from "../utils/defaults";
+import { isAdminPlusOrAbove, ASSIGNABLE_ROLES } from "../utils/roles";
 
 const ACCENT_COLORS = [
   { name: "Emerald", value: "#10b981" },
@@ -47,7 +48,8 @@ function SectionIcon({ icon, size = 18 }) {
 export default function Settings({ userName, userEmail, onClose, showModal, onLogout, actualRole, onViewProfile }) {
   const [activeSection, setActiveSection] = useState("appearance");
   const [hasChanges, setHasChanges] = useState(false);
-  const isAdminPlus = actualRole === "Admin+";
+  // Admin+ and Manager share the elevated settings (workspace defaults, staff management)
+  const isAdminPlus = isAdminPlusOrAbove(actualRole);
   const SECTIONS = useMemo(() => {
     return isAdminPlus
       ? [
@@ -846,9 +848,7 @@ export default function Settings({ userName, userEmail, onClose, showModal, onLo
                               showModal({ title: "Role Updated", message: `${s.name}'s role has been changed to ${newRole}.`, type: "success" });
                             }}
                           >
-                            <option value="Programmer">Programmer</option>
-                            <option value="Admin">Admin</option>
-                            <option value="Admin+">Admin+</option>
+                            {ASSIGNABLE_ROLES.map((r) => (<option key={r} value={r}>{r}</option>))}
                           </select>
                         </div>
                         <div className="staff-mgmt-actions">
@@ -918,9 +918,7 @@ export default function Settings({ userName, userEmail, onClose, showModal, onLo
                     <div className="settings-field">
                       <label className="settings-input-label">Role</label>
                       <select className="settings-select" value={newStaffRole} onChange={(e) => setNewStaffRole(e.target.value)}>
-                        <option value="Programmer">Programmer</option>
-                        <option value="Admin">Admin</option>
-                        <option value="Admin+">Admin+</option>
+                        {ASSIGNABLE_ROLES.map((r) => (<option key={r} value={r}>{r}</option>))}
                       </select>
                     </div>
                     <button

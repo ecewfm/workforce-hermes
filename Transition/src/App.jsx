@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { applySettings, loadSettings, saveSettings } from "./utils/settingsManager";
 import { getProjectDeadlines, fmtDate } from "./utils/deadlines";
+import { isAdminLevel, isAdminPlusOrAbove, isManager, defaultViewRole, roleBadgeLabel } from "./utils/roles";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../convex/_generated/api";
 import { initNotifications } from "./utils/notifications";
@@ -175,7 +176,7 @@ export default function App() {
       setIsMainAdmin(true);
       const dbRole = user?.role || "Admin";
       setActualRole(dbRole);
-      setUserRole(dbRole === "Admin+" ? "Admin" : dbRole);
+      setUserRole(defaultViewRole(dbRole));
       if (!hasSetInitialView.current) {
         setCurrentView(mappedView);
         hasSetInitialView.current = true;
@@ -194,8 +195,8 @@ export default function App() {
       setUserAvatar(user.avatarUrl || "");
 
       setActualRole(user.role);
-      // Admin+ users see the Admin view by default (they have all Admin privileges)
-      setUserRole(user.role === "Admin+" ? "Admin" : user.role);
+      // Admin+ and Manager see the Admin view by default (they have all Admin privileges)
+      setUserRole(defaultViewRole(user.role));
       if (!hasSetInitialView.current) {
         if (user.role === "Programmer") {
           setCurrentView("kanban");
@@ -595,26 +596,26 @@ export default function App() {
             <div style={{ display: "flex", flexDirection: "column", gap: "2px", alignItems: "flex-start" }}>
               <div style={{ fontSize: "0.85rem", fontWeight: 900, color: "var(--color-text-primary)" }}>{userName}</div>
               <div style={{ display: "flex", alignItems: "center", gap: "6px", position: "relative" }}>
-                <div 
-                  className="role-badge" 
-                  style={{ 
-                    padding: "2px 8px", 
-                    borderRadius: "6px", 
-                    fontSize: "0.6rem", 
+                <div
+                  className={`role-badge ${actualRole === "Manager" ? "role-badge--manager" : ""}`}
+                  style={{
+                    padding: "2px 8px",
+                    borderRadius: "6px",
+                    fontSize: "0.6rem",
                     letterSpacing: "0.5px",
-                    cursor: (!isMainAdmin && (actualRole === "Admin" || actualRole === "Admin+")) ? "pointer" : "default",
+                    cursor: (!isMainAdmin && isAdminLevel(actualRole)) ? "pointer" : "default",
                     display: "flex",
                     alignItems: "center"
                   }}
                   onClick={() => {
-                    if (!isMainAdmin && (actualRole === "Admin" || actualRole === "Admin+")) {
+                    if (!isMainAdmin && isAdminLevel(actualRole)) {
                       setShowRoleSwitcherPopup(!showRoleSwitcherPopup);
                     }
                   }}
-                  title={(!isMainAdmin && (actualRole === "Admin" || actualRole === "Admin+")) ? "Click to switch view" : ""}
+                  title={(!isMainAdmin && isAdminLevel(actualRole)) ? "Click to switch view" : ""}
                 >
-                  {actualRole === "Admin+" ? "Admin+" : userRole}
-                  {(!isMainAdmin && (actualRole === "Admin" || actualRole === "Admin+")) && (
+                  {roleBadgeLabel(actualRole, userRole)}
+                  {(!isMainAdmin && isAdminLevel(actualRole)) && (
                     <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" style={{ marginLeft: 4 }}><path d="M6 9l6 6 6-6"/></svg>
                   )}
                 </div>
@@ -843,7 +844,7 @@ export default function App() {
               NOTEBOOK
             </div>
 
-            {actualRole === "Admin+" && (
+            {isAdminPlusOrAbove(actualRole) && (
               <div
                 className={`nav-btn ${currentView === "announcements" ? "active" : ""}`}
                 onClick={() => switchView("announcements")}
@@ -896,11 +897,11 @@ export default function App() {
         {currentView === "notebook" && (
           <Notebook userRole={userRole} userName={userName} showModal={showModal} />
         )}
-        {currentView === "admin" && actualRole === "Admin+" && (
+        {currentView === "admin" && isAdminPlusOrAbove(actualRole) && (
           <AdminPanel staff={staff} showModal={showModal} onViewProfile={(s) => setViewingStaff(s)} />
         )}
 
-        {currentView === "announcements" && actualRole === "Admin+" && (
+        {currentView === "announcements" && isAdminPlusOrAbove(actualRole) && (
           <AnnouncementComposer userName={userName} showModal={showModal} />
         )}
       </main>
@@ -941,7 +942,7 @@ export default function App() {
             Edit Task
           </div>
 
-          {(actualRole === "Admin" || actualRole === "Admin+") && (
+          {isAdminLevel(actualRole) && (
             <div
               className="context-menu-item"
               onClick={() => {
@@ -981,7 +982,9 @@ export default function App() {
             </div>
           )}
 
-          {contextMenu.task.assignee.toLowerCase().includes(userName.toLowerCase()) && (
+          {/* Managers (and the main admin) edit links/credentials on ANY card,
+              like the owner; everyone else only on cards they're assigned to. */}
+          {(isManager(actualRole) || isMainAdmin || contextMenu.task.assignee.toLowerCase().includes(userName.toLowerCase())) && (
             <>
               <div
                 className="context-menu-item"
@@ -1163,7 +1166,7 @@ export default function App() {
       {showHandbook && (
         <Handbook
           onClose={() => setShowHandbook(false)}
-          canEdit={actualRole === "Admin+"}
+          canEdit={isAdminPlusOrAbove(actualRole)}
           userName={userName}
           showModal={showModal}
         />
