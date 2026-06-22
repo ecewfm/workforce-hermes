@@ -70,6 +70,8 @@ export default function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [showHandbook, setShowHandbook] = useState(false);
   const [viewingStaff, setViewingStaff] = useState(null);
+  // When set, the Kanban board is filtered to this person's projects (chosen from search)
+  const [kanbanFilterStaff, setKanbanFilterStaff] = useState(null);
 
   const [showLoginNotifications, setShowLoginNotifications] = useState(false);
   const [showAllProjects, setShowAllProjects] = useState(false);
@@ -416,6 +418,7 @@ export default function App() {
     setUserRole("Admin");
     setCurrentView("dashboard");
     hasSetInitialView.current = false;
+    setKanbanFilterStaff(null);
   }
 
   function changeRole(role) {
@@ -719,10 +722,14 @@ export default function App() {
                       <div key={s._id || s.email} style={{ padding: "8px", cursor: "pointer", borderRadius: "6px", fontSize: "0.8rem", display: "flex", alignItems: "center", gap: "8px" }}
                         onMouseEnter={e => e.currentTarget.style.background = "var(--color-bg-subtle)"}
                         onMouseLeave={e => e.currentTarget.style.background = "transparent"}
-                        onClick={() => { setViewingStaff(s); setShowSearch(false); setSearchQuery(""); }}
+                        onClick={() => { setKanbanFilterStaff(s); switchView("kanban"); setShowSearch(false); setSearchQuery(""); }}
                       >
-                        <div style={{ width: "20px", height: "20px", borderRadius: "50%", background: "var(--color-accent)", color: "white", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.6rem" }}>{s.name.charAt(0)}</div>
-                        <span>{s.name} (Profile)</span>
+                        {s.avatarUrl ? (
+                          <img src={s.avatarUrl} alt={s.name} style={{ width: "20px", height: "20px", borderRadius: "50%", objectFit: "cover" }} />
+                        ) : (
+                          <div style={{ width: "20px", height: "20px", borderRadius: "50%", background: "var(--color-accent)", color: "white", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.6rem" }}>{s.name.charAt(0)}</div>
+                        )}
+                        <span>{s.name} <span style={{ color: "var(--color-text-secondary)", fontSize: "0.7rem" }}>· View projects</span></span>
                       </div>
                     ))}
                     {/* Task matches */}
@@ -883,6 +890,9 @@ export default function App() {
             showModal={showModal}
             staff={staff || []}
             searchQuery={searchQuery}
+            filterStaff={kanbanFilterStaff}
+            onOpenProfile={() => kanbanFilterStaff && setViewingStaff(kanbanFilterStaff)}
+            onClearFilter={() => setKanbanFilterStaff(null)}
           />
         )}
         {currentView === "entry" && (

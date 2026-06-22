@@ -51,7 +51,7 @@ const getMilestoneDeadline = (t, idx) => {
 };
 
 
-export default function KanbanBoard({ userRole, actualRole, userName, openTaskModal, onContextMenu, showModal, staff, searchQuery }) {
+export default function KanbanBoard({ userRole, actualRole, userName, openTaskModal, onContextMenu, showModal, staff, searchQuery, filterStaff, onOpenProfile, onClearFilter }) {
   const tasks = useQuery(api.tasks.getTasksLight);
   const toggleTaskPriority = useMutation(api.tasks.toggleTaskPriority);
   const updateTaskStatus = useMutation(api.tasks.updateTaskStatus).withOptimisticUpdate(
@@ -200,6 +200,18 @@ export default function KanbanBoard({ userRole, actualRole, userName, openTaskMo
     filtered = sorted.filter(
       (t) => t.assignee && t.assignee.toLowerCase().includes(userName.toLowerCase())
     );
+  }
+
+  // Person filter (chosen from header search): show only this person's projects.
+  // Assignees are stored as full names joined by ", ", so a full-name substring
+  // match is precise; we fall back to the first-name token for robustness.
+  if (filterStaff?.name) {
+    const fullName = filterStaff.name.toLowerCase();
+    const firstName = fullName.split(" ")[0];
+    filtered = filtered.filter((t) => {
+      const a = (t.assignee || "").toLowerCase();
+      return a.includes(fullName) || (firstName.length > 1 && a.includes(firstName));
+    });
   }
 
   // Search is visual-only on the board — doesn't filter cards out
@@ -579,6 +591,46 @@ export default function KanbanBoard({ userRole, actualRole, userName, openTaskMo
 
   return (
     <div id="kanban-view" className="view-section">
+      {filterStaff && (
+        <div className="kanban-filter-banner">
+          <div className="kfb-person">
+            {filterStaff.avatarUrl ? (
+              <img src={filterStaff.avatarUrl} alt={filterStaff.name} className="kfb-avatar" />
+            ) : (
+              <div className="kfb-avatar kfb-avatar-fallback">{(filterStaff.name || "?").charAt(0)}</div>
+            )}
+            <div className="kfb-text">
+              <div className="kfb-title">
+                Showing <strong>{filterStaff.name}</strong>'s projects
+                <span className="kfb-count">{filtered.length}</span>
+              </div>
+              <div className="kfb-sub">Filtered from search · open their profile for full details</div>
+            </div>
+          </div>
+          <div className="kfb-actions">
+            <button className="kfb-btn kfb-btn-profile" onClick={() => onOpenProfile && onOpenProfile()}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" />
+              </svg>
+              Open Profile
+            </button>
+            <button className="kfb-btn kfb-btn-clear" onClick={() => onClearFilter && onClearFilter()} title="Clear filter">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+              </svg>
+              Clear
+            </button>
+          </div>
+        </div>
+      )}
+      {filterStaff && filtered.length === 0 && (
+        <div className="kfb-empty">
+          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+            <rect x="3" y="3" width="18" height="18" rx="2" ry="2" /><line x1="9" y1="9" x2="15" y2="15" /><line x1="15" y1="9" x2="9" y2="15" />
+          </svg>
+          <span>No projects assigned to {filterStaff.name}.</span>
+        </div>
+      )}
       <div className="kanban-totals-bar" style={{ gap: "15px", padding: "15px 20px", marginBottom: "15px" }}>
         {columns.map((c) => (
           <div className="total-card" key={c} onClick={() => setFullViewColumn(c)} style={{ padding: "15px", borderRadius: "var(--radius-md)", border: "1px solid #f1f5f9", boxShadow: "var(--shadow-sm)" }}>
