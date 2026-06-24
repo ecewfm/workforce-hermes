@@ -71,6 +71,10 @@ export default defineSchema({
     // Admin-pinned completion deadline (ms). Overrides the computed
     // milestone-based completion date everywhere it's displayed.
     deadlineOverride: v.optional(v.number()),
+    // Dedup markers for the daily manager project scan (see tasks.scanProjectsForManagers).
+    // Prevent re-notifying managers about the same overdue/stale episode every run.
+    managerLateNotifiedAt: v.optional(v.number()),
+    managerStaleNotifiedAt: v.optional(v.number()),
   }),
 
   staff: defineTable({

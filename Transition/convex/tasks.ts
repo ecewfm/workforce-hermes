@@ -1,5 +1,7 @@
-import { query, mutation } from "./_generated/server";
+import { query, mutation, internalMutation } from "./_generated/server";
 import { v } from "convex/values";
+
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 // --- QUERIES ---
 
@@ -100,6 +102,93 @@ function isActorAssignee(actorEmail: string, assigneeString: string, allStaff: a
   
   const actorName = actorStaff.name.toLowerCase();
   return assigneeNames.some(a => actorName.includes(a) || a.includes(actorName));
+}
+
+/**
+ * Insert a notification for each Manager (oversight role). Used to keep Managers
+ * aware of activity across ALL projects — new features/bugs, completions, late
+ * projects and stalled projects.
+ *
+ *  - Skips the manager who performed the action (by email, or by name when only
+ *    a writer name is available).
+ *  - When `assigneeString` is provided, skips managers who are assignees of the
+ *    task (they already receive the normal assignee notification, avoiding dupes).
+ *  - `actorName` defaults to "Project Monitor" for system/cron-generated alerts.
+ */
+async function insertManagerNotifs(
+  ctx: any,
+  managers: any[],
+  opts: {
+    type: string;
+    message: string;
+    taskId?: any;
+    taskTitle?: string;
+    actorEmail?: string;
+    actorName?: string;
+    assigneeString?: string;
+  }
+) {
+  const lowerActorEmail = (opts.actorEmail || "").toLowerCase();
+  const lowerActorName = (opts.actorName || "").toLowerCase();
+  const assigneeNames = (opts.assigneeString || "")
+    .split(",").map((n) => n.trim().toLowerCase()).filter(Boolean);
+
+  for (const m of managers) {
+    const mEmail = (m.email || "").toLowerCase();
+    const mName = (m.name || "").toLowerCase();
+    // Don't notify the person who triggered it
+    if (lowerActorEmail && mEmail === lowerActorEmail) continue;
+    if (!lowerActorEmail && lowerActorName && mName === lowerActorName) continue;
+    // Don't double-notify a manager who's also an assignee on this task
+    if (assigneeNames.length && assigneeNames.some((a) => mName.includes(a) || a.includes(mName))) continue;
+
+    await ctx.db.insert("notifications", {
+      type: opts.type,
+      targetEmail: mEmail,
+      actorEmail: lowerActorEmail || "system",
+      actorName: opts.actorName || "Project Monitor",
+      message: opts.message,
+      taskId: opts.taskId,
+      taskTitle: opts.taskTitle,
+      read: false,
+      createdAt: Date.now(),
+    });
+  }
+}
+
+/** Query managers then notify them. For one-off event hooks. */
+async function notifyManagers(ctx: any, opts: any) {
+  const allStaff = await ctx.db.query("staff").collect();
+  const managers = allStaff.filter((s: any) => s.role === "Manager");
+  if (managers.length === 0) return;
+  await insertManagerNotifs(ctx, managers, opts);
+}
+
+/**
+ * Compute a project's completion deadline (mirrors src/utils/deadlines.js).
+ * Returns the ms timestamp when all remaining milestones are due, or null.
+ * An admin-pinned deadlineOverride takes precedence.
+ */
+function computeCompletionDue(task: any): { completionDue: number | null; complete: boolean } {
+  const ms = task.milestones || [];
+  const override = task.deadlineOverride || null;
+  if (ms.length === 0 && !override) return { completionDue: null, complete: false };
+
+  const idx = ms.findIndex((m: any) => !m.completed);
+  if (ms.length > 0 && idx === -1) return { completionDue: override || null, complete: true };
+
+  let computed: number | null = null;
+  if (idx !== -1) {
+    const active = ms[idx];
+    const anchor =
+      (idx > 0 ? (ms[idx - 1].completedAtTime || ms[idx - 1].createdAtTime) : active.createdAtTime) ||
+      task.lastUpdated;
+    if (anchor) {
+      const remainingDays = ms.slice(idx).reduce((s: number, m: any) => s + (m.days || 0), 0);
+      computed = anchor + remainingDays * DAY_MS;
+    }
+  }
+  return { completionDue: override || computed, complete: false };
 }
 
 /**
@@ -655,6 +744,20 @@ export const addTaskFeature = mutation({
         }
       }
     }
+
+    // --- Manager oversight: notify all Managers of new features/bugs ---
+    const isBug = args.feature.type === "bug";
+    await notifyManagers(ctx, {
+      type: isBug ? "manager_bug" : "manager_feature",
+      message: isBug
+        ? `reported a bug "${args.feature.name}" on "${task.title}"`
+        : `added a feature "${args.feature.name}" to "${task.title}"`,
+      taskId: args.taskId,
+      taskTitle: task.title,
+      actorEmail: args.actorEmail,
+      actorName: args.actorName || "A teammate",
+      assigneeString: task.assignee || "",
+    });
   },
 });
 
@@ -687,8 +790,86 @@ export const updateFeatureStatus = mutation({
       delete features[featIndex].completedAt;
       delete features[featIndex].completedAtTime;
     }
-    
+
     await ctx.db.patch(args.taskId, updates);
+
+    // --- Manager oversight: notify all Managers when a feature/bug is completed ---
+    if (args.status === "completed") {
+      const feat = features[featIndex];
+      const isBug = feat.type === "bug";
+      await notifyManagers(ctx, {
+        type: "manager_feature",
+        message: `completed the ${isBug ? "bug fix" : "feature"} "${feat.name}" on "${task.title}"`,
+        taskId: args.taskId,
+        taskTitle: task.title,
+        actorName: args.writer,
+      });
+    }
+  },
+});
+
+/**
+ * Daily scan (see convex/crons.ts) that flags projects to Managers:
+ *   • Overdue — the completion deadline has passed
+ *   • Stalled — no movement (no notes, no milestone/status change, nothing) for 5+ days
+ *
+ * Dedup markers on each task prevent re-notifying about the same episode every
+ * run. A late flag clears once the project is no longer overdue; a stale flag
+ * clears implicitly once the project moves again (lastUpdated advances past it).
+ */
+export const scanProjectsForManagers = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const allStaff = await ctx.db.query("staff").collect();
+    const managers = allStaff.filter((s: any) => s.role === "Manager");
+    if (managers.length === 0) return;
+
+    const now = Date.now();
+    const CLOSED = new Set(["done", "implemented", "scrapped", "scrapyard"]);
+    const tasks = await ctx.db.query("tasks").collect();
+
+    for (const task of tasks) {
+      const status = (task.status || "").toLowerCase();
+      if (CLOSED.has(status)) continue;
+
+      // ── Overdue detection ──
+      const { completionDue, complete } = computeCompletionDue(task);
+      const isLate = !complete && completionDue !== null && completionDue < now;
+      const lateMarker = (task as any).managerLateNotifiedAt;
+
+      if (isLate && !lateMarker) {
+        const dateStr = new Date(completionDue as number).toLocaleDateString("en-US", {
+          month: "short", day: "numeric", year: "numeric",
+        });
+        const overdueDays = Math.floor((now - (completionDue as number)) / DAY_MS);
+        await insertManagerNotifs(ctx, managers, {
+          type: "manager_overdue",
+          message: `flagged "${task.title}" as overdue — completion was due ${dateStr}${overdueDays > 0 ? ` (${overdueDays}d late)` : ""}`,
+          taskId: task._id,
+          taskTitle: task.title,
+        });
+        await ctx.db.patch(task._id, { managerLateNotifiedAt: now });
+      } else if (!isLate && lateMarker) {
+        // No longer overdue — clear so a future late episode notifies again
+        await ctx.db.patch(task._id, { managerLateNotifiedAt: undefined });
+      }
+
+      // ── Stalled detection (no movement for 5+ days) ──
+      const lastUpdated = task.lastUpdated || 0;
+      const isStale = lastUpdated > 0 && (now - lastUpdated) >= 5 * DAY_MS;
+      const staleMarker = (task as any).managerStaleNotifiedAt || 0;
+      // Notify only if we've never flagged it, or it has moved since our last flag
+      if (isStale && staleMarker < lastUpdated) {
+        const days = Math.floor((now - lastUpdated) / DAY_MS);
+        await insertManagerNotifs(ctx, managers, {
+          type: "manager_stale",
+          message: `flagged "${task.title}" — no activity for ${days} days (no notes or milestone movement)`,
+          taskId: task._id,
+          taskTitle: task.title,
+        });
+        await ctx.db.patch(task._id, { managerStaleNotifiedAt: now });
+      }
+    }
   },
 });
 

@@ -37,7 +37,14 @@ export default function NotificationBell({ userEmail, onOpenTask }) {
     if (latestNotif && !latestNotif.read && latestNotif._id !== lastSeenNotifId.current) {
       lastSeenNotifId.current = latestNotif._id;
       
-      const title = latestNotif.type === "mention" ? "New Mention" : "Project Update";
+      const titleByType = {
+        mention: "New Mention",
+        manager_overdue: "⏰ Project Overdue",
+        manager_stale: "💤 Project Inactive",
+        manager_bug: "🐞 New Bug Reported",
+        manager_feature: "✨ Feature Update",
+      };
+      const title = titleByType[latestNotif.type] || "Project Update";
       sendNotification(title, {
         body: `${latestNotif.actorName} ${latestNotif.message}`,
         tag: latestNotif._id, // Unique tag per notification
@@ -97,6 +104,30 @@ export default function NotificationBell({ userEmail, onOpenTask }) {
         return (
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" strokeWidth="2.5">
             <circle cx="12" cy="12" r="10" /><path d="M8 14s1.5 2 4 2 4-2 4-2" /><line x1="9" y1="9" x2="9.01" y2="9" /><line x1="15" y1="9" x2="15.01" y2="9" />
+          </svg>
+        );
+      case "manager_overdue":
+        return (
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2.5">
+            <circle cx="12" cy="12" r="9" /><polyline points="12 7 12 12 15 14" />
+          </svg>
+        );
+      case "manager_stale":
+        return (
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2.5">
+            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+          </svg>
+        );
+      case "manager_bug":
+        return (
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2.5">
+            <rect x="8" y="6" width="8" height="14" rx="4" /><path d="M19 7l-3 2M5 7l3 2M19 13h-3M8 13H5M19 19l-3-2M5 19l3-2M12 2v4" />
+          </svg>
+        );
+      case "manager_feature":
+        return (
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#10b981" strokeWidth="2.5">
+            <polygon points="12 2 15 9 22 9.5 17 14.5 18.5 21.5 12 17.5 5.5 21.5 7 14.5 2 9.5 9 9" />
           </svg>
         );
       default: // project_change
