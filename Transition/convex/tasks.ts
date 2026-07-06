@@ -600,6 +600,27 @@ export const updateTaskDetails = mutation({
   },
 });
 
+export const updateTaskLinks = mutation({
+  args: {
+    taskId: v.id("tasks"),
+    appscriptLink: v.optional(v.string()),
+    webappLink: v.optional(v.string()),
+    projectLink: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const task = await ctx.db.get(args.taskId);
+    if (!task) throw new Error("Task not found");
+
+    const patch: any = { lastUpdated: Date.now() };
+    if (args.appscriptLink !== undefined) patch.appscriptLink = args.appscriptLink;
+    if (args.webappLink !== undefined) patch.webappLink = args.webappLink;
+    if (args.projectLink !== undefined) patch.projectLink = args.projectLink;
+
+    await ctx.db.patch(args.taskId, patch);
+    return { appscriptLink: patch.appscriptLink ?? task.appscriptLink, webappLink: patch.webappLink ?? task.webappLink, projectLink: patch.projectLink ?? task.projectLink };
+  },
+});
+
 export const updateProjectLink = mutation({
   args: {
     taskId: v.id("tasks"),

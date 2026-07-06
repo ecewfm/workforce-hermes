@@ -73,6 +73,7 @@ export default function TaskModal({ taskId, isEditMode, userRole, actualRole, us
   const [selectedBugs, setSelectedBugs] = useState(new Set());
   const [selectedMilestones, setSelectedMilestones] = useState(new Set());
   const [passwordRevealed, setPasswordRevealed] = useState(false);
+  const [apiCopied, setApiCopied] = useState(false);
 
   // Mentions logic
   const [mentionConfig, setMentionConfig] = useState(null); // { query: string, index: number, target: 'note' | 'reply' }
@@ -1206,6 +1207,39 @@ export default function TaskModal({ taskId, isEditMode, userRole, actualRole, us
                       {(task.webappLink || task.projectLink) ? (
                         <a href={(task.webappLink || task.projectLink).startsWith("http") ? (task.webappLink || task.projectLink) : `https://${(task.webappLink || task.projectLink)}`} target="_blank" rel="noopener noreferrer" style={{ fontWeight: 700, fontSize: "0.75rem", color: "var(--color-accent)", textDecoration: "none", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{task.webappLink || task.projectLink}</a>
                       ) : <span style={{ color: "#94a3b8", fontSize: "0.75rem" }}>—</span>}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="api-access-box" style={{ flexShrink: 0, marginTop: 10, background: "var(--color-bg-subtle)", border: "2px solid #8b5cf6", borderRadius: "8px", overflow: "hidden", boxShadow: "var(--shadow-sm)" }}>
+                  <div className="creds-header" style={{ background: "#8b5cf6", padding: "6px 12px", color: "white", fontSize: "0.6rem", fontWeight: 900, display: "flex", alignItems: "center", gap: "8px", letterSpacing: "1px" }}>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
+                      <polyline points="16 18 22 12 16 6" />
+                      <polyline points="8 6 2 12 8 18" />
+                    </svg>
+                    API ACCESS
+                  </div>
+                  <div className="creds-content" style={{ padding: "8px 12px", color: "var(--color-brand-text)" }}>
+                    <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
+                      <input
+                        readOnly
+                        value={`${window.location.origin}/api/task?taskId=${taskId}`}
+                        onFocus={(e) => e.target.select()}
+                        style={{ flex: 1, minWidth: 0, padding: "5px 8px", fontSize: "0.68rem", fontFamily: "monospace", background: "var(--color-bg-primary)", border: "1px solid var(--glass-border)", borderRadius: "4px", color: "var(--color-brand-text)" }}
+                      />
+                      <button
+                        onClick={() => {
+                          navigator.clipboard.writeText(`${window.location.origin}/api/task?taskId=${taskId}`);
+                          setApiCopied(true);
+                          setTimeout(() => setApiCopied(false), 1500);
+                        }}
+                        style={{ flexShrink: 0, padding: "5px 10px", fontSize: "0.55rem", fontWeight: 900, background: apiCopied ? "#22c55e" : "#8b5cf6", border: "none", color: "white", borderRadius: "4px", cursor: "pointer", letterSpacing: "0.5px" }}
+                      >
+                        {apiCopied ? "COPIED!" : "COPY"}
+                      </button>
+                    </div>
+                    <div style={{ marginTop: 6, fontSize: "0.58rem", color: "#94a3b8", lineHeight: 1.5 }}>
+                      GET reads this project · POST <code>resource=bug|feature|note</code> · PATCH <code>resource=links</code> to set system links. Auth: <code>x-api-key</code> header. See <b>TASK-API.md</b>.
                     </div>
                   </div>
                 </div>
