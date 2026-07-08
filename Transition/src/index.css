@@ -5606,7 +5606,8 @@ body.role-programmer .kanban-col.col-scrap {
   flex: 1;
   min-width: 250px;
   min-height: 0;
-  overflow-y: auto;
+  /* Side columns never scroll — they fit their content; only the main column scrolls. */
+  overflow: hidden;
   display: flex;
   flex-direction: column;
   gap: 16px;
@@ -5616,8 +5617,7 @@ body.role-programmer .kanban-col.col-scrap {
   background: color-mix(in srgb, var(--color-bg-subtle) 55%, transparent);
   padding: 16px;
 }
-.hb-col-side > .hb-block { flex-shrink: 0; }
-.hb-col-side > .hb-block { width: 100%; }
+.hb-col-side > .hb-block { flex-shrink: 0; min-width: 0; }
 .hb-side-hint {
   border: 2px dashed var(--glass-border);
   border-radius: 10px;
