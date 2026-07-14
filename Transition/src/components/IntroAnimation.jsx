@@ -45,10 +45,13 @@ export default function IntroAnimation({ onDone }) {
         muted
         playsInline
         style={{
-          width: "100%",
-          height: "100%",
-          objectFit: "cover",
-          transform: "scale(1.02) translateZ(0)",
+          // Small, centered logo animation — sized like a loading indicator
+          // rather than a full-screen cover.
+          width: "min(320px, 60vw)",
+          height: "auto",
+          maxHeight: "60vh",
+          objectFit: "contain",
+          transform: "translateZ(0)",
           backfaceVisibility: "hidden",
         }}
       />
