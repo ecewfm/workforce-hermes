@@ -30,7 +30,7 @@ export default function IntroAnimation({ onDone }) {
         position: "fixed",
         inset: 0,
         zIndex: 9999,
-        background: "#000", // Black background prevents edge lines
+        background: "#fff", // White background matches the logo animation's backdrop
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
@@ -45,11 +45,11 @@ export default function IntroAnimation({ onDone }) {
         muted
         playsInline
         style={{
-          // Small, centered logo animation — sized like a loading indicator
+          // Centered logo animation — sized like a loading indicator
           // rather than a full-screen cover.
-          width: "min(320px, 60vw)",
+          width: "min(560px, 80vw)",
           height: "auto",
-          maxHeight: "60vh",
+          maxHeight: "70vh",
           objectFit: "contain",
           transform: "translateZ(0)",
           backfaceVisibility: "hidden",
