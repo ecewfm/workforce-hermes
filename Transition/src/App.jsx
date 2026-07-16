@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useRef } from "react";
 import { applySettings, loadSettings, saveSettings } from "./utils/settingsManager";
 import { getProjectDeadlines, fmtDate } from "./utils/deadlines";
 import { isAdminLevel, isAdminPlusOrAbove, isManager, defaultViewRole, roleBadgeLabel } from "./utils/roles";
-import { accessibleWorkspaces, DEFAULT_WORKSPACE, DEPARTMENTS } from "./utils/departments";
+import { accessibleWorkspaces, DEFAULT_WORKSPACE, DEPARTMENTS, workspaceLabel } from "./utils/departments";
 import { WorkspaceContext } from "./utils/workspaceContext";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../convex/_generated/api";
@@ -62,6 +62,10 @@ export default function App() {
   const [activeWorkspace, setActiveWorkspace] = useState(() => localStorage.getItem("wf_workspace") || null);
   const [userDepartments, setUserDepartments] = useState([]);
   const [showWorkspacePicker, setShowWorkspacePicker] = useState(false);
+  // Workspace-switch transition: the target key being switched to, and the
+  // animation phase ("loading" = centered card + spinner, "out" = shrink to 0).
+  const [transitioningTo, setTransitioningTo] = useState(null);
+  const [transitionPhase, setTransitionPhase] = useState(null);
 
   // --- App state ---
   const [currentView, setCurrentView] = useState("dashboard");
@@ -495,14 +499,26 @@ export default function App() {
     setAuthStage("authenticated");
   }
 
-  // Switched from the in-app picker (opened by clicking the header title): just
-  // swap the active workspace (queries re-fire via WorkspaceContext). No intro.
-  function switchWorkspace(key) {
-    setShowWorkspacePicker(false);
-    if (key === activeWorkspace) return;
+  // Commit the switch: swap the active workspace (queries re-fire via
+  // WorkspaceContext) and tear down the picker/transition state.
+  function commitWorkspaceSwitch(key) {
     localStorage.setItem("wf_workspace", key);
     setActiveWorkspace(key);
     setKanbanFilterStaff(null);
+    setShowWorkspacePicker(false);
+    setTransitioningTo(null);
+    setTransitionPhase(null);
+  }
+
+  // From the in-app picker: play the transition (others blur, selected centers
+  // and shows "Loading workspace…", then shrinks to zero) before committing.
+  function beginWorkspaceTransition(key) {
+    if (transitioningTo) return; // a transition is already running
+    if (key === activeWorkspace) { setShowWorkspacePicker(false); return; }
+    setTransitioningTo(key);
+    setTransitionPhase("loading");
+    setTimeout(() => setTransitionPhase("out"), 1300); // hold, then shrink
+    setTimeout(() => commitWorkspaceSwitch(key), 1850); // after shrink, switch
   }
 
   function changeRole(role) {
@@ -1604,15 +1620,41 @@ export default function App() {
       )}
 
       {/* Workspace Picker — opened by clicking the WORKFORCE HERMES title.
-          Cards float directly on the dimmed backdrop (no wrapper card). */}
+          Big cards float on a hard-blurred, dimmed backdrop (no wrapper card). */}
       {showWorkspacePicker && (
-        <div className="modal-overlay" style={{ zIndex: 5000, alignItems: "center", justifyContent: "center" }} onClick={() => setShowWorkspacePicker(false)}>
-          <div onClick={(e) => e.stopPropagation()} style={{ maxWidth: 760, width: "90%", textAlign: "center" }}>
-            <h2 style={{ fontWeight: 900, margin: "0 0 6px 0", fontSize: "1.5rem", color: "#fff", textShadow: "0 2px 8px rgba(0,0,0,0.3)" }}>Select a workspace</h2>
-            <p style={{ margin: "0 0 26px 0", fontSize: "0.85rem", color: "rgba(255,255,255,0.8)" }}>
-              Choose where you'd like to go — each workspace has its own separate data.
-            </p>
-            <WorkspaceCards workspaces={myWorkspaces} activeWorkspace={activeWorkspace} onSelect={switchWorkspace} />
+        <div
+          className="modal-overlay"
+          style={{
+            zIndex: 5000,
+            alignItems: "center",
+            justifyContent: "center",
+            background: "rgba(10, 15, 30, 0.62)",
+            backdropFilter: "blur(28px)",
+            WebkitBackdropFilter: "blur(28px)",
+            padding: 20,
+          }}
+          onClick={() => { if (!transitioningTo) setShowWorkspacePicker(false); }}
+        >
+          <div onClick={(e) => e.stopPropagation()} style={{ maxWidth: 2000, width: "96%", textAlign: "center", position: "relative" }}>
+            {!transitioningTo && (
+              <>
+                <h2 style={{ fontWeight: 900, margin: "0 15px 8px 0", fontSize: "2.5rem", color: "#000000", textShadow: "0 2px 10px rgba(0,0,0,0.4)" }}>Please Choose a Workspace</h2>
+                <p style={{ margin: "0 0 36px 0", fontSize: "1.25rem", color: "rgba(0, 0, 0, 0.85)" }}>
+                  Choose where you'd like to go — each workspace has its own separate data.
+                </p>
+              </>
+            )}
+
+            {/* The real selected card flies to center (FLIP), others blur out,
+                then it shrinks to zero — all handled inside WorkspaceCards. */}
+            <WorkspaceCards
+              workspaces={myWorkspaces}
+              activeWorkspace={activeWorkspace}
+              onSelect={beginWorkspaceTransition}
+              large
+              transitioningTo={transitioningTo}
+              transitionPhase={transitionPhase}
+            />
           </div>
         </div>
       )}

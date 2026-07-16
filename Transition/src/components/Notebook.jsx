@@ -43,15 +43,19 @@ export default function Notebook({ userRole, userName, showModal }) {
   function handleTake(id) {
     showModal({
       title: "Take Idea",
-      message: "Are you sure you want to take this idea?",
+      message: "Take this idea? It will be removed from the notebook and added to your projects (assigned to you).",
       type: "confirm",
-      onConfirm: () => {
-        takeIdeaMut({ ideaId: id, takerName: userName });
-        showModal({
-          title: "Success",
-          message: "You have successfully taken this idea!",
-          type: "success"
-        });
+      onConfirm: async () => {
+        try {
+          await takeIdeaMut({ ideaId: id, takerName: userName, workspace });
+          showModal({
+            title: "Added to Projects",
+            message: "This idea is now a project assigned to you. Find it in the Dashboard (To Do).",
+            type: "success"
+          });
+        } catch (err) {
+          showModal({ title: "Error", message: err.message || "Could not take this idea.", type: "alert" });
+        }
       }
     });
   }

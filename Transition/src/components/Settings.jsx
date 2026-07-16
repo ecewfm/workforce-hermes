@@ -72,14 +72,14 @@ export default function Settings({ userName, userEmail, onClose, showModal, onLo
 
   // --- Appearance state ---
   const [theme, setTheme] = useState(saved.theme);
-  const [skin, setSkin] = useState(saved.skin || "liquid");
+  const [skin, setSkin] = useState(saved.skin || "default");
   const [accentColor, setAccentColor] = useState(saved.accentColor);
   const [fontSize, setFontSize] = useState(saved.fontSize);
 
   // --- Theme default prompt state ---
   // defaultSkin mirrors what's persisted; sessionOnlySkin remembers a skin the
   // user chose to keep "just for this session" so we don't re-ask for it.
-  const [defaultSkin, setDefaultSkin] = useState(saved.skin || "liquid");
+  const [defaultSkin, setDefaultSkin] = useState(saved.skin || "default");
   const [sessionOnlySkin, setSessionOnlySkin] = useState(null);
   const [justSetDefault, setJustSetDefault] = useState(false);
 
@@ -430,7 +430,10 @@ export default function Settings({ userName, userEmail, onClose, showModal, onLo
                         <span className="skin-chip skin-chip-2" />
                       </span>
                       <span className="skin-card-meta">
-                        <span className="skin-card-name">{sk.label}</span>
+                        <span className="skin-card-name">
+                          {sk.label}
+                          <span className="skin-graphics-badge" data-level={sk.graphics}>{sk.graphics} graphics</span>
+                        </span>
                         <span className="skin-card-desc">{sk.desc}</span>
                       </span>
                       {skin === sk.id && (
