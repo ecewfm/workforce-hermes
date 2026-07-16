@@ -6,13 +6,14 @@ import { v } from "convex/values";
  * These are merged with any staff added via the admin panel.
  */
 const INITIAL_STAFF = [
-  { name: "Rodolfo Dayot Luga II", email: "rluga@ececontactcenters.com", role: "Programmer" },
-  { name: "John Mark Bigtas Trias", email: "jtrias@ececontactcenters.com", role: "Programmer" },
-  { name: "Lemuel De Leon Ching", email: "lching@ececontactcenters.com", role: "Admin" },
-  { name: "Gianne Carlo Fernandez Mangampat", email: "gmangampat@ececonsultinggroup.net", role: "Programmer" },
-  { name: "Regie Delvo Gajelomo", email: "rgajelomo@ececonsultinggroup.com", role: "Programmer" },
-  { name: "Jomari Urfe Garces", email: "jomari.garces@ececontactcenters.com", role: "Admin" },
-  { name: "Main Admin", email: "wmt@ececontactcenters.com", role: "Admin" },
+  { name: "Rodolfo Dayot Luga II", email: "rluga@ececontactcenters.com", role: "Programmer", departments: ["Workforce"] },
+  { name: "John Mark Bigtas Trias", email: "jtrias@ececontactcenters.com", role: "Programmer", departments: ["Workforce"] },
+  { name: "Lemuel De Leon Ching", email: "lching@ececontactcenters.com", role: "Admin", departments: ["Workforce"] },
+  { name: "Gianne Carlo Fernandez Mangampat", email: "gmangampat@ececonsultinggroup.net", role: "Programmer", departments: ["Workforce"] },
+  { name: "Regie Delvo Gajelomo", email: "rgajelomo@ececonsultinggroup.com", role: "Programmer", departments: ["Workforce"] },
+  { name: "Jomari Urfe Garces", email: "jomari.garces@ececontactcenters.com", role: "Admin", departments: ["Workforce"] },
+  // Main Admin has all-access (also enforced by MAIN_ADMIN_EMAIL rule client-side).
+  { name: "Main Admin", email: "wmt@ececontactcenters.com", role: "Admin", departments: ["Executives", "Operations", "Workforce"] },
 ];
 
 export const getStaff = query({
@@ -35,6 +36,12 @@ export const getStaff = query({
       .filter((s: any) => s.role !== "Revoked")
       .map(({ password, securityAnswer, securityQuestion, resetCode, resetCodeExpiry, lastSeen, ...safe }: any) => ({
         ...safe,
+        // Default only TRULY-ABSENT department membership (legacy/seed rows) to
+        // Workforce. An explicit empty array MUST be preserved as "no access" —
+        // coercing [] -> ["Workforce"] would silently re-grant access an admin
+        // just revoked (and Workforce grants ALL workspaces). Access decisions
+        // downstream fail closed on [].
+        departments: Array.isArray(safe.departments) ? safe.departments : ["Workforce"],
         password: password ? "********" : undefined,
         securityAnswer: securityAnswer ? "********" : undefined,
         securityQuestion: securityQuestion
@@ -178,6 +185,7 @@ export const addStaff = mutation({
     name: v.string(),
     email: v.string(),
     role: v.string(),
+    departments: v.optional(v.array(v.string())),
   },
   handler: async (ctx, args) => {
     // Don't add duplicates
@@ -190,6 +198,9 @@ export const addStaff = mutation({
       name: args.name,
       email: args.email.toLowerCase(),
       role: args.role,
+      // New members default to the Workforce workspace; admins can adjust via
+      // the Department Membership sub-tab.
+      departments: args.departments || ["Workforce"],
     });
   },
 });
@@ -296,6 +307,56 @@ export const updateStaffRole = mutation({
       userEmail: actor || "admin",
       targetEmail: lowerEmail,
       details: `Role updated to: ${args.newRole}`,
+      timestamp: Date.now(),
+    });
+  },
+});
+
+/**
+ * Update a staff member's department membership (the orthogonal RBAC axis that
+ * gates which workspaces they can enter). Mirrors updateStaffRole: same
+ * DB-exists-vs-INITIAL_STAFF-insert branch, same self-edit guard (a user cannot
+ * change their own departments — no self-granting workspace access), and a
+ * DEPARTMENT_CHANGED audit entry.
+ */
+export const updateStaffDepartment = mutation({
+  args: {
+    staffEmail: v.string(),
+    departments: v.array(v.string()),
+    actorEmail: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const lowerEmail = args.staffEmail.toLowerCase();
+    const actor = (args.actorEmail || "").toLowerCase();
+
+    if (actor && actor === lowerEmail) {
+      throw new Error("You cannot change your own department membership.");
+    }
+
+    const existing = await ctx.db
+      .query("staff")
+      .withIndex("by_email", (q) => q.eq("email", lowerEmail))
+      .first();
+
+    if (existing) {
+      await ctx.db.patch(existing._id, { departments: args.departments });
+    } else {
+      const initial = INITIAL_STAFF.find((s) => s.email.toLowerCase() === lowerEmail);
+      if (initial) {
+        await ctx.db.insert("staff", {
+          name: initial.name,
+          email: initial.email.toLowerCase(),
+          role: initial.role,
+          departments: args.departments,
+        });
+      }
+    }
+
+    await ctx.db.insert("securityLogs", {
+      action: "DEPARTMENT_CHANGED",
+      userEmail: actor || "admin",
+      targetEmail: lowerEmail,
+      details: `Departments updated to: ${args.departments.join(", ") || "(none)"}`,
       timestamp: Date.now(),
     });
   },

@@ -2,27 +2,37 @@ import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
 
 /**
- * Workspace configuration — a single shared row for the whole team (same
- * singleton pattern as the handbook). Stores org-level defaults:
+ * Per-workspace configuration — ONE row per workspace (was an org-wide
+ * singleton). Stores that workspace's defaults:
  *
  *   • defaultMilestones    — the milestone template pre-filled when creating
  *                            a new project (name + days rows)
- *   • productionDeadline   — ms timestamp for when Workforce Hermes ships to
+ *   • productionDeadline   — ms timestamp for when this workspace ships to
  *                            full production (shown on the Dashboard)
  *
- * Edit permission is enforced on the client (Admin+ only), matching the
- * trust model used by the rest of this app's mutations.
+ * Each workspace configures these independently. Edit permission is enforced on
+ * the client (Admin+ only), matching the trust model used by the rest of this
+ * app's mutations. `workspace` defaults to "workforce" for backward compat with
+ * any caller not yet threading it.
  */
 
+const DEFAULT_WS = "workforce";
+
 export const getAppConfig = query({
-  handler: async (ctx) => {
-    const docs = await ctx.db.query("appConfig").collect();
-    return docs[0] || null;
+  args: { workspace: v.optional(v.string()) },
+  handler: async (ctx, args) => {
+    const ws = args.workspace || DEFAULT_WS;
+    const doc = await ctx.db
+      .query("appConfig")
+      .withIndex("by_workspace", (q) => q.eq("workspace", ws as any))
+      .first();
+    return doc || null;
   },
 });
 
 export const saveAppConfig = mutation({
   args: {
+    workspace: v.optional(v.string()),
     // null clears the deadline; undefined leaves it untouched
     productionDeadline: v.optional(v.union(v.number(), v.null())),
     defaultMilestones: v.optional(
@@ -31,7 +41,11 @@ export const saveAppConfig = mutation({
     updatedBy: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const existing = (await ctx.db.query("appConfig").collect())[0];
+    const ws = args.workspace || DEFAULT_WS;
+    const existing = await ctx.db
+      .query("appConfig")
+      .withIndex("by_workspace", (q) => q.eq("workspace", ws as any))
+      .first();
 
     const patch: Record<string, unknown> = {
       updatedAt: Date.now(),
@@ -50,6 +64,6 @@ export const saveAppConfig = mutation({
       await ctx.db.patch(existing._id, patch);
       return existing._id;
     }
-    return await ctx.db.insert("appConfig", patch as any);
+    return await ctx.db.insert("appConfig", { workspace: ws, ...patch } as any);
   },
 });

@@ -2,9 +2,12 @@ import { useState, useEffect, useMemo, useRef } from "react";
 import { applySettings, loadSettings, saveSettings } from "./utils/settingsManager";
 import { getProjectDeadlines, fmtDate } from "./utils/deadlines";
 import { isAdminLevel, isAdminPlusOrAbove, isManager, defaultViewRole, roleBadgeLabel } from "./utils/roles";
+import { accessibleWorkspaces, DEFAULT_WORKSPACE, DEPARTMENTS } from "./utils/departments";
+import { WorkspaceContext } from "./utils/workspaceContext";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../convex/_generated/api";
 import { initNotifications } from "./utils/notifications";
+import WorkspaceSelect, { WorkspaceCards } from "./components/WorkspaceSelect";
 import Dashboard from "./components/Dashboard";
 import KanbanBoard from "./components/KanbanBoard";
 import TaskEntry from "./components/TaskEntry";
@@ -38,7 +41,7 @@ export default function App() {
 
   // --- Auth state ---
   const [authStage, setAuthStage] = useState(() => {
-    // "login" | "set-password" | "authenticated" | "denied"
+    // "login" | "set-password" | "set-security-question" | "select-workspace" | "authenticated" | "denied"
     if (localStorage.getItem("wf_authenticated") === "true") {
       const email = localStorage.getItem("wf_email");
       if (!email) {
@@ -51,6 +54,14 @@ export default function App() {
   });
   const [pendingEmail, setPendingEmail] = useState(""); // used during set-password flow
   const [loginError, setLoginError] = useState("");     // error passed back to Login
+
+  // --- Workspace state (department RBAC / data isolation) ---
+  // The active workspace scopes every workspace-filtered Convex query. Persisted
+  // under wf_workspace and validated against the user's department access on
+  // every auth resolve. userDepartments feeds the post-login workspace picker.
+  const [activeWorkspace, setActiveWorkspace] = useState(() => localStorage.getItem("wf_workspace") || null);
+  const [userDepartments, setUserDepartments] = useState([]);
+  const [showWorkspacePicker, setShowWorkspacePicker] = useState(false);
 
   // --- App state ---
   const [currentView, setCurrentView] = useState("dashboard");
@@ -98,7 +109,8 @@ export default function App() {
 
   // --- Convex (Optimized for Bandwidth) ---
   const [staff, setStaff] = useState([]);
-  const tasks = useQuery(api.tasks.getTasksLight);
+  // Header search + modals read the active workspace's tasks.
+  const tasks = useQuery(api.tasks.getTasksLight, { workspace: activeWorkspace || DEFAULT_WORKSPACE });
   const convexStaff = useQuery(api.staff.getStaff);
 
   // Fetch staff list via Vercel Proxy (with Edge Caching to save Convex Bandwidth)
@@ -154,7 +166,10 @@ export default function App() {
       return;
     }
 
-    if (staff === undefined) return; // still loading from Convex
+    // Wait until the staff list has actually loaded. getStaff always returns at
+    // least the seed users, so an empty list means "still loading" — resolving
+    // now would misidentify the user and clobber their stored workspace choice.
+    if (staff.length === 0) return;
 
     const email = localStorage.getItem("wf_email") || "";
     if (!email) {
@@ -167,6 +182,57 @@ export default function App() {
     const settings = loadSettings();
     const mainAdmin = email === "wmt@ececontactcenters.com";
     const user = staff.find((s) => (s.email || "").toLowerCase() === email);
+    // Keep the main-admin flag authoritative on every resolve so it can never
+    // leak to a different user later in the same browser session.
+    setIsMainAdmin(mainAdmin);
+
+    // --- Gate non-approved / unknown accounts BEFORE resolving a workspace ---
+    if (!mainAdmin) {
+      if (!user) {
+        // Authenticated email is no longer in the staff list (deleted/unknown).
+        logout();
+        return;
+      }
+      if (user.role === "Revoked") {
+        logout();
+        return;
+      }
+      if (user.role === "Pending") {
+        // Not yet approved — show Access Restricted (also blocks refresh bypass).
+        setAuthStage("denied");
+        setLoading(false);
+        return;
+      }
+    }
+
+    // --- Resolve accessible workspaces & the active workspace ---
+    // Departments gate which workspaces a user can enter; the active workspace
+    // scopes their data. Main Admin has implicit all-access.
+    const depts = mainAdmin ? DEPARTMENTS : (user?.departments || []);
+    setUserDepartments(depts);
+    const accessible = accessibleWorkspaces(depts, email);
+
+    // A non-admin with NO department has no workspace access — fail closed
+    // (do NOT default to workforce) and show Access Restricted.
+    if (!mainAdmin && accessible.length === 0) {
+      setAuthStage("denied");
+      setLoading(false);
+      return;
+    }
+
+    const storedWs = localStorage.getItem("wf_workspace");
+    let resolvedWs = null;
+    if (storedWs && accessible.includes(storedWs)) resolvedWs = storedWs;
+    else if (accessible.length === 1) resolvedWs = accessible[0];
+
+    if (!resolvedWs) {
+      // 2+ options and none chosen yet — show the picker.
+      setAuthStage("select-workspace");
+      setLoading(false);
+      return;
+    }
+    setActiveWorkspace(resolvedWs);
+    localStorage.setItem("wf_workspace", resolvedWs);
 
     // --- Apply default view from settings ---
     const viewMap = { "Dashboard": "dashboard", "Projects": "kanban", "Activity Feed": "entry", "Notebook": "notebook" };
@@ -175,7 +241,6 @@ export default function App() {
     if (mainAdmin) {
       setUserName(user?.name || "Main Admin");
       setUserAvatar(user?.avatarUrl || "");
-      setIsMainAdmin(true);
       const dbRole = user?.role || "Admin";
       setActualRole(dbRole);
       setUserRole(defaultViewRole(dbRole));
@@ -186,31 +251,17 @@ export default function App() {
       setLoading(false);
       return;
     }
-    if (user) {
-      if (user.role === "Revoked") {
-        logout();
-        return;
-      }
 
-      // Always use the database as the source of truth for profile data
-      setUserName(user.name || "User");
-      setUserAvatar(user.avatarUrl || "");
-
-      setActualRole(user.role);
-      // Admin+ and Manager see the Admin view by default (they have all Admin privileges)
-      setUserRole(defaultViewRole(user.role));
-      if (!hasSetInitialView.current) {
-        if (user.role === "Programmer") {
-          setCurrentView("kanban");
-        } else {
-          setCurrentView(mappedView);
-        }
-        hasSetInitialView.current = true;
-      }
-    } else if (staff.length > 0 && !mainAdmin) {
-      // User is authenticated but not found in the staff list.
-      // Could happen if they were deleted.
-      console.warn("Authenticated user not found in staff list:", email);
+    // --- Normal approved user ---
+    setUserName(user.name || "User");
+    setUserAvatar(user.avatarUrl || "");
+    setActualRole(user.role);
+    // Admin+ and Manager see the Admin view by default (they have all Admin privileges)
+    setUserRole(defaultViewRole(user.role));
+    if (!hasSetInitialView.current) {
+      if (user.role === "Programmer") setCurrentView("kanban");
+      else setCurrentView(mappedView);
+      hasSetInitialView.current = true;
     }
     setLoading(false);
   }, [staff, authStage, showSettings]);
@@ -249,6 +300,14 @@ export default function App() {
     document.body.classList.remove("role-admin", "role-programmer", "role-admin+");
     document.body.classList.add("role-" + userRole.toLowerCase().replace("+", "plus"));
   }, [userRole]);
+
+  // --- Active-workspace attribute on body (drives per-workspace theming,
+  //     e.g. the Executives gold accents in index.css) ---
+  useEffect(() => {
+    if (activeWorkspace) document.body.setAttribute("data-workspace", activeWorkspace);
+    else document.body.removeAttribute("data-workspace");
+    return () => document.body.removeAttribute("data-workspace");
+  }, [activeWorkspace]);
 
   // --- Context menu close ---
   useEffect(() => {
@@ -410,6 +469,7 @@ export default function App() {
     localStorage.removeItem("wf_authenticated");
     localStorage.removeItem("wf_email");
     localStorage.removeItem("wf_last_activity");
+    localStorage.removeItem("wf_workspace");
     sessionExpiredRef.current = false;
     setAuthStage("login");
     setLoading(true);
@@ -417,7 +477,31 @@ export default function App() {
     setActualRole("Admin");
     setUserRole("Admin");
     setCurrentView("dashboard");
+    setActiveWorkspace(null);
+    setUserDepartments([]);
+    setIsMainAdmin(false);
     hasSetInitialView.current = false;
+    setKanbanFilterStaff(null);
+  }
+
+  // Chosen from the post-login WorkspaceSelect gate: enter the app with the
+  // intro playing once.
+  function handleSelectWorkspace(key) {
+    localStorage.setItem("wf_workspace", key);
+    setActiveWorkspace(key);
+    hasSetInitialView.current = false;
+    setLoading(true);
+    setShowIntro(true);
+    setAuthStage("authenticated");
+  }
+
+  // Switched from the in-app picker (opened by clicking the header title): just
+  // swap the active workspace (queries re-fire via WorkspaceContext). No intro.
+  function switchWorkspace(key) {
+    setShowWorkspacePicker(false);
+    if (key === activeWorkspace) return;
+    localStorage.setItem("wf_workspace", key);
+    setActiveWorkspace(key);
     setKanbanFilterStaff(null);
   }
 
@@ -553,6 +637,20 @@ export default function App() {
     );
   }
 
+  if (authStage === "select-workspace") {
+    const email = localStorage.getItem("wf_email") || "";
+    const accessible = accessibleWorkspaces(userDepartments, email);
+    const list = accessible.length ? accessible : [DEFAULT_WORKSPACE];
+    return (
+      <WorkspaceSelect
+        workspaces={list}
+        userName={userName}
+        onSelect={handleSelectWorkspace}
+        onLogout={logout}
+      />
+    );
+  }
+
   if (loading) {
     return (
       <div className="loading-overlay">
@@ -565,8 +663,10 @@ export default function App() {
   // -------------------------------------------------------
   // Main app
   // -------------------------------------------------------
+  // Workspaces this user may switch between (drives the header switcher).
+  const myWorkspaces = accessibleWorkspaces(userDepartments, localStorage.getItem("wf_email") || "");
   return (
-    <>
+    <WorkspaceContext.Provider value={activeWorkspace || DEFAULT_WORKSPACE}>
       {/* Header */}
       <header>
         <div className="header-container">
@@ -761,7 +861,12 @@ export default function App() {
           </div>
           <div className="header-box" style={{ maxWidth: 1280, padding: "12px 40px", gap: 28, borderRadius: "20px", border: "1px solid var(--glass-border)", background: "var(--glass-bg)", boxShadow: "var(--shadow-md)" }}>
             <img src="https://i.imgur.com/BRd5lrB.png" alt="ECE Logo" className="header-logo" style={{ height: "45px" }} />
-            <div className="header-text-content" style={{ whiteSpace: "nowrap" }}>
+            <div
+              className="header-text-content"
+              style={{ whiteSpace: "nowrap", cursor: myWorkspaces.length > 1 ? "pointer" : "default" }}
+              onClick={() => { if (myWorkspaces.length > 1) setShowWorkspacePicker(true); }}
+              title={myWorkspaces.length > 1 ? "Switch workspace" : ""}
+            >
               <h1 style={{ fontSize: "1.6rem", letterSpacing: "-1.2px" }}>WORKFORCE HERMES</h1>
               <p style={{ fontSize: "0.75rem", letterSpacing: "0.8px", color: "var(--color-text-secondary)", fontWeight: 700 }}>Workforce Programming Project Database</p>
             </div>
@@ -1498,10 +1603,24 @@ export default function App() {
         </div>
       )}
 
+      {/* Workspace Picker — opened by clicking the WORKFORCE HERMES title.
+          Cards float directly on the dimmed backdrop (no wrapper card). */}
+      {showWorkspacePicker && (
+        <div className="modal-overlay" style={{ zIndex: 5000, alignItems: "center", justifyContent: "center" }} onClick={() => setShowWorkspacePicker(false)}>
+          <div onClick={(e) => e.stopPropagation()} style={{ maxWidth: 760, width: "90%", textAlign: "center" }}>
+            <h2 style={{ fontWeight: 900, margin: "0 0 6px 0", fontSize: "1.5rem", color: "#fff", textShadow: "0 2px 8px rgba(0,0,0,0.3)" }}>Select a workspace</h2>
+            <p style={{ margin: "0 0 26px 0", fontSize: "0.85rem", color: "rgba(255,255,255,0.8)" }}>
+              Choose where you'd like to go — each workspace has its own separate data.
+            </p>
+            <WorkspaceCards workspaces={myWorkspaces} activeWorkspace={activeWorkspace} onSelect={switchWorkspace} />
+          </div>
+        </div>
+      )}
+
       {/* Intro Animation Overlay */}
       {showIntro && <IntroAnimation onDone={() => {
         setShowIntro(false);
       }} />}
-    </>
+    </WorkspaceContext.Provider>
   );
 }

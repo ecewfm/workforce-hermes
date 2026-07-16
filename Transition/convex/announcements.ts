@@ -1,25 +1,37 @@
 import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
 
+// Announcements are per-workspace. `workspace` defaults to "workforce" for
+// backward compat with any caller not yet threading it.
+const DEFAULT_WS = "workforce";
+
 /**
- * Get all announcements, latest first.
+ * Get all announcements for a workspace, latest first.
  */
 export const getAnnouncements = query({
-  args: {},
-  handler: async (ctx) => {
-    const all = await ctx.db.query("announcements").collect();
+  args: { workspace: v.optional(v.string()) },
+  handler: async (ctx, args) => {
+    const ws = args.workspace || DEFAULT_WS;
+    const all = await ctx.db
+      .query("announcements")
+      .withIndex("by_workspace", (q) => q.eq("workspace", ws as any))
+      .collect();
     return all.sort((a, b) => b.createdAt - a.createdAt);
   },
 });
 
 /**
- * Get the first unseen announcement for a specific user.
+ * Get the first unseen announcement for a specific user in a workspace.
  * Returns null if all announcements have been seen.
  */
 export const getUnseenAnnouncement = query({
-  args: { userEmail: v.string() },
+  args: { userEmail: v.string(), workspace: v.optional(v.string()) },
   handler: async (ctx, args) => {
-    const all = await ctx.db.query("announcements").collect();
+    const ws = args.workspace || DEFAULT_WS;
+    const all = await ctx.db
+      .query("announcements")
+      .withIndex("by_workspace", (q) => q.eq("workspace", ws as any))
+      .collect();
     // Return the oldest unseen announcement first (so user sees them in order)
     const unseen = all
       .filter((a) => !a.seenBy.includes(args.userEmail.toLowerCase()))
@@ -33,6 +45,7 @@ export const getUnseenAnnouncement = query({
  */
 export const postAnnouncement = mutation({
   args: {
+    workspace: v.optional(v.string()),
     title: v.string(),
     body: v.string(),
     postedBy: v.string(),
@@ -40,6 +53,7 @@ export const postAnnouncement = mutation({
   },
   handler: async (ctx, args) => {
     await ctx.db.insert("announcements", {
+      workspace: (args.workspace || DEFAULT_WS) as any,
       title: args.title,
       body: args.body,
       postedBy: args.postedBy,

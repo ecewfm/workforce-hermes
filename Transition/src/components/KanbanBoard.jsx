@@ -3,6 +3,7 @@ import { useQuery, useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { getProjectDeadlines, deadlineTone, DAY_MS } from "../utils/deadlines";
 import { notifyTaskUpdated, notifyMilestoneCompleted, notifyNoteAdded } from "../utils/notifications";
+import { useWorkspace } from "../utils/workspaceContext";
 
 const cleanConvexError = (errorMessage) => {
   if (!errorMessage) return "An unexpected error occurred.";
@@ -52,15 +53,19 @@ const getMilestoneDeadline = (t, idx) => {
 
 
 export default function KanbanBoard({ userRole, actualRole, userName, openTaskModal, onContextMenu, showModal, staff, searchQuery, filterStaff, onOpenProfile, onClearFilter }) {
-  const tasks = useQuery(api.tasks.getTasksLight);
+  const workspace = useWorkspace();
+  const tasks = useQuery(api.tasks.getTasksLight, { workspace });
   const toggleTaskPriority = useMutation(api.tasks.toggleTaskPriority);
+  // The args object is part of the query cache key — the optimistic getQuery/
+  // setQuery keys MUST match the useQuery key ({ workspace }) or drag-and-drop
+  // silently no-ops.
   const updateTaskStatus = useMutation(api.tasks.updateTaskStatus).withOptimisticUpdate(
     (localStore, { taskId, newStatus }) => {
-      const allTasks = localStore.getQuery(api.tasks.getTasksLight, {});
+      const allTasks = localStore.getQuery(api.tasks.getTasksLight, { workspace });
       if (!Array.isArray(allTasks)) return;
       const task = allTasks.find((t) => t._id === taskId);
       if (task) {
-        localStore.setQuery(api.tasks.getTasksLight, {}, (prevTasks) => {
+        localStore.setQuery(api.tasks.getTasksLight, { workspace }, (prevTasks) => {
           if (!Array.isArray(prevTasks)) return prevTasks;
           return prevTasks.map((t) => (t._id === taskId ? { ...t, status: newStatus, lastUpdated: Date.now() } : t));
         });
@@ -157,10 +162,17 @@ export default function KanbanBoard({ userRole, actualRole, userName, openTaskMo
     }
   }, [fullViewColumn]);
 
+  // Reset the anti-flicker cache when the workspace changes, so we never show
+  // the previous workspace's projects while the new workspace's query loads.
   useEffect(() => {
-    if (Array.isArray(tasks) && tasks.length > 0) {
+    setLastKnownTasks([]);
+  }, [workspace]);
+
+  useEffect(() => {
+    // Cache the latest server result — INCLUDING an empty list. Switching to a
+    // blank workspace must clear the board, not keep the prior workspace's tasks.
+    if (Array.isArray(tasks)) {
       setLastKnownTasks(tasks);
-      console.log("📡 Tasks updated from server:", tasks.length, "tasks");
     }
   }, [tasks]);
 
@@ -172,7 +184,9 @@ export default function KanbanBoard({ userRole, actualRole, userName, openTaskMo
     );
   }
 
-  const displayTasks = (Array.isArray(tasks) && tasks.length > 0) ? tasks : lastKnownTasks;
+  // Use the live result whenever it has loaded (even if empty); only fall back
+  // to the cache while the query is still undefined (mid-load).
+  const displayTasks = Array.isArray(tasks) ? tasks : lastKnownTasks;
 
   const columns = ["todo", "pending", "development", "testing", "done", "implemented", "scrapped"];
   const columnLabels = {

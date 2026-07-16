@@ -1,16 +1,18 @@
 import { useState, useRef } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
+import { useWorkspace } from "../utils/workspaceContext";
 
 /**
  * AnnouncementComposer — visible only to Admin+ users.
  * Rich text editor using contenteditable with Bold/Italic/Underline toolbar.
  */
 export default function AnnouncementComposer({ userName, showModal }) {
+  const workspace = useWorkspace();
   const [title, setTitle] = useState("");
   const [selectedAnnouncement, setSelectedAnnouncement] = useState(null);
   const editorRef = useRef(null);
-  const announcements = useQuery(api.announcements.getAnnouncements);
+  const announcements = useQuery(api.announcements.getAnnouncements, { workspace });
   const postAnnouncement = useMutation(api.announcements.postAnnouncement);
   const deleteAnnouncement = useMutation(api.announcements.deleteAnnouncement);
   const userEmail = localStorage.getItem("wf_email") || "";
@@ -27,6 +29,7 @@ export default function AnnouncementComposer({ userName, showModal }) {
       return;
     }
     postAnnouncement({
+      workspace,
       title: title.trim(),
       body,
       postedBy: userName,

@@ -1,8 +1,18 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 
+// Workspace enum — the data-isolation key stamped on every workspace-scoped row.
+// Kept OPTIONAL on every table so pre-existing documents (which have no value)
+// stay valid until the one-time backfill stamps them "workforce". New writes
+// always supply a value. See src/utils/departments.js for the client mirror.
+const workspaceField = v.optional(
+  v.union(v.literal("executives"), v.literal("operations"), v.literal("workforce"))
+);
+
 export default defineSchema({
   tasks: defineTable({
+    // Data-isolation key: which workspace this task belongs to.
+    workspace: workspaceField,
     title: v.string(),
     status: v.string(),
     assignee: v.string(),
@@ -75,12 +85,16 @@ export default defineSchema({
     // Prevent re-notifying managers about the same overdue/stale episode every run.
     managerLateNotifiedAt: v.optional(v.number()),
     managerStaleNotifiedAt: v.optional(v.number()),
-  }),
+  }).index("by_workspace", ["workspace"]),
 
   staff: defineTable({
     name: v.string(),
     email: v.string(),
     role: v.string(),
+    // Department membership — the orthogonal RBAC axis that gates which
+    // workspaces a user may enter. Optional array so existing rows stay valid;
+    // backfilled to ["Workforce"]. See src/utils/departments.js.
+    departments: v.optional(v.array(v.string())),
     password: v.optional(v.string()),
     avatarUrl: v.optional(v.union(v.string(), v.null())),
     bio: v.optional(v.union(v.string(), v.null())),
@@ -95,6 +109,7 @@ export default defineSchema({
   }).index("by_email", ["email"]),
 
   notebook: defineTable({
+    workspace: workspaceField,
     name: v.string(),
     description: v.string(),
     pros: v.optional(v.string()),
@@ -102,7 +117,7 @@ export default defineSchema({
     details: v.optional(v.string()),
     date: v.string(),
     taker: v.optional(v.string()),
-  }),
+  }).index("by_workspace", ["workspace"]),
 
   taskViewHistory: defineTable({
     taskId: v.id("tasks"),
@@ -111,13 +126,14 @@ export default defineSchema({
   }).index("by_task_user", ["taskId", "userEmail"]),
 
   announcements: defineTable({
+    workspace: workspaceField,
     title: v.string(),
     body: v.string(),
     postedBy: v.string(),
     postedByEmail: v.string(),
     createdAt: v.number(),
     seenBy: v.array(v.string()),
-  }),
+  }).index("by_workspace", ["workspace"]),
 
   // Security audit logs — visible only in Convex dashboard
   securityLogs: defineTable({
@@ -134,6 +150,7 @@ export default defineSchema({
 
   // Notifications — consolidated bell icon system
   notifications: defineTable({
+    workspace: workspaceField, // which workspace this notification belongs to
     type: v.string(),           // "mention" | "project_change" | "reaction"
     targetEmail: v.string(),    // who receives the notification
     actorEmail: v.string(),     // who triggered it
@@ -145,7 +162,9 @@ export default defineSchema({
     createdAt: v.number(),
   })
     .index("by_target", ["targetEmail"])
-    .index("by_target_read", ["targetEmail", "read"]),
+    .index("by_target_read", ["targetEmail", "read"])
+    .index("by_workspace_target", ["workspace", "targetEmail"])
+    .index("by_workspace_target_read", ["workspace", "targetEmail", "read"]),
 
   // Presence/Heartbeat data — separated to reduce bandwidth on main staff query
   heartbeats: defineTable({
@@ -153,24 +172,28 @@ export default defineSchema({
     lastSeen: v.number(),
   }).index("by_email", ["email"]),
 
-  // Handbook — a single shared, admin-editable page built from layout blocks.
+  // Handbook — one admin-editable page PER WORKSPACE, built from layout blocks.
   // `blocks` is intentionally loose (v.any) so the builder can evolve block
   // shapes without schema migrations; the client validates/normalizes shape.
+  // (Was a single shared singleton; now keyed by workspace.)
   handbook: defineTable({
+    workspace: workspaceField,
     blocks: v.array(v.any()),
     updatedAt: v.number(),
     updatedBy: v.optional(v.string()),
-  }),
+  }).index("by_workspace", ["workspace"]),
 
-  // Workspace-wide configuration — a singleton row (same pattern as handbook).
-  // Holds org-level defaults editable by Admin+: the milestone template used
-  // when creating new projects and the full-production deployment deadline.
+  // Per-workspace configuration — one row per workspace (was an org-wide
+  // singleton). Holds that workspace's defaults editable by Admin+: the
+  // milestone template used when creating new projects and the full-production
+  // deployment deadline.
   appConfig: defineTable({
+    workspace: workspaceField,
     productionDeadline: v.optional(v.number()), // ms timestamp
     defaultMilestones: v.optional(
       v.array(v.object({ name: v.string(), days: v.number() }))
     ),
     updatedAt: v.number(),
     updatedBy: v.optional(v.string()),
-  }),
+  }).index("by_workspace", ["workspace"]),
 });

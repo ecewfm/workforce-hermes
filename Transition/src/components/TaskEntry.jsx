@@ -2,22 +2,37 @@ import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { FALLBACK_MILESTONES } from "../utils/defaults";
+import { useWorkspace } from "../utils/workspaceContext";
+import { WORKSPACE_META, isInDepartment } from "../utils/departments";
 
 export default function TaskEntry({ staff, userRole, userName, onCreated, showModal }) {
-  // Workspace milestone template (Admin+ editable in Settings → Workspace Defaults)
-  const appConfig = useQuery(api.appConfig.getAppConfig);
+  const workspace = useWorkspace();
+  // Only staff who belong to THIS workspace's department can be assigned a task
+  // created here (e.g. the Operations workspace lists only Operations members).
+  const workspaceDept = WORKSPACE_META[workspace]?.department;
+  const assignableStaff = (staff || []).filter(
+    (s) => !workspaceDept || isInDepartment(s.departments, workspaceDept)
+  );
+  // Per-workspace milestone template (Admin+ editable in Settings → Workspace Defaults)
+  const appConfig = useQuery(api.appConfig.getAppConfig, { workspace });
+  // Optimistic update must target the SAME query the board subscribes to
+  // (getTasksLight) with the SAME key ({ workspace }), and match its projected
+  // shape (counts, not raw notes/features) — otherwise instant-create no-ops.
   const addTask = useMutation(api.tasks.addTask).withOptimisticUpdate((localStore, args) => {
-    const prevTasks = localStore.getQuery(api.tasks.getTasks, {});
+    const prevTasks = localStore.getQuery(api.tasks.getTasksLight, { workspace });
     if (prevTasks !== undefined) {
       const newTask = {
         _id: "optimistic-task-" + Date.now(),
         ...args,
         status: "todo",
         completedMilestones: 0,
-        notes: [],
+        notesCount: 0,
+        featuresCount: 0,
+        lastNoteTimestamp: 0,
+        lastFeatureTimestamp: 0,
         lastUpdated: Date.now(),
       };
-      localStore.setQuery(api.tasks.getTasks, {}, [...(Array.isArray(prevTasks) ? prevTasks : []), newTask]);
+      localStore.setQuery(api.tasks.getTasksLight, { workspace }, [...(Array.isArray(prevTasks) ? prevTasks : []), newTask]);
     }
   });
 
@@ -40,13 +55,21 @@ export default function TaskEntry({ staff, userRole, userName, onCreated, showMo
     }
   }, [appConfig]);
 
-  // Auto-check own name for programmers
+  // Keep the assignee selection consistent with the active workspace: drop any
+  // selected names that aren't assignable here (e.g. after switching workspace),
+  // and auto-check a programmer's own name when they're a member.
   useEffect(() => {
-    if (userRole === "Programmer" && staff) {
-      const me = staff.find((s) => s.name.toLowerCase() === userName.toLowerCase());
-      if (me) setSelectedAssignees(new Set([me.name]));
-    }
-  }, [staff, userRole, userName]);
+    setSelectedAssignees((prev) => {
+      const validNames = new Set(assignableStaff.map((s) => s.name));
+      const pruned = new Set([...prev].filter((n) => validNames.has(n)));
+      if (userRole === "Programmer") {
+        const me = assignableStaff.find((s) => s.name.toLowerCase() === userName.toLowerCase());
+        if (me) pruned.add(me.name);
+      }
+      return pruned;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [staff, userRole, userName, workspace]);
 
   function toggleAssignee(name) {
     setSelectedAssignees((prev) => {
@@ -95,6 +118,7 @@ export default function TaskEntry({ staff, userRole, userName, onCreated, showMo
 
     // We don't await here to make it feel INSTANT because we have an optimistic update
     addTask({
+      workspace,
       title: document.getElementById("task-title").value,
       assignee: Array.from(selectedAssignees).join(", "),
       startDate: document.getElementById("task-date").value,
@@ -158,17 +182,23 @@ export default function TaskEntry({ staff, userRole, userName, onCreated, showMo
                       {selectedAssignees.size > 0 ? Array.from(selectedAssignees).join(", ") : "Select Assignees..."}
                     </div>
                     <div className={`multiselect-options ${showOptions ? "show" : ""}`}>
-                      {(staff || []).map((s) => (
-                        <div key={s.email} className="multiselect-option" onClick={(e) => e.stopPropagation()}>
-                          <input
-                            type="checkbox"
-                            id={`staff-${s.email}`}
-                            checked={selectedAssignees.has(s.name)}
-                            onChange={() => toggleAssignee(s.name)}
-                          />
-                          <label htmlFor={`staff-${s.email}`}>{s.name}</label>
+                      {assignableStaff.length > 0 ? (
+                        assignableStaff.map((s) => (
+                          <div key={s.email} className="multiselect-option" onClick={(e) => e.stopPropagation()}>
+                            <input
+                              type="checkbox"
+                              id={`staff-${s.email}`}
+                              checked={selectedAssignees.has(s.name)}
+                              onChange={() => toggleAssignee(s.name)}
+                            />
+                            <label htmlFor={`staff-${s.email}`}>{s.name}</label>
+                          </div>
+                        ))
+                      ) : (
+                        <div className="multiselect-option" style={{ color: "#94a3b8", fontStyle: "italic", cursor: "default" }}>
+                          No members in the {workspaceDept || "this"} department yet. Assign one in Settings → Staff Management → Department Membership.
                         </div>
-                      ))}
+                      )}
                     </div>
                   </div>
                 </div>

@@ -12,6 +12,7 @@ import type * as announcements from "../announcements.js";
 import type * as appConfig from "../appConfig.js";
 import type * as crons from "../crons.js";
 import type * as handbook from "../handbook.js";
+import type * as migrations from "../migrations.js";
 import type * as notebook from "../notebook.js";
 import type * as notifications from "../notifications.js";
 import type * as staff from "../staff.js";
@@ -28,6 +29,7 @@ declare const fullApi: ApiFromModules<{
   appConfig: typeof appConfig;
   crons: typeof crons;
   handbook: typeof handbook;
+  migrations: typeof migrations;
   notebook: typeof notebook;
   notifications: typeof notifications;
   staff: typeof staff;

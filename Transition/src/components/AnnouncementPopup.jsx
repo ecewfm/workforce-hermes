@@ -1,13 +1,16 @@
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
+import { useWorkspace } from "../utils/workspaceContext";
 
 /**
  * AnnouncementPopup — shows one unseen announcement at a time as a modal overlay.
  * Convex reactivity means this will auto-appear when an Admin+ posts a new one.
+ * Scoped to the active workspace.
  */
 export default function AnnouncementPopup() {
+  const workspace = useWorkspace();
   const userEmail = localStorage.getItem("wf_email") || "";
-  const unseen = useQuery(api.announcements.getUnseenAnnouncement, { userEmail });
+  const unseen = useQuery(api.announcements.getUnseenAnnouncement, { userEmail, workspace });
   const markSeen = useMutation(api.announcements.markAnnouncementSeen);
 
   if (!unseen) return null;

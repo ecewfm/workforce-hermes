@@ -4,6 +4,8 @@ import { api } from "../../convex/_generated/api";
 import { loadSettings, saveSettings, applySettings, DEFAULT_SETTINGS, SKINS } from "../utils/settingsManager";
 import { FALLBACK_MILESTONES } from "../utils/defaults";
 import { isAdminPlusOrAbove, ASSIGNABLE_ROLES } from "../utils/roles";
+import { useWorkspace } from "../utils/workspaceContext";
+import { DEPARTMENTS } from "../utils/departments";
 
 const ACCENT_COLORS = [
   { name: "Emerald", value: "#10b981" },
@@ -144,11 +146,15 @@ export default function Settings({ userName, userEmail, onClose, showModal, onLo
   const deleteStaffMut = useMutation(api.staff.deleteStaff);
   const addStaffMut = useMutation(api.staff.addStaff);
   const setSecurityQuestionMut = useMutation(api.staff.setSecurityQuestion);
+  const updateStaffDepartmentMut = useMutation(api.staff.updateStaffDepartment);
+  // Staff Management sub-tab: "access" (role) | "department" (workspace access)
+  const [staffSubTab, setStaffSubTab] = useState("access");
 
   const allStaff = useQuery(api.staff.getStaff);
+  const workspace = useWorkspace();
 
-  // Archive: fetch all tasks to filter scrapyard ones
-  const allTasks = useQuery(api.tasks.getTasksLight);
+  // Archive: fetch all tasks to filter scrapyard ones (active workspace only)
+  const allTasks = useQuery(api.tasks.getTasksLight, { workspace });
   const updateTaskStatus = useMutation(api.tasks.updateTaskStatus);
   const archivedTasks = (allTasks || []).filter(t => (t.status || "").toLowerCase() === "scrapyard");
   const deleteTask = useMutation(api.tasks.deleteTask);
@@ -166,8 +172,8 @@ export default function Settings({ userName, userEmail, onClose, showModal, onLo
     }
   };
 
-  // --- Workspace Defaults state (Admin+ — shared via Convex appConfig) ---
-  const appConfig = useQuery(api.appConfig.getAppConfig);
+  // --- Workspace Defaults state (Admin+ — per-workspace via Convex appConfig) ---
+  const appConfig = useQuery(api.appConfig.getAppConfig, { workspace });
   const saveAppConfigMut = useMutation(api.appConfig.saveAppConfig);
   const [templateRows, setTemplateRows] = useState(() => FALLBACK_MILESTONES.map((m) => ({ ...m })));
   const templateDirty = useRef(false);
@@ -209,7 +215,7 @@ export default function Settings({ userName, userEmail, onClose, showModal, onLo
     }
     setSavingTemplate(true);
     try {
-      await saveAppConfigMut({ defaultMilestones: cleaned, updatedBy: userName });
+      await saveAppConfigMut({ workspace, defaultMilestones: cleaned, updatedBy: userName });
       templateDirty.current = false;
       setTemplateRows(cleaned.map((m) => ({ ...m })));
       showModal({ title: "Template Saved", message: "New projects will now start with this milestone template.", type: "success" });
@@ -228,7 +234,7 @@ export default function Settings({ userName, userEmail, onClose, showModal, onLo
     try {
       // End of the selected day, local time
       const ts = new Date(`${prodDeadlineInput}T23:59:59`).getTime();
-      await saveAppConfigMut({ productionDeadline: ts, updatedBy: userName });
+      await saveAppConfigMut({ workspace, productionDeadline: ts, updatedBy: userName });
       showModal({ title: "Deadline Set", message: "The full-production deadline is now visible on the Dashboard.", type: "success" });
     } catch (err) {
       showModal({ title: "Error", message: err.message || "Failed to save the deadline.", type: "alert" });
@@ -730,7 +736,7 @@ export default function Settings({ userName, userEmail, onClose, showModal, onLo
                             message: "Remove the production deadline from the Dashboard?",
                             type: "confirm",
                             onConfirm: async () => {
-                              await saveAppConfigMut({ productionDeadline: null, updatedBy: userName });
+                              await saveAppConfigMut({ workspace, productionDeadline: null, updatedBy: userName });
                               setProdDeadlineInput("");
                             },
                           });
@@ -750,6 +756,26 @@ export default function Settings({ userName, userEmail, onClose, showModal, onLo
                 <div className="settings-section-header"><SectionIcon icon="shield" size={20} /><h3>Staff Management</h3></div>
                 <p className="settings-section-desc">Manage team members, approve access requests, and reset credentials.</p>
 
+                {/* Sub-tabs: Access Type (role) vs Department Membership (workspace access) */}
+                <div className="staff-subtab-bar" style={{ display: "flex", gap: 8, marginBottom: 20 }}>
+                  {[{ id: "access", label: "Access Type" }, { id: "department", label: "Department Membership" }].map((t) => (
+                    <button
+                      key={t.id}
+                      onClick={() => setStaffSubTab(t.id)}
+                      style={{
+                        padding: "8px 16px", borderRadius: 10, border: "1px solid var(--glass-border)", cursor: "pointer",
+                        fontSize: "0.72rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.5px",
+                        background: staffSubTab === t.id ? "var(--color-accent)" : "var(--color-card-bg)",
+                        color: staffSubTab === t.id ? "white" : "var(--color-text-secondary)",
+                      }}
+                    >
+                      {t.label}
+                    </button>
+                  ))}
+                </div>
+
+                {staffSubTab === "access" && (
+                <>
                 {/* Pending Access Requests */}
                 <div className="settings-card">
                   <label className="settings-field-label" style={{ display: "flex", alignItems: "center", gap: "8px" }}>
@@ -957,6 +983,67 @@ export default function Settings({ userName, userEmail, onClose, showModal, onLo
                     </button>
                   </div>
                 </div>
+                </>
+                )}
+
+                {staffSubTab === "department" && (
+                  <div className="settings-card">
+                    <label className="settings-field-label">Department Membership</label>
+                    <p className="settings-field-hint">
+                      Assign which workspaces each member can access. Executives &amp; Workforce reach all
+                      workspaces; Operations is limited to the Operations workspace.
+                    </p>
+                    <div className="staff-management-list">
+                      {activeStaff.map((s) => {
+                        const isSelf = s.email.toLowerCase() === (userEmail || "").toLowerCase();
+                        const current = Array.isArray(s.departments) ? s.departments : [];
+                        return (
+                          <div key={s.email} className="staff-mgmt-row">
+                            <div className="staff-mgmt-avatar" onClick={() => onViewProfile && onViewProfile(s)} style={{ cursor: "pointer" }}>
+                              {s.avatarUrl ? <img src={s.avatarUrl} alt={s.name} /> : (
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>
+                              )}
+                            </div>
+                            <div className="staff-mgmt-info">
+                              <span className="staff-mgmt-name">{s.name}</span>
+                              <span className="staff-mgmt-email">{s.email}</span>
+                            </div>
+                            <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
+                              {DEPARTMENTS.map((dept) => {
+                                const checked = current.includes(dept);
+                                return (
+                                  <label
+                                    key={dept}
+                                    title={isSelf ? "You can't change your own departments" : ""}
+                                    style={{ display: "flex", alignItems: "center", gap: 5, fontSize: "0.75rem", fontWeight: 700, color: "var(--color-text-primary)", opacity: isSelf ? 0.55 : 1, cursor: isSelf ? "not-allowed" : "pointer" }}
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={checked}
+                                      disabled={isSelf}
+                                      onChange={async (e) => {
+                                        const next = e.target.checked
+                                          ? [...current, dept]
+                                          : current.filter((d) => d !== dept);
+                                        try {
+                                          await updateStaffDepartmentMut({ staffEmail: s.email, departments: next, actorEmail: userEmail });
+                                          showModal({ title: "Departments Updated", message: `${s.name}'s workspace access has been updated.`, type: "success" });
+                                        } catch (err) {
+                                          showModal({ title: "Action Blocked", message: err.message || "Could not update departments.", type: "alert" });
+                                        }
+                                      }}
+                                    />
+                                    {dept}
+                                  </label>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
               </section>
             )}
 

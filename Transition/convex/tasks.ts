@@ -3,11 +3,33 @@ import { v } from "convex/values";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
+// Tasks are per-workspace. `workspace` defaults to "workforce" for backward
+// compat with any caller not yet threading it (pre-existing data was all WFM).
+const DEFAULT_WS = "workforce";
+
+/**
+ * Fetch a workspace's tasks. For the default "workforce" workspace we also
+ * include legacy rows that have NO workspace tag yet (pre-backfill), so WFM
+ * never sees an empty board in the window between deploying and running the
+ * migrations:backfillWorkspaces job. Other workspaces use the index directly.
+ */
+async function tasksForWorkspace(ctx: any, ws: string) {
+  if (ws === DEFAULT_WS) {
+    const all = await ctx.db.query("tasks").collect();
+    return all.filter((t: any) => !t.workspace || t.workspace === DEFAULT_WS);
+  }
+  return await ctx.db
+    .query("tasks")
+    .withIndex("by_workspace", (q: any) => q.eq("workspace", ws))
+    .collect();
+}
+
 // --- QUERIES ---
 
 export const getTasks = query({
-  handler: async (ctx) => {
-    return await ctx.db.query("tasks").collect();
+  args: { workspace: v.optional(v.string()) },
+  handler: async (ctx, args) => {
+    return await tasksForWorkspace(ctx, args.workspace || DEFAULT_WS);
   },
 });
 
@@ -16,8 +38,9 @@ export const getTasks = query({
  * Dramatically reduces bandwidth for the Kanban and List views.
  */
 export const getTasksLight = query({
-  handler: async (ctx) => {
-    const tasks = await ctx.db.query("tasks").collect();
+  args: { workspace: v.optional(v.string()) },
+  handler: async (ctx, args) => {
+    const tasks = await tasksForWorkspace(ctx, args.workspace || DEFAULT_WS);
     return tasks.map(({ notes, features, adminCredentials, ...light }) => {
       const notesList = notes || [];
       const featuresList = features || [];
@@ -126,6 +149,7 @@ async function insertManagerNotifs(
     actorEmail?: string;
     actorName?: string;
     assigneeString?: string;
+    workspace?: string;
   }
 ) {
   const lowerActorEmail = (opts.actorEmail || "").toLowerCase();
@@ -143,6 +167,7 @@ async function insertManagerNotifs(
     if (assigneeNames.length && assigneeNames.some((a) => mName.includes(a) || a.includes(mName))) continue;
 
     await ctx.db.insert("notifications", {
+      workspace: (opts.workspace || DEFAULT_WS) as any,
       type: opts.type,
       targetEmail: mEmail,
       actorEmail: lowerActorEmail || "system",
@@ -217,8 +242,9 @@ export const getTaskById = query({
 });
 
 export const getProjectStats = query({
-  handler: async (ctx) => {
-    const tasks = await ctx.db.query("tasks").collect();
+  args: { workspace: v.optional(v.string()) },
+  handler: async (ctx, args) => {
+    const tasks = await tasksForWorkspace(ctx, args.workspace || DEFAULT_WS);
 
     interface WorkloadInfo {
       name: string;
@@ -295,6 +321,7 @@ export const getProjectStats = query({
 
 export const addTask = mutation({
   args: {
+    workspace: v.optional(v.string()),
     title: v.string(),
     assignee: v.string(),
     description: v.optional(v.string()),
@@ -312,6 +339,7 @@ export const addTask = mutation({
   },
   handler: async (ctx, args) => {
     await ctx.db.insert("tasks", {
+      workspace: (args.workspace || DEFAULT_WS) as any,
       title: args.title,
       status: "todo",
       assignee: args.assignee,
@@ -385,6 +413,7 @@ export const updateTaskMilestones = mutation({
           const nameMatch = assigneeNames.some(a => staff.name.toLowerCase().includes(a) || a.includes(staff.name.toLowerCase()));
           if (nameMatch) {
             await ctx.db.insert("notifications", {
+              workspace: ((task as any).workspace || DEFAULT_WS) as any,
               type: "project_change",
               targetEmail: staff.email.toLowerCase(),
               actorEmail,
@@ -439,6 +468,7 @@ export const addNoteToTask = mutation({
         const nameMatch = assigneeNames.some(a => staff.name.toLowerCase().includes(a) || a.includes(staff.name.toLowerCase()));
         if (nameMatch) {
           await ctx.db.insert("notifications", {
+            workspace: ((task as any).workspace || DEFAULT_WS) as any,
             type: "project_change",
             targetEmail: staff.email.toLowerCase(),
             actorEmail,
@@ -462,6 +492,7 @@ export const addNoteToTask = mutation({
           if (staff.email.toLowerCase() === actorEmail) continue;
           if (staff.name.toLowerCase().includes(mentionedName) || mentionedName.includes(staff.name.toLowerCase().split(" ")[0])) {
             await ctx.db.insert("notifications", {
+              workspace: ((task as any).workspace || DEFAULT_WS) as any,
               type: "mention",
               targetEmail: staff.email.toLowerCase(),
               actorEmail,
@@ -583,6 +614,7 @@ export const updateTaskDetails = mutation({
           const nameMatch = Array.from(notifySet).some(a => staff.name.toLowerCase().includes(a) || a.includes(staff.name.toLowerCase()));
           if (nameMatch) {
             await ctx.db.insert("notifications", {
+              workspace: ((task as any).workspace || DEFAULT_WS) as any,
               type: "project_change",
               targetEmail: staff.email.toLowerCase(),
               actorEmail,
@@ -666,7 +698,10 @@ export const toggleTaskPriority = mutation({
 
     if (args.isPrioritized) {
       const assignees = (task.assignee || "").split(",").map(n => n.trim().toLowerCase()).filter(Boolean);
-      const allTasks = await ctx.db.query("tasks").collect();
+      // Cap is per-workspace: only count prioritized tasks in the same workspace
+      // (tasksForWorkspace also folds in untagged legacy rows for workforce).
+      const taskWs = (task as any).workspace || DEFAULT_WS;
+      const allTasks = await tasksForWorkspace(ctx, taskWs);
 
       for (const assignee of assignees) {
         let prioritizedCount = 0;
@@ -751,6 +786,7 @@ export const addTaskFeature = mutation({
           const nameMatch = assigneeNames.some(a => staff.name.toLowerCase().includes(a) || a.includes(staff.name.toLowerCase()));
           if (nameMatch) {
             await ctx.db.insert("notifications", {
+              workspace: ((task as any).workspace || DEFAULT_WS) as any,
               type: "project_change",
               targetEmail: staff.email.toLowerCase(),
               actorEmail,
@@ -769,6 +805,7 @@ export const addTaskFeature = mutation({
     // --- Manager oversight: notify all Managers of new features/bugs ---
     const isBug = args.feature.type === "bug";
     await notifyManagers(ctx, {
+      workspace: (task as any).workspace || DEFAULT_WS,
       type: isBug ? "manager_bug" : "manager_feature",
       message: isBug
         ? `reported a bug "${args.feature.name}" on "${task.title}"`
@@ -819,6 +856,7 @@ export const updateFeatureStatus = mutation({
       const feat = features[featIndex];
       const isBug = feat.type === "bug";
       await notifyManagers(ctx, {
+        workspace: (task as any).workspace || DEFAULT_WS,
         type: "manager_feature",
         message: `completed the ${isBug ? "bug fix" : "feature"} "${feat.name}" on "${task.title}"`,
         taskId: args.taskId,
@@ -864,6 +902,7 @@ export const scanProjectsForManagers = internalMutation({
         });
         const overdueDays = Math.floor((now - (completionDue as number)) / DAY_MS);
         await insertManagerNotifs(ctx, managers, {
+          workspace: (task as any).workspace || DEFAULT_WS,
           type: "manager_overdue",
           message: `flagged "${task.title}" as overdue — completion was due ${dateStr}${overdueDays > 0 ? ` (${overdueDays}d late)` : ""}`,
           taskId: task._id,
@@ -883,6 +922,7 @@ export const scanProjectsForManagers = internalMutation({
       if (isStale && staleMarker < lastUpdated) {
         const days = Math.floor((now - lastUpdated) / DAY_MS);
         await insertManagerNotifs(ctx, managers, {
+          workspace: (task as any).workspace || DEFAULT_WS,
           type: "manager_stale",
           message: `flagged "${task.title}" — no activity for ${days} days (no notes or milestone movement)`,
           taskId: task._id,
@@ -1022,6 +1062,7 @@ export const toggleNoteReaction = mutation({
         if (staff.email.toLowerCase() === lowerEmail) continue;
         if (staff.name.toLowerCase() === writerName || staff.name.toLowerCase().includes(writerName)) {
           await ctx.db.insert("notifications", {
+            workspace: ((task as any).workspace || DEFAULT_WS) as any,
             type: "reaction",
             targetEmail: staff.email.toLowerCase(),
             actorEmail: lowerEmail,
@@ -1079,6 +1120,7 @@ export const addNoteReply = mutation({
         if (staff.email.toLowerCase() === actorEmail) continue;
         if (staff.name.toLowerCase() === writerName || staff.name.toLowerCase().includes(writerName)) {
           await ctx.db.insert("notifications", {
+            workspace: ((task as any).workspace || DEFAULT_WS) as any,
             type: "project_change",
             targetEmail: staff.email.toLowerCase(),
             actorEmail,
@@ -1104,6 +1146,7 @@ export const addNoteReply = mutation({
           if (staff.email.toLowerCase() === actorEmail) continue;
           if (staff.name.toLowerCase().includes(mentionedName) || mentionedName.includes(staff.name.toLowerCase().split(" ")[0])) {
             await ctx.db.insert("notifications", {
+              workspace: ((task as any).workspace || DEFAULT_WS) as any,
               type: "mention",
               targetEmail: staff.email.toLowerCase(),
               actorEmail,

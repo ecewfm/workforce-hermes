@@ -10,6 +10,7 @@ import {
 } from "./handbookBlocks";
 import { Icon } from "./handbookIcons";
 import HandbookBlock from "./HandbookBlock";
+import { useWorkspace } from "../utils/workspaceContext";
 
 /**
  * Handbook — a shared, Admin+ editable team handbook rendered as a structured
@@ -18,7 +19,8 @@ import HandbookBlock from "./HandbookBlock";
  * controls and drag-to-reorder.
  */
 export default function Handbook({ onClose, canEdit, userName, showModal }) {
-  const data = useQuery(api.handbook.getHandbook);
+  const workspace = useWorkspace();
+  const data = useQuery(api.handbook.getHandbook, { workspace });
   const saveHandbook = useMutation(api.handbook.saveHandbook);
 
   const [blocks, setBlocks] = useState(null); // null = loading
@@ -123,7 +125,7 @@ export default function Handbook({ onClose, canEdit, userName, showModal }) {
   async function handleSave() {
     setSaving(true);
     try {
-      await saveHandbook({ blocks: blocks || [], updatedBy: userName || "" });
+      await saveHandbook({ workspace, blocks: blocks || [], updatedBy: userName || "" });
       setDirty(false);
       setEditing(false);
       showModal?.({ title: "Handbook Saved", message: "Your changes are now live for the whole team.", type: "success" });

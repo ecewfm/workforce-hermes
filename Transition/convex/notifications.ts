@@ -1,17 +1,24 @@
 import { query, mutation, internalMutation } from "./_generated/server";
 import { v } from "convex/values";
 
+// Notifications are per-workspace: the bell shows only the active workspace's
+// notifications. `workspace` defaults to "workforce" for backward compat.
+const DEFAULT_WS = "workforce";
+
 /**
- * Get all notifications for a user, latest first.
+ * Get all notifications for a user in a workspace, latest first.
  * Caps at 50 to save bandwidth.
  */
 export const getNotifications = query({
-  args: { email: v.string() },
+  args: { email: v.string(), workspace: v.optional(v.string()) },
   handler: async (ctx, args) => {
     const lowerEmail = args.email.toLowerCase();
+    const ws = args.workspace || DEFAULT_WS;
     const all = await ctx.db
       .query("notifications")
-      .withIndex("by_target", (q) => q.eq("targetEmail", lowerEmail))
+      .withIndex("by_workspace_target", (q) =>
+        q.eq("workspace", ws as any).eq("targetEmail", lowerEmail)
+      )
       .collect();
 
     // Sort latest first and cap at 50
@@ -20,16 +27,17 @@ export const getNotifications = query({
 });
 
 /**
- * Get count of unread notifications for badge display.
+ * Get count of unread notifications for badge display (per workspace).
  */
 export const getUnreadCount = query({
-  args: { email: v.string() },
+  args: { email: v.string(), workspace: v.optional(v.string()) },
   handler: async (ctx, args) => {
     const lowerEmail = args.email.toLowerCase();
+    const ws = args.workspace || DEFAULT_WS;
     const unread = await ctx.db
       .query("notifications")
-      .withIndex("by_target_read", (q) =>
-        q.eq("targetEmail", lowerEmail).eq("read", false)
+      .withIndex("by_workspace_target_read", (q) =>
+        q.eq("workspace", ws as any).eq("targetEmail", lowerEmail).eq("read", false)
       )
       .collect();
     return unread.length;
@@ -47,16 +55,17 @@ export const markRead = mutation({
 });
 
 /**
- * Mark all notifications for a user as read.
+ * Mark all notifications for a user (in a workspace) as read.
  */
 export const markAllRead = mutation({
-  args: { email: v.string() },
+  args: { email: v.string(), workspace: v.optional(v.string()) },
   handler: async (ctx, args) => {
     const lowerEmail = args.email.toLowerCase();
+    const ws = args.workspace || DEFAULT_WS;
     const unread = await ctx.db
       .query("notifications")
-      .withIndex("by_target_read", (q) =>
-        q.eq("targetEmail", lowerEmail).eq("read", false)
+      .withIndex("by_workspace_target_read", (q) =>
+        q.eq("workspace", ws as any).eq("targetEmail", lowerEmail).eq("read", false)
       )
       .collect();
 
@@ -67,10 +76,12 @@ export const markAllRead = mutation({
 });
 
 /**
- * Create a notification. Called by other mutations.
+ * Create a notification. Called by other mutations. `workspace` is stamped so
+ * the notification only surfaces in the workspace it was generated in.
  */
 export const createNotification = mutation({
   args: {
+    workspace: v.optional(v.string()),
     type: v.string(),
     targetEmail: v.string(),
     actorEmail: v.string(),
@@ -84,6 +95,7 @@ export const createNotification = mutation({
     if (args.targetEmail.toLowerCase() === args.actorEmail.toLowerCase()) return;
 
     await ctx.db.insert("notifications", {
+      workspace: (args.workspace || DEFAULT_WS) as any,
       type: args.type,
       targetEmail: args.targetEmail.toLowerCase(),
       actorEmail: args.actorEmail.toLowerCase(),
@@ -97,15 +109,18 @@ export const createNotification = mutation({
   },
 });
 /**
- * Get the single latest notification for a user.
+ * Get the single latest notification for a user (in a workspace).
  */
 export const getLatestNotification = query({
-  args: { email: v.string() },
+  args: { email: v.string(), workspace: v.optional(v.string()) },
   handler: async (ctx, args) => {
     const lowerEmail = args.email.toLowerCase();
+    const ws = args.workspace || DEFAULT_WS;
     const latest = await ctx.db
       .query("notifications")
-      .withIndex("by_target", (q) => q.eq("targetEmail", lowerEmail))
+      .withIndex("by_workspace_target", (q) =>
+        q.eq("workspace", ws as any).eq("targetEmail", lowerEmail)
+      )
       .order("desc")
       .first();
     return latest;

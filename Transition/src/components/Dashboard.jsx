@@ -3,11 +3,13 @@ import { useQuery, useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { getProjectDeadlines, deadlineTone, fmtDate, DAY_MS } from "../utils/deadlines";
 import { isAdminPlusOrAbove } from "../utils/roles";
+import { useWorkspace } from "../utils/workspaceContext";
 
 export default function Dashboard({ onShowAllLinks, actualRole, userName, openTaskModal }) {
-  const stats = useQuery(api.tasks.getProjectStats);
-  const tasks = useQuery(api.tasks.getTasksLight);
-  const appConfig = useQuery(api.appConfig.getAppConfig);
+  const workspace = useWorkspace();
+  const stats = useQuery(api.tasks.getProjectStats, { workspace });
+  const tasks = useQuery(api.tasks.getTasksLight, { workspace });
+  const appConfig = useQuery(api.appConfig.getAppConfig, { workspace });
   const saveAppConfigMut = useMutation(api.appConfig.saveAppConfig);
 
   const isAdminPlus = isAdminPlusOrAbove(actualRole);
@@ -18,7 +20,7 @@ export default function Dashboard({ onShowAllLinks, actualRole, userName, openTa
   async function saveProductionDeadline() {
     if (!deadlineDraft) return;
     const ts = new Date(`${deadlineDraft}T23:59:59`).getTime();
-    await saveAppConfigMut({ productionDeadline: ts, updatedBy: userName });
+    await saveAppConfigMut({ workspace, productionDeadline: ts, updatedBy: userName });
     setEditingDeadline(false);
   }
 
@@ -288,8 +290,12 @@ export default function Dashboard({ onShowAllLinks, actualRole, userName, openTa
             </div>
           </div>
         ) : (
-          <div className="section-card" style={{ textAlign: "center", padding: "40px 20px" }}>
-            <p style={{ color: "#94a3b8", fontStyle: "italic", fontSize: "1.1rem" }}>No project links available yet.</p>
+          <div className="section-card" style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10, padding: "14px 20px", marginBottom: 20 }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2.2">
+              <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+              <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+            </svg>
+            <p style={{ color: "#94a3b8", fontStyle: "italic", fontSize: "0.9rem", margin: 0 }}>No project links available yet.</p>
           </div>
         )}
 

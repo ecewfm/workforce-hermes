@@ -1,8 +1,10 @@
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
+import { useWorkspace } from "../utils/workspaceContext";
 
 export default function Notebook({ userRole, userName, showModal }) {
-  const ideas = useQuery(api.notebook.getIdeas);
+  const workspace = useWorkspace();
+  const ideas = useQuery(api.notebook.getIdeas, { workspace });
   const addIdea = useMutation(api.notebook.addIdea);
   const deleteIdeaMut = useMutation(api.notebook.deleteIdea);
   const takeIdeaMut = useMutation(api.notebook.takeIdea);
@@ -13,6 +15,7 @@ export default function Notebook({ userRole, userName, showModal }) {
       timeZone: "America/New_York",
     });
     await addIdea({
+      workspace,
       name: document.getElementById("idea-title").value,
       description: document.getElementById("idea-desc").value,
       pros: document.getElementById("idea-pros").value,

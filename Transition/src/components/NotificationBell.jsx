@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { sendNotification, initNotifications } from "../utils/notifications";
+import { useWorkspace } from "../utils/workspaceContext";
 
 /**
  * NotificationBell — sits beside the Settings gear in the header.
@@ -12,14 +13,16 @@ import { sendNotification, initNotifications } from "../utils/notifications";
  * - Mutations (markRead, markAllRead): Direct Convex
  */
 export default function NotificationBell({ userEmail, onOpenTask }) {
+  const workspace = useWorkspace();
   const [isOpen, setIsOpen] = useState(false);
   const [notifications, setNotifications] = useState(null);
   const [isLoadingList, setIsLoadingList] = useState(false);
   const panelRef = useRef(null);
 
-  // Unread count and latest notification (for desktop banners)
-  const unreadCount = useQuery(api.notifications.getUnreadCount, { email: userEmail || "" });
-  const latestNotif = useQuery(api.notifications.getLatestNotification, { email: userEmail || "" });
+  // Unread count and latest notification (for desktop banners) — scoped to the
+  // active workspace so the badge/banners only reflect this workspace.
+  const unreadCount = useQuery(api.notifications.getUnreadCount, { email: userEmail || "", workspace });
+  const latestNotif = useQuery(api.notifications.getLatestNotification, { email: userEmail || "", workspace });
   const markRead = useMutation(api.notifications.markRead);
   const markAllRead = useMutation(api.notifications.markAllRead);
 
@@ -57,7 +60,7 @@ export default function NotificationBell({ userEmail, onOpenTask }) {
     if (!userEmail) return;
     setIsLoadingList(true);
     try {
-      const resp = await fetch(`/api/getNotifications?email=${encodeURIComponent(userEmail)}`);
+      const resp = await fetch(`/api/getNotifications?email=${encodeURIComponent(userEmail)}&workspace=${encodeURIComponent(workspace)}`);
       if (resp.ok) {
         const data = await resp.json();
         setNotifications(data);
@@ -67,7 +70,7 @@ export default function NotificationBell({ userEmail, onOpenTask }) {
     } finally {
       setIsLoadingList(false);
     }
-  }, [userEmail]);
+  }, [userEmail, workspace]);
 
   // Fetch on dropdown open
   useEffect(() => {
@@ -163,7 +166,7 @@ export default function NotificationBell({ userEmail, onOpenTask }) {
   };
 
   const handleMarkAllRead = async () => {
-    await markAllRead({ email: userEmail });
+    await markAllRead({ email: userEmail, workspace });
     // Optimistically update local state
     setNotifications(prev => prev?.map(n => ({ ...n, read: true })));
   };

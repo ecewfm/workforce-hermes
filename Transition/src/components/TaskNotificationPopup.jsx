@@ -1,12 +1,14 @@
 import { useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
+import { useWorkspace } from "../utils/workspaceContext";
 
 /**
  * TaskNotificationPopup — shows on login for Programmers.
  * Lists tasks that have new notes, features, bugs, or milestones since last viewed.
  */
 export default function TaskNotificationPopup({ userName, onDismiss, onOpenTask }) {
-  const tasks = useQuery(api.tasks.getTasksLight);
+  const workspace = useWorkspace();
+  const tasks = useQuery(api.tasks.getTasksLight, { workspace });
   const userEmail = (localStorage.getItem("wf_email") || "").toLowerCase();
 
   if (!tasks) return null;
