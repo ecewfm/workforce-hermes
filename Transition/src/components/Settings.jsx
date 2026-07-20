@@ -7,7 +7,7 @@ import { isAdminPlusOrAbove, ASSIGNABLE_ROLES } from "../utils/roles";
 import { useWorkspace } from "../utils/workspaceContext";
 import { DEPARTMENTS } from "../utils/departments";
 import { DEFAULT_COLUMNS, COLUMN_COLOR_PRESETS, resolveColumns, taskInColumn, makeColumnId } from "../utils/columns";
-import { GEMINI_MODEL, isCaddyEnabled, setCaddyEnabled } from "../utils/aiConfig";
+import { getGeminiModels, isCaddyEnabled, setCaddyEnabled } from "../utils/aiConfig";
 
 const ACCENT_COLORS = [
   { name: "Emerald", value: "#10b981" },
@@ -595,7 +595,7 @@ export default function Settings({ userName, userEmail, onClose, showModal, onLo
                 <label className="settings-field-label">AI Assistant (Caddy)</label>
                 <p className="settings-field-hint">
                   <strong>Caddy</strong> (the Caduceus assistant). The Gemini API key is configured
-                  securely on the server — it's never exposed in the app. Model: <strong>{GEMINI_MODEL}</strong>.
+                  securely on the server — it's never exposed in the app. Models (fallback order): <strong>{getGeminiModels().join(" → ")}</strong>.
                 </p>
                 <div className="settings-toggle-row">
                   <div className="toggle-info">

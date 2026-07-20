@@ -74,6 +74,16 @@ export async function runAssistant({ history = [], userText, tools = [], systemI
       }
       if (res.ok) return res.json();
       const errText = await res.text().catch(() => "");
+      // A 404 from our OWN proxy route (Vercel serves an HTML 404) means
+      // /api/gemini isn't deployed. A Gemini model-not-found 404 comes back as
+      // JSON through the proxy — let that fall through to the model-retry below.
+      if (!DEV_KEY && res.status === 404) {
+        let routeMissing = true;
+        try { JSON.parse(errText); routeMissing = false; } catch { routeMissing = true; }
+        if (routeMissing) {
+          throw new Error("The AI endpoint /api/gemini returned 404 — the server function isn't deployed yet. Redeploy the latest build to Vercel.");
+        }
+      }
       // Put a rate-limited model on cooldown so later messages skip it.
       if (res.status === 429) rateLimitedUntil[model] = Date.now() + COOLDOWN_MS;
       if (modelIdx < models.length - 1 && isRetryable(res.status)) {

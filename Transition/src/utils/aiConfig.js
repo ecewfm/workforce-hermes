@@ -15,9 +15,29 @@ const DEFAULT_FALLBACK = "gemini-flash-latest";
 export const GEMINI_MODEL = (import.meta.env.VITE_GEMINI_MODEL || DEFAULT_MODEL).trim();
 export const GEMINI_MODEL_FALLBACK = (import.meta.env.VITE_GEMINI_MODEL_FALLBACK || DEFAULT_FALLBACK).trim();
 
-// Ordered, de-duplicated model list the client tries in turn.
+// Ordered, de-duplicated model chain the client tries in turn (dropping to the
+// next on rate-limit/error). Provide ANY number via a comma-separated
+// VITE_GEMINI_MODELS (highest priority); otherwise it's just the primary +
+// backup pair above.
+//   e.g. VITE_GEMINI_MODELS=gemini-3.1-flash-lite,gemini-3.5-flash,gemini-2.5-flash
 export function getGeminiModels() {
-  return [...new Set([GEMINI_MODEL, GEMINI_MODEL_FALLBACK].map((m) => (m || "").trim()).filter(Boolean))];
+  // Forgiving: accept a comma-separated list in EITHER VITE_GEMINI_MODEL or
+  // VITE_GEMINI_MODELS, plus the backup and optional numbered vars. Every source
+  // is split on commas, trimmed, de-duplicated, and tried in order.
+  //   e.g. VITE_GEMINI_MODEL=gemini-3.1-flash-lite, gemini-3.5-flash, gemini-3-flash
+  const sources = [
+    import.meta.env.VITE_GEMINI_MODELS,
+    import.meta.env.VITE_GEMINI_MODEL,
+    import.meta.env.VITE_GEMINI_MODEL_FALLBACK,
+    import.meta.env.VITE_GEMINI_MODEL_2,
+    import.meta.env.VITE_GEMINI_MODEL_3,
+    import.meta.env.VITE_GEMINI_MODEL_4,
+  ];
+  const chain = sources
+    .flatMap((v) => String(v || "").split(","))
+    .map((m) => m.trim())
+    .filter(Boolean);
+  return [...new Set(chain.length ? chain : [DEFAULT_MODEL, DEFAULT_FALLBACK])];
 }
 
 // Google Search grounding lets Caddy research the web — but it draws on a

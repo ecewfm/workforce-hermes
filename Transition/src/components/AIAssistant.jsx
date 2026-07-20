@@ -129,8 +129,11 @@ export default function AIAssistant({ open, onClose, userName, userEmail, actual
       // Keep the real reason in the console; show the user a gentle stand-in.
       console.warn("[Caddy] error:", err);
       const raw = err?.message || "";
-      const friendly = /api key|not configured/i.test(raw)
-        ? "My connection to the AI isn't set up on the server yet — ask an admin to configure the Gemini key."
+      // Config/deploy problems get a clear, actionable message; genuine
+      // rate-limits / transient errors get the playful "coffee" line.
+      const isSetupIssue = /api key|not configured|not deployed|\/api\/gemini|endpoint|404/i.test(raw);
+      const friendly = isSetupIssue
+        ? `⚠️ ${raw}`
         : COFFEE_LINES[coffeeIdx.current++ % COFFEE_LINES.length];
       setMessages((m) => [...m, { role: "assistant", text: friendly, error: true }]);
     } finally {
