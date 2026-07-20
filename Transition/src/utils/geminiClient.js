@@ -3,6 +3,20 @@ import { getGeminiModels, ENABLE_WEB_SEARCH } from "./aiConfig";
 // Safety cap on how many tool-call rounds a single request may take.
 const MAX_TURNS = 10;
 
+// Remember which models just rate-limited (429) so we skip them for a short
+// cooldown instead of re-hitting the same capped model on every message. This
+// makes Caddy fall straight to a model that still has quota.
+const rateLimitedUntil = {}; // model id -> timestamp
+const COOLDOWN_MS = 60_000;
+
+function firstAvailableIdx(models) {
+  const now = Date.now();
+  for (let i = 0; i < models.length; i++) {
+    if (!(rateLimitedUntil[models[i]] > now)) return i;
+  }
+  return 0; // all cooling down — try the first anyway
+}
+
 /**
  * Run one assistant turn with Gemini function-calling.
  *
@@ -17,7 +31,14 @@ const MAX_TURNS = 10;
  */
 export async function runAssistant({ history = [], userText, tools = [], systemInstruction, executeTool, onStatus }) {
   const models = getGeminiModels();
-  let modelIdx = 0; // persists across turns — once we fall back, stay there
+  // Start on the first model that isn't in a rate-limit cooldown.
+  let modelIdx = firstAvailableIdx(models);
+
+  // Local `npm run dev` (Vite) has no /api routes, so fall back to calling Gemini
+  // directly with a DEV-ONLY key. This whole branch is compiled out of production
+  // builds (import.meta.env.DEV === false), so the key never ships — prod always
+  // goes through the /api/gemini proxy. Don't set VITE_GEMINI_API_KEY on Vercel.
+  const DEV_KEY = import.meta.env.DEV ? (import.meta.env.VITE_GEMINI_API_KEY || "").trim() : "";
   // Google Search grounding (only when enabled — see aiConfig) alongside our
   // own function tools.
   const toolDecls = [
@@ -32,21 +53,32 @@ export async function runAssistant({ history = [], userText, tools = [], systemI
       const model = models[modelIdx];
       let res;
       try {
-        // Route through our server proxy so the API key stays server-side.
-        res = await fetch("/api/gemini", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ model, body }),
-        });
+        if (DEV_KEY) {
+          // Local dev only — direct call.
+          res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(DEV_KEY)}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+          });
+        } else {
+          // Production — server proxy keeps the key server-side.
+          res = await fetch("/api/gemini", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ model, body }),
+          });
+        }
       } catch {
         if (modelIdx < models.length - 1) { modelIdx++; onStatus?.("thinking", "Switching to backup model…"); continue; }
         throw new Error("Couldn't reach the assistant service (network error). Check your connection.");
       }
       if (res.ok) return res.json();
       const errText = await res.text().catch(() => "");
+      // Put a rate-limited model on cooldown so later messages skip it.
+      if (res.status === 429) rateLimitedUntil[model] = Date.now() + COOLDOWN_MS;
       if (modelIdx < models.length - 1 && isRetryable(res.status)) {
         modelIdx++;
-        onStatus?.("thinking", "Primary model busy — switching to backup…");
+        onStatus?.("thinking", "That model's busy — switching to backup…");
         continue;
       }
       throw new Error(parseGeminiError(res.status, errText, model));

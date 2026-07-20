@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
-import { getProjectDeadlines, deadlineTone, DAY_MS } from "../utils/deadlines";
+import { getProjectDeadlines, deadlineTone, DAY_MS, milestoneAnchor } from "../utils/deadlines";
 import { notifyTaskUpdated, notifyMilestoneCompleted, notifyNoteAdded } from "../utils/notifications";
 import { useWorkspace } from "../utils/workspaceContext";
 import { resolveColumns, taskInColumn } from "../utils/columns";
@@ -22,17 +22,10 @@ const isTaskOverdue = (t) => {
   if (firstIncompleteIdx === -1) return false;
   const m = milestones[firstIncompleteIdx];
   if (!m || !m.days) return false;
-  let lastTime = 0;
-  if (firstIncompleteIdx > 0) {
-    lastTime = milestones[firstIncompleteIdx - 1].completedAtTime || milestones[firstIncompleteIdx - 1].createdAtTime || t.lastUpdated;
-  } else {
-    lastTime = m.createdAtTime || t.lastUpdated;
-  }
-  if (lastTime) {
-    const elapsedDays = (Date.now() - lastTime) / (1000 * 60 * 60 * 24);
-    return elapsedDays > m.days;
-  }
-  return false;
+  const anchor = milestoneAnchor(t, firstIncompleteIdx);
+  if (!anchor) return false; // not started (To Do) → never overdue
+  const elapsedDays = (Date.now() - anchor) / DAY_MS;
+  return elapsedDays > m.days;
 };
 
 const getMilestoneDeadline = (t, idx) => {
@@ -40,16 +33,8 @@ const getMilestoneDeadline = (t, idx) => {
   const milestones = t.milestones || [];
   const m = milestones[idx];
   if (!m || !m.days) return null;
-  let lastTime = 0;
-  if (idx > 0) {
-    lastTime = milestones[idx - 1].completedAtTime || milestones[idx - 1].createdAtTime || t.lastUpdated;
-  } else {
-    lastTime = m.createdAtTime || t.lastUpdated;
-  }
-  if (lastTime) {
-    return lastTime + (m.days * 24 * 60 * 60 * 1000);
-  }
-  return null;
+  const anchor = milestoneAnchor(t, idx);
+  return anchor ? anchor + m.days * DAY_MS : null;
 };
 
 
@@ -342,7 +327,8 @@ export default function KanbanBoard({ userRole, actualRole, userName, openTaskMo
     // at index `doneM` is the current one in progress.
     const wCurrentDotIdx = doneM < totalM ? doneM : -1;
     const wDaysLabel =
-      completionLeft === null ? "No deadline set"
+      (t.status || "").toLowerCase() === "todo" ? "Starts once in Pending"
+      : completionLeft === null ? "No deadline set"
       : completionLeft < 0 ? `${Math.abs(completionLeft)} days overdue`
       : completionLeft === 0 ? "Due today"
       : `${completionLeft} day${completionLeft === 1 ? "" : "s"} remaining`;
@@ -356,11 +342,8 @@ export default function KanbanBoard({ userRole, actualRole, userName, openTaskMo
     // elapsed time since the previous milestone finished exceeds its day budget.
     let wCurrentOverdue = false;
     if (wCurrentM && (wCurrentM.days || 0) > 0) {
-      const prevM = wFirstIncomplete > 0 ? milestones[wFirstIncomplete - 1] : null;
-      const lastTime = wFirstIncomplete > 0
-        ? (prevM?.completedAtTime || prevM?.createdAtTime || t.lastUpdated)
-        : (wCurrentM.createdAtTime || t.lastUpdated);
-      if (lastTime && (Date.now() - lastTime) / DAY_MS > wCurrentM.days) wCurrentOverdue = true;
+      const anchor = milestoneAnchor(t, wFirstIncomplete);
+      if (anchor && (Date.now() - anchor) / DAY_MS > wCurrentM.days) wCurrentOverdue = true;
     }
 
     // Rest body = the original detailed design.
@@ -571,21 +554,11 @@ export default function KanbanBoard({ userRole, actualRole, userName, openTaskMo
                   if (m.completed) status = "completed";
                   else if (idx === firstIncompleteIdx) status = "active";
 
-                  // Check if overdue
+                  // Check if overdue (no countdown until the project leaves To Do)
                   let isOverdue = false;
                   if (status === "active" && m.days > 0) {
-                    let lastTime = 0;
-                    if (idx > 0) {
-                      lastTime = milestones[idx - 1].completedAtTime || milestones[idx - 1].createdAtTime || t.lastUpdated;
-                    } else {
-                      lastTime = m.createdAtTime || t.lastUpdated;
-                    }
-                    if (lastTime) {
-                      const elapsedDays = (Date.now() - lastTime) / (1000 * 60 * 60 * 24);
-                      if (elapsedDays > m.days) {
-                        isOverdue = true;
-                      }
-                    }
+                    const anchor = milestoneAnchor(t, idx);
+                    if (anchor && (Date.now() - anchor) / DAY_MS > m.days) isOverdue = true;
                   }
 
                   let actionBtn;

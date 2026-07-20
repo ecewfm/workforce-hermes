@@ -3,6 +3,7 @@ import { useQuery, useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { notifyNoteAdded, notifyMilestoneCompleted } from "../utils/notifications";
 import { isAdminPlusOrAbove, isAdminLevel as isAdminLevelRole, canEditAnyCard } from "../utils/roles";
+import { milestoneAnchor, DAY_MS } from "../utils/deadlines";
 import FeatureModal from "./FeatureModal";
 
 function deobfuscate(str) {
@@ -1123,22 +1124,14 @@ export default function TaskModal({ taskId, isEditMode, initialNotesOpen, userRo
                     if (m.completed) status = "completed";
                     else if (idx === firstIncompleteIdx) status = "active";
 
-                    // Check if overdue
+                    // Check if overdue (no countdown until the project leaves To Do)
                     let isOverdue = false;
                     let deadlineTime = null;
                     if (task.status !== "scrapped" && status === "active" && m.days > 0) {
-                      let lastTime = 0;
-                      if (idx > 0) {
-                        lastTime = milestones[idx - 1].completedAtTime || milestones[idx - 1].createdAtTime || task.lastUpdated;
-                      } else {
-                        lastTime = m.createdAtTime || task.lastUpdated;
-                      }
-                      if (lastTime) {
-                        deadlineTime = lastTime + (m.days * 24 * 60 * 60 * 1000);
-                        const elapsedDays = (Date.now() - lastTime) / (1000 * 60 * 60 * 24);
-                        if (elapsedDays > m.days) {
-                          isOverdue = true;
-                        }
+                      const anchor = milestoneAnchor(task, idx);
+                      if (anchor) {
+                        deadlineTime = anchor + m.days * DAY_MS;
+                        if ((Date.now() - anchor) / DAY_MS > m.days) isOverdue = true;
                       }
                     }
 

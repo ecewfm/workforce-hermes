@@ -81,6 +81,9 @@ export default defineSchema({
     // Admin-pinned completion deadline (ms). Overrides the computed
     // milestone-based completion date everywhere it's displayed.
     deadlineOverride: v.optional(v.number()),
+    // When the project first left "To Do" (entered Pending / a working column).
+    // Deadline countdowns anchor here — nothing counts while still in To Do.
+    pendingStartedAt: v.optional(v.number()),
     // Dedup markers for the daily manager project scan (see tasks.scanProjectsForManagers).
     // Prevent re-notifying managers about the same overdue/stale episode every run.
     managerLateNotifiedAt: v.optional(v.number()),

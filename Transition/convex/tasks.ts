@@ -214,10 +214,14 @@ function computeCompletionDue(task: any): { completionDue: number | null; comple
 
   let computed: number | null = null;
   if (idx !== -1) {
-    const active = ms[idx];
-    const anchor =
-      (idx > 0 ? (ms[idx - 1].completedAtTime || ms[idx - 1].createdAtTime) : active.createdAtTime) ||
-      task.lastUpdated;
+    // Mirror the client's milestoneAnchor: no countdown while the project is
+    // still in "To Do"; the first milestone anchors to when it entered Pending
+    // (task.pendingStartedAt), later ones to the previous completion.
+    const isTodo = (task.status || "").toLowerCase() === "todo";
+    const projectStart = task.pendingStartedAt || task.lastUpdated || null;
+    const anchor = isTodo
+      ? null
+      : (idx > 0 ? (ms[idx - 1].completedAtTime || ms[idx - 1].createdAtTime || projectStart) : projectStart);
     if (anchor) {
       const remainingDays = ms.slice(idx).reduce((s: number, m: any) => s + (m.days || 0), 0);
       computed = anchor + remainingDays * DAY_MS;
@@ -369,10 +373,20 @@ export const updateTaskStatus = mutation({
     newStatus: v.string(),
   },
   handler: async (ctx, args) => {
-    await ctx.db.patch(args.taskId, {
+    const patch: Record<string, unknown> = {
       status: args.newStatus,
       lastUpdated: Date.now(),
-    });
+    };
+    // Deadline countdowns don't run while a project sits in "To Do". The clock
+    // starts the first time it leaves To Do (i.e. enters Pending / any working
+    // column). Stamp that moment once so milestone deadlines anchor to it.
+    if ((args.newStatus || "").toLowerCase() !== "todo") {
+      const task = await ctx.db.get(args.taskId);
+      if (task && !(task as any).pendingStartedAt) {
+        patch.pendingStartedAt = Date.now();
+      }
+    }
+    await ctx.db.patch(args.taskId, patch);
   },
 });
 

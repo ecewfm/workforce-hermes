@@ -17,6 +17,25 @@ export function fmtDate(ts) {
   return new Date(ts).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 }
 
+/**
+ * The timestamp a milestone's countdown starts from:
+ *   • While the project is still in "To Do" → null (the clock hasn't started;
+ *     project creation must NOT begin the countdown).
+ *   • First milestone → when the project entered "Pending" (t.pendingStartedAt);
+ *     legacy projects with no such stamp fall back to t.lastUpdated.
+ *   • Later milestones → when the PREVIOUS milestone was completed (so each
+ *     milestone's window only opens after the prior one finishes).
+ * Returns null when no start time is known.
+ */
+export function milestoneAnchor(t, idx) {
+  if ((t.status || "").toLowerCase() === "todo") return null;
+  const ms = t.milestones || [];
+  const projectStart = t.pendingStartedAt || t.lastUpdated || null;
+  if (idx <= 0) return projectStart;
+  const prev = ms[idx - 1];
+  return prev?.completedAtTime || prev?.createdAtTime || projectStart;
+}
+
 export function getProjectDeadlines(t) {
   const ms = t.milestones || [];
   const override = t.deadlineOverride || null;
@@ -33,12 +52,9 @@ export function getProjectDeadlines(t) {
   if (idx !== -1) {
     const active = ms[idx];
     activeName = active.name;
-    // The active milestone's window starts when the previous one completed —
-    // the same anchoring the overdue logic uses everywhere else.
-    const anchor =
-      (idx > 0
-        ? ms[idx - 1].completedAtTime || ms[idx - 1].createdAtTime
-        : active.createdAtTime) || t.lastUpdated;
+    // Countdown anchor — null while the project is still in To Do, otherwise
+    // the Pending-start (first milestone) or previous completion (later ones).
+    const anchor = milestoneAnchor(t, idx);
     if (anchor) {
       const remainingDays = ms.slice(idx).reduce((s, m) => s + (m.days || 0), 0);
       milestoneDue = anchor + (active.days || 0) * DAY_MS;

@@ -17,6 +17,7 @@ import TaskModal from "./components/TaskModal";
 import NotesModal from "./components/NotesModal";
 import AIAssistant from "./components/AIAssistant";
 import { isCaddyEnabled } from "./utils/aiConfig";
+import { milestoneAnchor, DAY_MS } from "./utils/deadlines";
 import Login from "./components/Login";
 import SetPassword from "./components/SetPassword";
 import CustomModal from "./components/CustomModal";
@@ -1527,17 +1528,9 @@ export default function App() {
                   if (firstIncompleteIdx === -1) return false;
                   const m = milestones[firstIncompleteIdx];
                   if (!m || !m.days) return false;
-                  let lastTime = 0;
-                  if (firstIncompleteIdx > 0) {
-                    lastTime = milestones[firstIncompleteIdx - 1].completedAtTime || milestones[firstIncompleteIdx - 1].createdAtTime || t.lastUpdated;
-                  } else {
-                    lastTime = m.createdAtTime || t.lastUpdated;
-                  }
-                  if (lastTime) {
-                    const elapsedDays = (Date.now() - lastTime) / (1000 * 60 * 60 * 24);
-                    return elapsedDays > m.days;
-                  }
-                  return false;
+                  const anchor = milestoneAnchor(t, firstIncompleteIdx);
+                  if (!anchor) return false; // not started (To Do) → never overdue
+                  return (Date.now() - anchor) / DAY_MS > m.days;
                 };
 
                 const allAssigned = tasks?.filter(t => (t.assignee || "").toLowerCase().includes(activeProfile.name.toLowerCase().split(" ")[0])) || [];
@@ -1614,14 +1607,9 @@ export default function App() {
                               const isMilestoneOverdue = isOverdue && !m.completed && (activeIdx === idx);
                               let dueStr = "";
                               if (t.status !== "scrapped" && activeIdx === idx && m.days > 0) {
-                                let lastTime = 0;
-                                if (idx > 0) {
-                                  lastTime = t.milestones[idx - 1].completedAtTime || t.milestones[idx - 1].createdAtTime || t.lastUpdated;
-                                } else {
-                                  lastTime = m.createdAtTime || t.lastUpdated;
-                                }
-                                if (lastTime) {
-                                  const deadlineTime = lastTime + (m.days * 24 * 60 * 60 * 1000);
+                                const anchor = milestoneAnchor(t, idx);
+                                if (anchor) {
+                                  const deadlineTime = anchor + m.days * DAY_MS;
                                   dueStr = ` (Due: ${new Date(deadlineTime).toLocaleDateString("en-US", { month: "short", day: "numeric" })})`;
                                 }
                               }
