@@ -6,7 +6,7 @@ import { FALLBACK_MILESTONES } from "../utils/defaults";
 import { isAdminPlusOrAbove, isManager, ASSIGNABLE_ROLES } from "../utils/roles";
 import { useWorkspace } from "../utils/workspaceContext";
 import { DEPARTMENTS, workspaceLabel, MAIN_ADMIN_EMAIL } from "../utils/departments";
-import { hashPassword } from "../utils/workspacePassword";
+import { hashPassword, markWorkspaceUnlocked } from "../utils/workspacePassword";
 import { DEFAULT_COLUMNS, COLUMN_COLOR_PRESETS, resolveColumns, taskInColumn, makeColumnId } from "../utils/columns";
 import { getGeminiModels, isCaddyEnabled, setCaddyEnabled } from "../utils/aiConfig";
 
@@ -939,6 +939,8 @@ export default function Settings({ userName, userEmail, onClose, showModal, onLo
                         try {
                           const workspacePasswordHash = await hashPassword(pw);
                           await saveAppConfigMut({ workspace, workspacePasswordHash, updatedBy: userName });
+                          // Keep the setter in this workspace — don't gate them on the password they just set.
+                          markWorkspaceUnlocked(workspace);
                           setWsPwInput("");
                           showModal({ title: "Password Set", message: `${workspaceLabel(workspace)} now requires this password to enter.`, type: "success" });
                         } catch (err) {
