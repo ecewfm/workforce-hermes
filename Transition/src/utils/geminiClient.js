@@ -1,4 +1,4 @@
-import { getGeminiModels, ENABLE_WEB_SEARCH } from "./aiConfig";
+import { getGeminiModels, TASK_MODEL, ENABLE_WEB_SEARCH } from "./aiConfig";
 
 // Safety cap on how many tool-call rounds a single request may take.
 const MAX_TURNS = 10;
@@ -29,8 +29,13 @@ function firstAvailableIdx(models) {
  * @param {(phase:string, label:string)=>void} opts.onStatus  progress indicator hook
  * @returns {Promise<{text:string, contents:Array}>} final text + updated contents (for history)
  */
-export async function runAssistant({ history = [], userText, tools = [], systemInstruction, executeTool, onStatus }) {
-  const models = getGeminiModels();
+export async function runAssistant({ history = [], userText, tools = [], systemInstruction, executeTool, onStatus, taskMode = false }) {
+  let models = getGeminiModels();
+  // For action/"do a task" requests, try the stronger TASK_MODEL first, then
+  // fall back through the normal chain (dedup so it isn't tried twice).
+  if (taskMode && TASK_MODEL) {
+    models = [TASK_MODEL, ...models.filter((m) => m !== TASK_MODEL)];
+  }
   // Start on the first model that isn't in a rate-limit cooldown.
   let modelIdx = firstAvailableIdx(models);
 

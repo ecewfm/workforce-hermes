@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { runAssistant } from "../utils/geminiClient";
+import { isTaskRequest } from "../utils/aiConfig";
 import { useAiActions } from "../utils/aiTools";
 import { loadChats, saveChat, deleteChat, newSessionId } from "../utils/caddyChats";
 
@@ -166,6 +167,9 @@ export default function AIAssistant({ open, onClose, userName, userEmail, actual
         systemInstruction,
         executeTool,
         onStatus: (phase) => setStatus({ phase, label: sassLine(phase) }),
+        // Route action requests (create/edit a project, feature, bug…) to the
+        // stronger task model; plain questions stay on the lighter model.
+        taskMode: isTaskRequest(msg),
       });
       historyRef.current = contents;
       setMessages((m) => [...m, { role: "assistant", text: reply }]);

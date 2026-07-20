@@ -15,6 +15,13 @@ const DEFAULT_FALLBACK = "gemini-flash-latest";
 export const GEMINI_MODEL = (import.meta.env.VITE_GEMINI_MODEL || DEFAULT_MODEL).trim();
 export const GEMINI_MODEL_FALLBACK = (import.meta.env.VITE_GEMINI_MODEL_FALLBACK || DEFAULT_FALLBACK).trim();
 
+// Stronger model used for action / "do a task" requests (creating or editing
+// projects, features, bugs, notes…) which benefit from better descriptions and
+// multi-step tool use. Plain questions stay on the lighter, higher-quota model
+// (the free tier gives lite far more headroom). Override via env; it's tried
+// FIRST for task requests, then falls back through the normal chain.
+export const TASK_MODEL = (import.meta.env.VITE_GEMINI_TASK_MODEL || "gemini-3-flash-preview").trim();
+
 // Ordered, de-duplicated model chain the client tries in turn (dropping to the
 // next on rate-limit/error). Provide ANY number via a comma-separated
 // VITE_GEMINI_MODELS (highest priority); otherwise it's just the primary +
@@ -45,6 +52,18 @@ export function getGeminiModels() {
 // causes 429s even when token/RPD usage is tiny. OFF by default; set
 // VITE_GEMINI_WEB_SEARCH=true once you have billing/quota for grounding.
 export const ENABLE_WEB_SEARCH = String(import.meta.env.VITE_GEMINI_WEB_SEARCH || "").toLowerCase() === "true";
+
+// Rough intent check: is the user asking Caddy to DO something (create/modify a
+// project, feature, bug, note, milestone, column…) rather than just answer a
+// question? Action requests get routed to TASK_MODEL for higher-quality tool
+// use; queries stay on the lighter model. Verb + task-noun keeps false
+// positives low (a miss just means the lighter model — the current default).
+const TASK_VERB = /\b(create|make|add|new|set\s?up|setup|start|build|log|file|open|register|schedule|assign|update|change|jot|post|mark|complete|move|rename|remove|delete)\b/i;
+const TASK_NOUN = /\b(project|task|feature|bug|note|idea|milestone|deadline|column|status|ticket|assignment)\b/i;
+export function isTaskRequest(text) {
+  const t = String(text || "");
+  return TASK_VERB.test(t) && TASK_NOUN.test(t);
+}
 
 // ── Enable / disable the whole Caddy assistant ──────────────────────────────
 const ENABLED_STORAGE = "wf_caddy_enabled";
