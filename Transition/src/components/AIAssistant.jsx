@@ -29,7 +29,6 @@ const SASS = {
     "hmm hmm hmm… let me think",
     "consulting my inner genius…",
     "let me guess, this is a trick question…",
-    "Joriz told you to do this did he? 😤",
     'ugh, to much brainpower required for this, I need a coffee ☕',
   ],
   working: [
