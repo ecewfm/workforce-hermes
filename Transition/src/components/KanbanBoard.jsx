@@ -419,17 +419,20 @@ export default function KanbanBoard({ userRole, actualRole, userName, openTaskMo
           e.currentTarget.classList.add("dragging");
         }}
         onDragEnd={(e) => !isFullView && e.currentTarget.classList.remove("dragging")}
-        onClick={() => {
+        onClick={(e) => {
           setFullViewColumn(null);
+          // Capture the card's on-screen rect so the modal can GSAP-zoom FROM it.
+          const r = e.currentTarget.getBoundingClientRect();
+          const origin = { left: r.left, top: r.top, width: r.width, height: r.height };
           if (isDefaultCard) {
             // Open the modal immediately (no wait), and play the card
             // consolidate→expand at the SAME time so its scale-in and the
             // card's expansion are one continuous motion — no perceived delay.
             setOpeningId(t._id);
-            openTaskModal(t._id);
+            openTaskModal(t._id, false, false, origin);
             window.setTimeout(() => setOpeningId(null), 450);
           } else {
-            openTaskModal(t._id);
+            openTaskModal(t._id, false, false, origin);
           }
         }}
         onContextMenu={(e) => onContextMenu(e, t)}

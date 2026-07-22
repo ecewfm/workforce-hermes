@@ -1,4 +1,6 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useLayoutEffect } from "react";
+import { gsap } from "gsap";
+import { createPortal } from "react-dom";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { notifyNoteAdded, notifyMilestoneCompleted } from "../utils/notifications";
@@ -32,7 +34,7 @@ function deobfuscate(str) {
 }
 
 
-export default function TaskModal({ taskId, isEditMode, initialNotesOpen, userRole, actualRole, userName, staff, onClose, showModal, showInputModal, onViewProfile }) {
+export default function TaskModal({ taskId, isEditMode, initialNotesOpen, userRole, actualRole, userName, staff, onClose, showModal, showInputModal, onViewProfile, originRect }) {
   const task = useQuery(api.tasks.getTaskById, { taskId });
   const updateTaskMilestones = useMutation(api.tasks.updateTaskMilestones);
   const addNoteToTask = useMutation(api.tasks.addNoteToTask);
@@ -197,6 +199,61 @@ export default function TaskModal({ taskId, isEditMode, initialNotesOpen, userRo
   };
 
   const [refreshBadges, setRefreshBadges] = useState(0);
+
+  // ── GSAP open/close: zoom the modal FROM the card that was clicked (or a
+  // center pop when opened without a source, e.g. from search). ──────────────
+  const overlayRef = useRef(null);
+  const contentRef = useRef(null);
+  const hasAnimatedOpen = useRef(false);
+  const closingRef = useRef(false);
+
+  // The zoom is applied to the whole app view (#root). The modal itself is
+  // portaled to <body> (below), so it sits OUTSIDE the zoomed layer and stays
+  // crisp on top.
+  const appView = () => document.getElementById("root");
+
+  useLayoutEffect(() => {
+    if (hasAnimatedOpen.current) return;
+    const content = contentRef.current, overlay = overlayRef.current;
+    if (!task || !content || !overlay) return; // still loading — wait for the real modal
+    hasAnimatedOpen.current = true;
+    const root = appView();
+    const zoom = root && originRect; // camera push-in only when opened from a card
+    // Modal is hidden while the view zooms, so the zoom reads first.
+    gsap.set(overlay, { opacity: 0 });
+    gsap.set(content, { opacity: 0, scale: 0.94, transformOrigin: "center center" });
+    const tl = gsap.timeline();
+    if (zoom) {
+      // Phase 1: the WHOLE view zooms toward the clicked card (camera push-in).
+      const ox = originRect.left + originRect.width / 2;
+      const oy = originRect.top + originRect.height / 2;
+      gsap.set(root, { transformOrigin: `${ox}px ${oy}px`, willChange: "transform" });
+      tl.fromTo(root, { scale: 1 }, { scale: 1.5, duration: 0.5, ease: "power2.inOut" }, 0);
+    }
+    // Phase 2: once we're facing the card, the task modal opens over it.
+    tl.to(overlay, { opacity: 1, duration: 0.3, ease: "power2.out" }, zoom ? 0.4 : 0);
+    tl.to(content, { opacity: 1, scale: 1, duration: 0.42, ease: "back.out(1.4)", clearProps: "transform,opacity" }, "<");
+  }, [task, originRect]);
+
+  // Safety: whenever the modal leaves the tree (however it closed), snap the
+  // zoomed view back so #root is never left transformed.
+  useEffect(() => () => {
+    const root = appView();
+    if (root) gsap.set(root, { clearProps: "transform,transformOrigin,willChange" });
+  }, []);
+
+  // Animated close — the modal closes, then the view zooms back out.
+  const doClose = () => {
+    if (closingRef.current) return;
+    closingRef.current = true;
+    const content = contentRef.current, overlay = overlayRef.current;
+    const root = appView();
+    const finish = () => { if (root) gsap.set(root, { clearProps: "transform,transformOrigin,willChange" }); onClose(); };
+    const tl = gsap.timeline({ onComplete: finish });
+    if (content) tl.to(content, { opacity: 0, scale: 0.94, duration: 0.24, ease: "power2.in" }, 0);
+    if (overlay) tl.to(overlay, { opacity: 0, duration: 0.3, ease: "power1.in" }, 0.04);
+    if (root && originRect) tl.to(root, { scale: 1, duration: 0.45, ease: "power2.inOut" }, 0.12);
+  };
 
   // 1. Pure effects (no state dependencies other than taskId)
   useEffect(() => {
@@ -614,10 +671,10 @@ export default function TaskModal({ taskId, isEditMode, initialNotesOpen, userRo
 
   if (!task) return null;
 
-  return (
-    <div className="modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="modal-content task-modal-content" onClick={(e) => e.stopPropagation()}>
-        <button className="modal-close" onClick={onClose}>×</button>
+  return createPortal(
+    <div className="modal-overlay" ref={overlayRef} onClick={(e) => { if (e.target === e.currentTarget) doClose(); }}>
+      <div className="modal-content task-modal-content" ref={contentRef} onClick={(e) => e.stopPropagation()}>
+        <button className="modal-close" onClick={doClose}>×</button>
 
         <div className="modal-grid-3">
 
@@ -1826,6 +1883,7 @@ export default function TaskModal({ taskId, isEditMode, initialNotesOpen, userRo
           </div>
         </>
       )}
-    </div>
+    </div>,
+    document.body
   );
 }

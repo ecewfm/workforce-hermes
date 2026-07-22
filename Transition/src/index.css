@@ -544,7 +544,8 @@ header {
 }
 .modal-content.task-modal-content {
   transform-origin: center center;
-  animation: taskModalOpen 0.15s var(--ease-out-expo) backwards;
+  /* Open/close is GSAP-driven (zoom from the clicked card) — see TaskModal.jsx.
+     No CSS keyframe here so it doesn't fight the JS transform. */
 }
 
 /* only the hovered column stops clipping and floats above its neighbours */
