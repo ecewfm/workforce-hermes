@@ -522,30 +522,11 @@ header {
   -webkit-backdrop-filter: none !important;
 }
 
-/* Click-to-open: the card consolidates inward, then expands and fades as the
-   TaskModal scales in from centre to take over. */
-@keyframes tfOpenConsolidate {
-  0%   { transform: scale(1.08); opacity: 1; }
-  33%  { transform: scale(0.85); opacity: 1; }   /* consolidate (~120ms) */
-  100% { transform: scale(1.45); opacity: 0; }   /* expand + fade as modal takes over */
-}
-.tf-shell.tf-opening {
-  animation: tfOpenConsolidate 0.36s var(--ease-out-quart) forwards;
-  z-index: 70;
-  pointer-events: none;
-}
-/* wings retract toward centre while the card consolidates */
-.tf-shell.tf-opening .tf-wing { transform: none; box-shadow: none; }
-
-/* TaskModal expands from centre to complete the hand-off from the card */
-@keyframes taskModalOpen {
-  from { opacity: 0; transform: scale(0.85); filter: blur(6px); }
-  to   { opacity: 1; transform: scale(1); filter: blur(0); }
-}
+/* Click-to-open is a GSAP container transform: the modal box starts ON the
+   card's rect and morphs into place (TaskModal.jsx). The card itself needs no
+   animation — the morphing box covers it exactly. */
 .modal-content.task-modal-content {
   transform-origin: center center;
-  /* Open/close is GSAP-driven (zoom from the clicked card) — see TaskModal.jsx.
-     No CSS keyframe here so it doesn't fight the JS transform. */
 }
 
 /* only the hovered column stops clipping and floats above its neighbours */
@@ -6854,12 +6835,10 @@ header { animation: heroEnter var(--dur-slow) var(--ease-out-expo) backwards; }
 .kanban-container .kanban-col:nth-child(6) { animation-delay: 0.31s; }
 .kanban-container .kanban-col:nth-child(n+7) { animation-delay: 0.36s; }
 
-/* Cards inside each column trickle in after their column lands */
-.col-content .task-card { animation: riseIn 0.4s var(--ease-out-quart) backwards; animation-delay: 0.42s; }
-.col-content .task-card:nth-child(1) { animation-delay: 0.18s; }
-.col-content .task-card:nth-child(2) { animation-delay: 0.24s; }
-.col-content .task-card:nth-child(3) { animation-delay: 0.30s; }
-.col-content .task-card:nth-child(4) { animation-delay: 0.36s; }
+/* Cards inside each column trickle in after their column lands — GSAP-driven
+   (KanbanBoard.jsx): a real per-column stagger over the card wrappers. The old
+   CSS nth-child version was defeated by the .tf-shell wrapper (same child
+   index every time → all cards on one beat). */
 
 /* Dashboard stat tiles */
 .stats-grid .stat-card { animation: riseIn 0.45s var(--ease-out-quart) backwards; }
@@ -6890,6 +6869,15 @@ header { animation: heroEnter var(--dur-slow) var(--ease-out-expo) backwards; }
 .thread-modal-content,
 .notes-fullscreen-card,
 .handbook-panel { animation: modalIn var(--dur-med) var(--ease-out-expo) backwards; }
+
+/* The task modal's open/close is fully GSAP-driven (card→modal morph in
+   TaskModal.jsx). A running CSS animation overrides GSAP's inline styles,
+   which desynced the morph — so entrance keyframes stay OFF this modal. */
+.modal-overlay.task-modal-overlay,
+.task-modal-overlay .modal-content { animation: none; }
+/* GSAP also fades the close button (it's a direct child of the content box);
+   its `transition: all` would drag that fade 0.2s late — hover bg only. */
+.task-modal-overlay .modal-close { transition: background 0.2s; }
 
 /* Animated exit for the alert/confirm modal (driven by .closing in JSX) */
 .custom-modal-overlay.closing { animation: overlayOut 0.18s ease both; }

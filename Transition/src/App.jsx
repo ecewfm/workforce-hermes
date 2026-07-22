@@ -90,7 +90,8 @@ export default function App() {
   const [splashActive, setSplashActive] = useState(() => localStorage.getItem("wf_authenticated") === "true");
   const [userAvatar, setUserAvatar] = useState("");
   const [modalTaskId, setModalTaskId] = useState(null);
-  const [modalOriginRect, setModalOriginRect] = useState(null); // card rect the modal zooms from (GSAP)
+  const [modalOriginRect, setModalOriginRect] = useState(null); // card rect the modal morphs from (GSAP)
+  const [modalSeedTask, setModalSeedTask] = useState(null); // board's light task — lets the modal paint instantly
   const [modalEditMode, setModalEditMode] = useState(false);
   const [modalOpenNotes, setModalOpenNotes] = useState(false);
   const [notesModalTaskId, setNotesModalTaskId] = useState(null);
@@ -599,8 +600,9 @@ export default function App() {
     setCurrentView(viewId);
   }
 
-  function openTaskModal(taskId, editMode = false, openNotes = false, originRect = null) {
+  function openTaskModal(taskId, editMode = false, openNotes = false, originRect = null, seedTask = null) {
     setModalOriginRect(originRect);
+    setModalSeedTask(seedTask && seedTask._id === taskId ? seedTask : null);
     setModalTaskId(taskId);
     setModalEditMode(editMode);
     setModalOpenNotes(openNotes);
@@ -611,6 +613,7 @@ export default function App() {
     setModalEditMode(false);
     setModalOpenNotes(false);
     setModalOriginRect(null);
+    setModalSeedTask(null);
   }
 
   // Opens ONLY the notes modal (no full task modal behind it)
@@ -1160,6 +1163,7 @@ export default function App() {
         <TaskModal
           taskId={modalTaskId}
           originRect={modalOriginRect}
+          seedTask={modalSeedTask}
           isEditMode={modalEditMode}
           initialNotesOpen={modalOpenNotes}
           userRole={userRole}

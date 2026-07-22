@@ -37,6 +37,7 @@ const APP_GUIDE = `WHERE THINGS LIVE in Workforce Hermes (use this to answer "wh
 • Settings → Staff Management (Admin+): "Access Type" sets each person's role; "Department Membership" (Managers only — Admins can view) controls which workspaces each person can access. A user reaches exactly the workspaces (departments) ticked for them.
 • Settings → AI Assistant: toggle Caddy on/off.
 • Projects/Kanban, the notebook, announcements, and the handbook are each per-workspace; switch workspaces from the header title (a password may be required).
+• On the Kanban board, clicking a project card morphs the card itself into the full task modal (and it shrinks back into the card on close) — that's the intended animation, not a glitch.
 If you're unsure where something is, say it's most likely under Settings and point them there — never claim a real feature doesn't exist.`;
 
 // ── Gemini function-declaration schemas ─────────────────────────────────────

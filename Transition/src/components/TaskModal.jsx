@@ -34,8 +34,15 @@ function deobfuscate(str) {
 }
 
 
-export default function TaskModal({ taskId, isEditMode, initialNotesOpen, userRole, actualRole, userName, staff, onClose, showModal, showInputModal, onViewProfile, originRect }) {
-  const task = useQuery(api.tasks.getTaskById, { taskId });
+export default function TaskModal({ taskId, isEditMode, initialNotesOpen, userRole, actualRole, userName, staff, onClose, showModal, showInputModal, onViewProfile, originRect, seedTask }) {
+  const liveTask = useQuery(api.tasks.getTaskById, { taskId });
+  // The board hands us its (light) copy of the task so the modal can render —
+  // and the morph can start — on the very click frame, instead of waiting a
+  // network round-trip. Light tasks lack notes/features; the live query
+  // replaces the seed the moment it resolves.
+  const task = liveTask !== undefined
+    ? liveTask
+    : (seedTask ? { ...seedTask, notes: seedTask.notes || [], features: seedTask.features || [] } : liveTask);
   const updateTaskMilestones = useMutation(api.tasks.updateTaskMilestones);
   const addNoteToTask = useMutation(api.tasks.addNoteToTask);
   const deleteTask = useMutation(api.tasks.deleteTask);
@@ -200,59 +207,77 @@ export default function TaskModal({ taskId, isEditMode, initialNotesOpen, userRo
 
   const [refreshBadges, setRefreshBadges] = useState(0);
 
-  // ── GSAP open/close: zoom the modal FROM the card that was clicked (or a
-  // center pop when opened without a source, e.g. from search). ──────────────
+  // ── GSAP open/close: the clicked CARD morphs into the expanded modal
+  // (container transform / FLIP). One timeline owns all motion — no CSS
+  // keyframes (see .task-modal-overlay exclusions in index.css), no React
+  // gating: the seeded task means this runs on the click's own paint. ────────
   const overlayRef = useRef(null);
   const contentRef = useRef(null);
   const hasAnimatedOpen = useRef(false);
   const closingRef = useRef(false);
 
-  // The zoom is applied to the whole app view (#root). The modal itself is
-  // portaled to <body> (below), so it sits OUTSIDE the zoomed layer and stays
-  // crisp on top.
-  const appView = () => document.getElementById("root");
+  // FLIP deltas: transform that lays the modal box exactly over the card.
+  const morphDeltas = (content) => {
+    const final = content.getBoundingClientRect();
+    return {
+      x: originRect.left + originRect.width / 2 - (final.left + final.width / 2),
+      y: originRect.top + originRect.height / 2 - (final.top + final.height / 2),
+      scaleX: Math.max(originRect.width / final.width, 0.01),
+      scaleY: Math.max(originRect.height / final.height, 0.01),
+    };
+  };
 
   useLayoutEffect(() => {
     if (hasAnimatedOpen.current) return;
     const content = contentRef.current, overlay = overlayRef.current;
-    if (!task || !content || !overlay) return; // still loading — wait for the real modal
+    if (!task || !content || !overlay) return;
     hasAnimatedOpen.current = true;
-    const root = appView();
-    const zoom = root && originRect; // camera push-in only when opened from a card
-    // Modal is hidden while the view zooms, so the zoom reads first.
-    gsap.set(overlay, { opacity: 0 });
-    gsap.set(content, { opacity: 0, scale: 0.94, transformOrigin: "center center" });
+    // GSAP doesn't honor prefers-reduced-motion by itself — appear in place.
+    if (window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches) return;
+    const inner = Array.from(content.children);
     const tl = gsap.timeline();
-    if (zoom) {
-      // Phase 1: the WHOLE view zooms toward the clicked card (camera push-in).
-      const ox = originRect.left + originRect.width / 2;
-      const oy = originRect.top + originRect.height / 2;
-      gsap.set(root, { transformOrigin: `${ox}px ${oy}px`, willChange: "transform" });
-      tl.fromTo(root, { scale: 1 }, { scale: 1.5, duration: 0.5, ease: "power2.inOut" }, 0);
+    gsap.set(overlay, { opacity: 0 });
+    if (originRect) {
+      // Start life AS the card: the modal box is scaled/positioned onto the
+      // card's exact rect (its solid bg covers the real card underneath),
+      // then grows into place while its content fades in mid-flight.
+      const d = morphDeltas(content);
+      gsap.set(content, { ...d, transformOrigin: "center center", willChange: "transform" });
+      gsap.set(inner, { opacity: 0 });
+      tl.to(overlay, { opacity: 1, duration: 0.4, ease: "power2.out" }, 0)
+        .to(content, { x: 0, y: 0, scaleX: 1, scaleY: 1, duration: 0.55, ease: "expo.inOut" }, 0)
+        .to(inner, { opacity: 1, duration: 0.32, ease: "power2.out", stagger: 0.02 }, 0.28)
+        .set(content, { clearProps: "transform,willChange" })
+        .set(inner, { clearProps: "opacity" });
+    } else {
+      // No source card (search, notifications, Caddy): plain centre pop.
+      gsap.set(content, { opacity: 0, scale: 0.94, transformOrigin: "center center" });
+      tl.to(overlay, { opacity: 1, duration: 0.3, ease: "power2.out" }, 0)
+        .to(content, { opacity: 1, scale: 1, duration: 0.42, ease: "back.out(1.4)", clearProps: "transform,opacity" }, 0);
     }
-    // Phase 2: once we're facing the card, the task modal opens over it.
-    tl.to(overlay, { opacity: 1, duration: 0.3, ease: "power2.out" }, zoom ? 0.4 : 0);
-    tl.to(content, { opacity: 1, scale: 1, duration: 0.42, ease: "back.out(1.4)", clearProps: "transform,opacity" }, "<");
   }, [task, originRect]);
 
-  // Safety: whenever the modal leaves the tree (however it closed), snap the
-  // zoomed view back so #root is never left transformed.
-  useEffect(() => () => {
-    const root = appView();
-    if (root) gsap.set(root, { clearProps: "transform,transformOrigin,willChange" });
-  }, []);
-
-  // Animated close — the modal closes, then the view zooms back out.
+  // Animated close — the modal morphs back DOWN into the card it came from.
   const doClose = () => {
     if (closingRef.current) return;
     closingRef.current = true;
     const content = contentRef.current, overlay = overlayRef.current;
-    const root = appView();
-    const finish = () => { if (root) gsap.set(root, { clearProps: "transform,transformOrigin,willChange" }); onClose(); };
-    const tl = gsap.timeline({ onComplete: finish });
-    if (content) tl.to(content, { opacity: 0, scale: 0.94, duration: 0.24, ease: "power2.in" }, 0);
-    if (overlay) tl.to(overlay, { opacity: 0, duration: 0.3, ease: "power1.in" }, 0.04);
-    if (root && originRect) tl.to(root, { scale: 1, duration: 0.45, ease: "power2.inOut" }, 0.12);
+    if (!content || !overlay || window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches) { onClose(); return; }
+    const inner = Array.from(content.children);
+    gsap.killTweensOf([content, overlay, ...inner]);
+    // If we're closed mid-open (box still scaled), rects are transformed and
+    // the FLIP math would lie — fall back to a quick fade instead.
+    const midMorph = Math.abs((Number(gsap.getProperty(content, "scaleX")) || 1) - 1) > 0.001;
+    const tl = gsap.timeline({ onComplete: onClose });
+    if (originRect && !midMorph) {
+      const d = morphDeltas(content);
+      tl.to(inner, { opacity: 0, duration: 0.16, ease: "power1.in" }, 0)
+        .to(content, { ...d, transformOrigin: "center center", duration: 0.45, ease: "expo.inOut" }, 0.04)
+        .to(overlay, { opacity: 0, duration: 0.26, ease: "power1.in" }, 0.22);
+    } else {
+      tl.to(content, { opacity: 0, scale: 0.96, duration: 0.22, ease: "power2.in" }, 0)
+        .to(overlay, { opacity: 0, duration: 0.26, ease: "power1.in" }, 0.04);
+    }
   };
 
   // 1. Pure effects (no state dependencies other than taskId)
@@ -489,7 +514,7 @@ export default function TaskModal({ taskId, isEditMode, initialNotesOpen, userRo
       actorEmail: currentUserEmail,
       actorName: userName
     });
-    onClose();
+    doClose(); // morph back into the card like every other close
   }
 
   function appendEditableMilestone() {
@@ -672,7 +697,7 @@ export default function TaskModal({ taskId, isEditMode, initialNotesOpen, userRo
   if (!task) return null;
 
   return createPortal(
-    <div className="modal-overlay" ref={overlayRef} onClick={(e) => { if (e.target === e.currentTarget) doClose(); }}>
+    <div className="modal-overlay task-modal-overlay" ref={overlayRef} onClick={(e) => { if (e.target === e.currentTarget) doClose(); }}>
       <div className="modal-content task-modal-content" ref={contentRef} onClick={(e) => e.stopPropagation()}>
         <button className="modal-close" onClick={doClose}>×</button>
 

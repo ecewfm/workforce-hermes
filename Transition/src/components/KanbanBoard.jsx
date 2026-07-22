@@ -1,4 +1,5 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useLayoutEffect } from "react";
+import { gsap } from "gsap";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { getProjectDeadlines, deadlineTone, DAY_MS, milestoneAnchor } from "../utils/deadlines";
@@ -67,8 +68,41 @@ export default function KanbanBoard({ userRole, actualRole, userName, openTaskMo
   const [draggedMilestoneIdx, setDraggedMilestoneIdx] = useState(null);
   const [lastKnownTasks, setLastKnownTasks] = useState([]);
   const [fullViewColumn, setFullViewColumn] = useState(null);
-  const [openingId, setOpeningId] = useState(null); // card mid open-animation → TaskModal
   const [storageRefresh, setStorageRefresh] = useState(0); // Trigger re-render when tasks are viewed
+
+  // ── GSAP board entrance: cards trickle into each column right after the
+  // column itself lands (columns cascade via CSS at 0.06s + 0.05s·i). The old
+  // CSS nth-child stagger couldn't see through the .tf-shell wrapper, so every
+  // card popped on the same beat — GSAP staggers the real card wrappers.
+  // Runs ONCE per board mount, after the tasks query first resolves.
+  const boardRef = useRef(null);
+  const entranceRan = useRef(false);
+  useLayoutEffect(() => {
+    if (entranceRan.current || !tasks || !boardRef.current) return;
+    entranceRan.current = true;
+    // GSAP doesn't honor prefers-reduced-motion by itself — appear in place.
+    if (window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches) return;
+    const cols = boardRef.current.querySelectorAll(".kanban-col");
+    cols.forEach((col, ci) => {
+      const cards = col.querySelectorAll(".col-content > *");
+      if (!cards.length) return;
+      gsap.fromTo(
+        cards,
+        // transition:"none" while GSAP drives transform — .tf-shell's hover
+        // spring transition would otherwise re-ease every tweened frame.
+        { y: 16, autoAlpha: 0, transition: "none" },
+        {
+          y: 0,
+          autoAlpha: 1,
+          duration: 0.42,
+          ease: "power3.out",
+          delay: 0.26 + ci * 0.05,
+          stagger: 0.06,
+          clearProps: "transform,opacity,visibility,transition",
+        }
+      );
+    });
+  }, [tasks]);
   
   // Listen for custom event when tasks are marked as viewed (in same tab)
   useEffect(() => {
@@ -421,19 +455,12 @@ export default function KanbanBoard({ userRole, actualRole, userName, openTaskMo
         onDragEnd={(e) => !isFullView && e.currentTarget.classList.remove("dragging")}
         onClick={(e) => {
           setFullViewColumn(null);
-          // Capture the card's on-screen rect so the modal can GSAP-zoom FROM it.
+          // Capture the card's on-screen rect + hand over the task data we
+          // already hold: the modal paints on this same frame and GSAP morphs
+          // it out of this exact rect (container transform).
           const r = e.currentTarget.getBoundingClientRect();
           const origin = { left: r.left, top: r.top, width: r.width, height: r.height };
-          if (isDefaultCard) {
-            // Open the modal immediately (no wait), and play the card
-            // consolidate→expand at the SAME time so its scale-in and the
-            // card's expansion are one continuous motion — no perceived delay.
-            setOpeningId(t._id);
-            openTaskModal(t._id, false, false, origin);
-            window.setTimeout(() => setOpeningId(null), 450);
-          } else {
-            openTaskModal(t._id, false, false, origin);
-          }
+          openTaskModal(t._id, false, false, origin, t);
         }}
         onContextMenu={(e) => onContextMenu(e, t)}
         style={{
@@ -636,7 +663,7 @@ export default function KanbanBoard({ userRole, actualRole, userName, openTaskMo
     // wings slide out from under it — dots left, latest note right, days +
     // current milestone + controls drop down below. No fade: pure slide.
     return (
-      <div className={`tf-shell ${openingId === t._id ? "tf-opening" : ""}`} key={t._id}>
+      <div className="tf-shell" key={t._id}>
         <div className="tf-wing tf-wing-top">
           <span className="tf-wing-cap">Time left</span>
           <span className={`tf-days ${completionTone || ""}`}>
@@ -752,7 +779,7 @@ export default function KanbanBoard({ userRole, actualRole, userName, openTaskMo
         })}
       </div>
 
-      <div className="kanban-container" style={boardGridStyle}>
+      <div className="kanban-container" style={boardGridStyle} ref={boardRef}>
         {columnDefs.map((cd) => {
           const col = cd.id;
           const over = cd.limit && totals[col] > cd.limit;
