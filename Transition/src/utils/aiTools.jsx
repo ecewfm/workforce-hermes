@@ -269,7 +269,7 @@ export function useAiActions({ userName, userEmail, actualRole }) {
           };
         }).filter((r) => r.lastActivity > 0)
           .sort((a, b) => b.lastActivity - a.lastActivity)
-          .slice(0, 15)
+          .slice(0, 30) // keep plenty so active projects aren't cut off the list
           .map(({ lastActivity, ...r }) => r); // drop raw timestamp from output
         return { sinceDays: days, projectsWithActivity: rows, nothingRecent: rows.length === 0 };
       }
@@ -398,7 +398,7 @@ export function useAiActions({ userName, userEmail, actualRole }) {
     APP_GUIDE,
     `A note (add_note) and a description (set_project_description) are DIFFERENT: a description is the project's summary field; a note is a timeline update. To add or change a project's description use set_project_description — never post it as a note.`,
     `When creating a project: ALWAYS compose a clear 1–3 sentence description of what it involves — never leave it empty or just repeat the title. Infer it from the title and context using your own knowledge${ENABLE_WEB_SEARCH ? ", and if the title references a tool, product, company, or term you're unsure about, use Google Search to research it first" : ""}.`,
-    `HOW TO REPORT UPDATES: read the notes, new features, and bug fixes the tool returns and write a SHORT natural-language SUMMARY of what changed for each active project — capture the overall direction of the work and call out only the 1–3 most significant items in prose. Do NOT list every feature/bug, do NOT output comma-separated lists of item names, and do NOT report raw counts (e.g. never say "23 new features, 15 bugs"). Describe what the work means for the project, not how many things there were. If a project has a lot going on, summarize the theme in a sentence and note there was more beyond the highlights.`,
+    `HOW TO REPORT UPDATES: read the notes, new features, and bug fixes the tool returns and write a SHORT natural-language SUMMARY of what changed. Name EVERY project that has activity (a sentence or two each) — NEVER drop a project from the list. The "1–3 most significant items" limit is PER project (which items to highlight within it), NOT a reason to skip whole projects. Do NOT list every feature/bug, output comma-separated item names, or report raw counts (e.g. never "23 new features, 15 bugs"). If the user says a project has updates you didn't mention, believe them and re-check that exact name with get_project_updates — and remember one word can match several projects (e.g. "Apollo" matches BOTH "Workforce Apollo" and "Workforce Apollo V2"), so check the variants before ever concluding there's nothing.`,
     `Guidelines: Be efficient with tools — for "what has updates / what's the latest / which projects moved" use get_recent_updates ONCE; only use get_project_updates when the user names a single project. Resolve project names with list_projects if unsure, and if a name is ambiguous ask which one. Keep replies short and conversational, and don't re-introduce yourself unless asked. After doing something, confirm exactly what you did in one sentence. Never invent data — if a tool returns nothing recent, say so plainly. Only call set_production_deadline if the user is a manager and explicitly asks.`,
   ].join("\n");
 
