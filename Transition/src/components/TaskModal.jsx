@@ -218,19 +218,11 @@ export default function TaskModal({ taskId, isEditMode, initialNotesOpen, userRo
   const hasAnimatedOpen = useRef(false);
   const closingRef = useRef(false);
 
-  // Circle-reveal geometry: the backdrop blooms out of the card's centre as
-  // an expanding circle (and drains back into it on close). R = the radius
-  // needed to cover the whole viewport from that centre.
-  const circleAt = (r) => {
-    const cx = originRect.left + originRect.width / 2;
-    const cy = originRect.top + originRect.height / 2;
-    return `circle(${r}px at ${cx}px ${cy}px)`;
-  };
-  const coverRadius = () => {
-    const cx = originRect.left + originRect.width / 2;
-    const cy = originRect.top + originRect.height / 2;
-    return Math.ceil(Math.hypot(Math.max(cx, window.innerWidth - cx), Math.max(cy, window.innerHeight - cy))) + 10;
-  };
+  // Blob morph: mid-transition the box curls its corners into a pill/circle
+  // shape ("35%" radius) so the card→modal in-between never reads as a stark
+  // white rectangle — it softens into a bubble, grows, then unfurls. The
+  // box's overflow:hidden clips the ghost into the rounded shape with it.
+  const BLOB_RADIUS = "35%";
 
   // FLIP deltas: transform that lays the modal box exactly over a rect.
   const morphDeltas = (content, rect) => {
@@ -329,20 +321,21 @@ export default function TaskModal({ taskId, isEditMode, initialNotesOpen, userRo
         // expands into place over the held zoom.
         tl.set(content, { opacity: 1 }, p2 - 0.02);
       }
-      // The dim+blur BLOOMS out of the card's centre as an expanding circle,
-      // in step with the box growing out of the same spot.
       if (bd) {
-        gsap.set(bd, { clipPath: circleAt(0) });
-        tl.to(bd, { clipPath: circleAt(coverRadius()), duration: 0.55, ease: "power2.out" }, camera ? Math.max(p2 - 0.06, 0) : 0)
-          .set(bd, { clearProps: "clipPath" });
+        gsap.set(bd, { opacity: 0 });
+        tl.to(bd, { opacity: 1, duration: 0.35, ease: "power2.out", clearProps: "opacity" }, camera ? Math.max(p2 - 0.06, 0) : 0);
       }
       tl.to(content, { x: 0, y: 0, scaleX: 1, scaleY: 1, duration: 0.52, ease: "expo.inOut" }, p2);
+      // Card → blob → modal: corners curl closed the moment the box takes
+      // over (while the ghost dissolves), and unfurl as the content arrives.
+      tl.to(content, { borderRadius: BLOB_RADIUS, duration: 0.2, ease: "power2.out" }, p2)
+        .to(content, { borderRadius: "16px", duration: 0.3, ease: "power2.inOut" }, p2 + 0.26);
       // The ghost must dissolve BEFORE the box stretches (expo.inOut barely
       // moves in its first ~0.2s) — any later and you see giant distorted
       // card content smeared over the growing modal.
       if (ghost) tl.to(ghost, { opacity: 0, duration: 0.16, ease: "power1.in" }, p2 + 0.03);
       tl.to(inner, { opacity: 1, duration: 0.34, ease: "power2.out", stagger: 0.02 }, p2 + (ghost ? 0.2 : 0.28))
-        .set(content, { clearProps: "transform,willChange" })
+        .set(content, { clearProps: "transform,willChange,borderRadius" })
         .set(inner, { clearProps: "opacity" });
     } else {
       // No source card (search, notifications, Caddy): plain centre pop.
@@ -393,11 +386,11 @@ export default function TaskModal({ taskId, isEditMode, initialNotesOpen, userRo
       // The ghost reappears only in the last moments, when the box is nearly
       // card-sized (stretch-smear rule) — it lands AS the card.
       if (ghost) tl.to(ghost, { opacity: 1, duration: 0.14, ease: "power1.out" }, 0.36);
-      // The dim DRAINS back into the card's centre — the reveal in reverse.
-      if (bd) {
-        gsap.set(bd, { clipPath: circleAt(coverRadius()) });
-        tl.to(bd, { clipPath: circleAt(0), duration: 0.4, ease: "power2.in" }, 0.1);
-      }
+      // Modal → blob → card: corners curl in as it shrinks, un-curl to the
+      // card's own radius right at touchdown.
+      tl.to(content, { borderRadius: BLOB_RADIUS, duration: 0.18, ease: "power2.out" }, 0.08)
+        .to(content, { borderRadius: "14px", duration: 0.18, ease: "power2.in" }, 0.32);
+      if (bd) tl.to(bd, { opacity: 0, duration: 0.28, ease: "power1.in" }, 0.24);
       tl.call(onClose, [], 0.52);
       if (zoomedNow) {
         tl.to(root, { scale: 1, duration: 0.48, ease: "power2.inOut" }, 0.6)
