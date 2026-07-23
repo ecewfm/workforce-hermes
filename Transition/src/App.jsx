@@ -18,6 +18,7 @@ import Notebook from "./components/Notebook";
 import AdminPanel from "./components/AdminPanel";
 import TaskModal from "./components/TaskModal";
 import NotesModal from "./components/NotesModal";
+import RoboHand from "./components/RoboHand";
 import AIAssistant from "./components/AIAssistant";
 import { isCaddyEnabled } from "./utils/aiConfig";
 import { milestoneAnchor, DAY_MS } from "./utils/deadlines";
@@ -1160,6 +1161,9 @@ export default function App() {
           <AnnouncementComposer userName={userName} showModal={showModal} />
         )}
       </main>
+
+      {/* Robotic hand that reaches for the cursor on the nav buttons */}
+      <RoboHand />
 
       {/* Task Modal */}
       {modalTaskId && (

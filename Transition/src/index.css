@@ -1175,6 +1175,40 @@ header {
   padding: 15px 40px;
 }
 
+/* ── RoboHand: the little robotic arm that reaches for the cursor on the
+   nav buttons (RoboHand.jsx). Fixed overlay, never intercepts clicks. ── */
+.robo-hand-layer {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  pointer-events: none;
+  z-index: 1900; /* above the app chrome, below modal overlays (2000) */
+  opacity: 0;
+  overflow: visible;
+}
+.robo-arm-seg {
+  stroke: var(--color-accent);
+  stroke-width: 3;
+  stroke-linecap: round;
+}
+.robo-joint {
+  fill: var(--color-card-bg);
+  stroke: var(--color-accent);
+  stroke-width: 2.5;
+}
+.robo-palm {
+  fill: var(--color-accent);
+}
+.robo-prong {
+  fill: var(--color-accent);
+  stroke: var(--color-card-bg);
+  stroke-width: 0.8;
+}
+.robo-palm-dot {
+  fill: var(--color-card-bg);
+}
+
 /* Task modal: the dim+blur is DELEGATED to a child .task-modal-backdrop layer
    so GSAP can clip-path it into a circle blooming out of the clicked card —
    clipping the overlay itself would clip the morphing modal box with it. */
