@@ -207,60 +207,36 @@ export default function TaskModal({ taskId, isEditMode, initialNotesOpen, userRo
 
   const [refreshBadges, setRefreshBadges] = useState(0);
 
-  // ── GSAP open/close: a CIRCLE scales up from ZERO at the clicked card's
-  // centre and becomes the opened modal — a clip-path circular reveal on the
-  // modal box itself, so the in-between shape is always a true circle (never
-  // a white card). One timeline owns all motion — no CSS keyframes (see
-  // .task-modal-overlay exclusions in index.css), no React gating: the
-  // seeded task means this runs on the click's own paint. ────────────────────
+  // ── GSAP open/close: the task modal OPENS FROM the clicked card — it
+  // scales up from a point at the card's centre and travels to the screen
+  // centre in one continuous motion (and reverses on close). One timeline
+  // owns all motion — no CSS keyframes (see .task-modal-overlay exclusions
+  // in index.css), no React gating: the seeded task means this runs on the
+  // click's own paint. ───────────────────────────────────────────────────────
   const overlayRef = useRef(null);
   const backdropRef = useRef(null); // dim+blur layer behind the box
   const contentRef = useRef(null);
-  const discRef = useRef(null); // the growing circle itself (a real element)
   const hasAnimatedOpen = useRef(false);
   const closingRef = useRef(false);
 
-  // Reveal = TWO synced layers driven by ONE radius: a clip-path circle on
-  // the modal box (the front — content revealed crisply in place) and a real
-  // disc underneath that keeps the silhouette a TRUE circle where the clip
-  // would go flat at the box's edges. Same centre, same radius, same ease.
-  const discGeom = (content) => {
+  // Where the modal opens FROM: the clicked card's centre, expressed as an
+  // offset from the modal's resting (centred) position. The modal itself
+  // scales up from a point there and travels to the centre as it opens —
+  // no visible circle/disc layer, just the modal acting out its opening.
+  const startOffset = (content) => {
     const final = content.getBoundingClientRect();
-    const cx = originRect.left + originRect.width / 2;
-    const cy = originRect.top + originRect.height / 2;
-    const R = Math.ceil(Math.max(
-      Math.hypot(final.left - cx, final.top - cy),
-      Math.hypot(final.right - cx, final.top - cy),
-      Math.hypot(final.left - cx, final.bottom - cy),
-      Math.hypot(final.right - cx, final.bottom - cy),
-    )) + 16;
-    const lx = cx - final.left, ly = cy - final.top; // centre in box coords
-    return { cx, cy, R, at: (r) => `circle(${r}px at ${lx}px ${ly}px)` };
-  };
-  const makeDisc = (overlay, content, g) => {
-    const d = document.createElement("div");
-    d.className = "task-modal-disc";
-    gsap.set(d, {
-      position: "absolute",
-      left: g.cx - g.R, top: g.cy - g.R,
-      width: g.R * 2, height: g.R * 2,
-      borderRadius: "50%",
-      background: "var(--color-card-bg)",
-      boxShadow: "0 30px 80px rgba(0,0,0,0.25)",
-      pointerEvents: "none",
-      scale: 0,
-      willChange: "transform",
-    });
-    overlay.insertBefore(d, content); // above the backdrop, below the modal
-    return d;
+    return {
+      x: originRect.left + originRect.width / 2 - (final.left + final.width / 2),
+      y: originRect.top + originRect.height / 2 - (final.top + final.height / 2),
+    };
   };
 
-  // ── Camera: the view flies to the card first, then the circle blooms.
+  // ── Camera: the view flies to the card first, then the modal opens.
   // The camera zooms ONLY the view stage (the board area) — header, nav and
   // Caddy stay rock-steady outside it. Transform-origin at the card's centre
-  // keeps that centre fixed while zoomed, so the reveal circle stays aimed
-  // at the card in both states. The stage HOLDS the zoom the whole time the
-  // modal is open; the camera pulls back out only on close.
+  // keeps that centre fixed while zoomed, so the modal's start point stays
+  // aimed at the card in both states. The stage HOLDS the zoom the whole
+  // time the modal is open; the camera pulls back out only on close.
   const CAMERA_ZOOM = 1.35;
   const appView = () => document.querySelector(".view-stage") || document.getElementById("root");
   // Camera only when the source is still on screen (kanban card, dashboard
@@ -284,18 +260,16 @@ export default function TaskModal({ taskId, isEditMode, initialNotesOpen, userRo
     const bd = backdropRef.current;
     const tl = gsap.timeline();
     if (originRect) {
-      // Act 1: the camera flies to the card and HOLDS. Act 2, starting in
-      // the flight's final stretch: a circle grows from ZERO at the card's
-      // centre — clip window reveals the modal crisply in place while the
-      // synced under-disc keeps the shape circular past the box edges.
+      // Act 1: the camera flies to the card — a VISIBLE beat. Act 2: the
+      // task modal itself opens — it grows from a point at the card's
+      // centre and travels to the screen centre in one continuous motion,
+      // its content arriving as it takes shape. No circle layer, no ghost.
       const root = appView();
       const camera = cameraUsable();
       const FLIGHT = 0.42;
-      const p2 = camera ? 0.26 : 0;
-      const g = discGeom(content);
-      const disc = makeDisc(overlay, content, g);
-      discRef.current = disc;
-      gsap.set(content, { clipPath: g.at(0), willChange: "clip-path" });
+      const p2 = camera ? 0.34 : 0;
+      const c = startOffset(content);
+      gsap.set(content, { x: c.x, y: c.y, scale: 0.001, transformOrigin: "center center", willChange: "transform" });
       gsap.set(inner, { opacity: 0 });
       if (camera) {
         aimCameraAtCard(root);
@@ -303,14 +277,11 @@ export default function TaskModal({ taskId, isEditMode, initialNotesOpen, userRo
       }
       if (bd) {
         gsap.set(bd, { opacity: 0 });
-        tl.to(bd, { opacity: 1, duration: 0.35, ease: "power2.out", clearProps: "opacity" }, camera ? Math.max(p2 - 0.06, 0) : 0);
+        tl.to(bd, { opacity: 1, duration: 0.35, ease: "power2.out", clearProps: "opacity" }, camera ? Math.max(p2 - 0.05, 0) : 0);
       }
-      tl.to(disc, { scale: 1, duration: 0.55, ease: "power3.out" }, p2)
-        .to(content, { clipPath: g.at(g.R), duration: 0.55, ease: "power3.out" }, p2)
-        .to(inner, { opacity: 1, duration: 0.3, ease: "power2.out", stagger: 0.02 }, p2 + 0.1)
-        .to(disc, { opacity: 0, duration: 0.2, ease: "power1.in" }, p2 + 0.4)
-        .set(disc, { display: "none" })
-        .set(content, { clearProps: "clipPath,willChange" })
+      tl.to(content, { x: 0, y: 0, scale: 1, duration: 0.55, ease: "power3.inOut" }, p2)
+        .to(inner, { opacity: 1, duration: 0.3, ease: "power2.out", stagger: 0.02 }, p2 + 0.22)
+        .set(content, { clearProps: "transform,willChange" })
         .set(inner, { clearProps: "opacity" });
     } else {
       // No source card (search, notifications, Caddy): plain centre pop.
@@ -323,10 +294,10 @@ export default function TaskModal({ taskId, isEditMode, initialNotesOpen, userRo
     }
   }, [task, originRect]);
 
-  // Animated close — the reveal in reverse: the modal's content fades, the
-  // box drains into a circle shrinking to ZERO at the card's centre, and the
-  // camera then pulls back out. The pull-out tween outlives the component —
-  // GSAP doesn't care that React unmounted it.
+  // Animated close — the open in reverse: content fades, the modal shrinks
+  // to a point while traveling back to the card's centre, and the camera
+  // then pulls back out. The pull-out tween outlives the component — GSAP
+  // doesn't care that React unmounted it.
   const doClose = () => {
     if (closingRef.current) return;
     closingRef.current = true;
@@ -339,9 +310,10 @@ export default function TaskModal({ taskId, isEditMode, initialNotesOpen, userRo
     if (!content || !overlay || window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches) { bail(); return; }
     const inner = Array.from(content.children);
     const bd = backdropRef.current;
-    const disc0 = discRef.current;
-    const midOpen = gsap.isTweening(content) || (disc0 && gsap.isTweening(disc0)); // reveal still in flight
-    gsap.killTweensOf([content, overlay, ...inner, ...(root ? [root] : []), ...(bd ? [bd] : []), ...(disc0 ? [disc0] : [])]);
+    const midOpen =
+      gsap.isTweening(content) ||
+      Math.abs((Number(gsap.getProperty(content, "scaleX")) || 1) - 1) > 0.001; // still opening
+    gsap.killTweensOf([content, overlay, ...inner, ...(root ? [root] : []), ...(bd ? [bd] : [])]);
     const rootScaleNow = root ? Number(gsap.getProperty(root, "scaleX")) || 1 : 1;
     // The stage holding CAMERA_ZOOM is the NORMAL steady state while open —
     // only a reveal mid-flight or a camera between stops means "mid-open".
@@ -349,28 +321,21 @@ export default function TaskModal({ taskId, isEditMode, initialNotesOpen, userRo
     const midMorph = midOpen || (!zoomedNow && Math.abs(rootScaleNow - 1) > 0.001);
     const tl = gsap.timeline();
     if (originRect && !midMorph) {
-      // Reverse of the open: the clip circle and the under-disc contract in
-      // lockstep to zero at the card's centre, then the camera pulls out.
-      const g = discGeom(content);
-      let disc = disc0;
-      if (!disc || !overlay.contains(disc)) { disc = makeDisc(overlay, content, g); discRef.current = disc; }
-      gsap.set(disc, { display: "block", scale: 1, opacity: 0 });
-      gsap.set(content, { clipPath: g.at(g.R), willChange: "clip-path" });
-      tl.to(inner, { opacity: 0, duration: 0.18, ease: "power1.in" }, 0)
-        .to(disc, { opacity: 1, duration: 0.12, ease: "power1.out" }, 0)
-        .to(content, { clipPath: g.at(0), duration: 0.46, ease: "power3.in" }, 0.06)
-        .to(disc, { scale: 0, duration: 0.46, ease: "power3.in" }, 0.06);
-      if (bd) tl.to(bd, { opacity: 0, duration: 0.26, ease: "power1.in" }, 0.26);
-      tl.call(onClose, [], 0.56);
+      // Reverse: the modal shrinks to a point WHILE traveling from the
+      // centre back to the card, then the camera pulls out.
+      const c = startOffset(content);
+      tl.to(inner, { opacity: 0, duration: 0.16, ease: "power1.in" }, 0)
+        .to(content, { x: c.x, y: c.y, scale: 0.001, duration: 0.5, ease: "power3.inOut", transformOrigin: "center center" }, 0.05);
+      if (bd) tl.to(bd, { opacity: 0, duration: 0.24, ease: "power1.in" }, 0.34);
+      tl.call(onClose, [], 0.58);
       if (zoomedNow) {
-        tl.to(root, { scale: 1, duration: 0.48, ease: "power2.inOut" }, 0.62)
+        tl.to(root, { scale: 1, duration: 0.48, ease: "power2.inOut" }, 0.64)
           .set(root, { clearProps: "transform,transformOrigin,willChange" });
       }
     } else {
       // Mid-open close: quick fade, and ease the camera home from wherever
       // it currently is.
       tl.to(content, { opacity: 0, duration: 0.22, ease: "power2.in" }, 0);
-      if (disc0) tl.to(disc0, { opacity: 0, duration: 0.2, ease: "power1.in" }, 0);
       if (bd) tl.to(bd, { opacity: 0, duration: 0.26, ease: "power1.in" }, 0.04);
       if (root && Math.abs(rootScaleNow - 1) > 0.001) {
         tl.to(root, { scale: 1, duration: 0.35, ease: "power2.out" }, 0)
