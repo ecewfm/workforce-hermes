@@ -207,55 +207,39 @@ export default function TaskModal({ taskId, isEditMode, initialNotesOpen, userRo
 
   const [refreshBadges, setRefreshBadges] = useState(0);
 
-  // ── GSAP open/close: the clicked CARD morphs into the expanded modal
-  // (container transform / FLIP). One timeline owns all motion — no CSS
-  // keyframes (see .task-modal-overlay exclusions in index.css), no React
-  // gating: the seeded task means this runs on the click's own paint. ────────
+  // ── GSAP open/close: a CIRCLE scales up from ZERO at the clicked card's
+  // centre and becomes the opened modal — a clip-path circular reveal on the
+  // modal box itself, so the in-between shape is always a true circle (never
+  // a white card). One timeline owns all motion — no CSS keyframes (see
+  // .task-modal-overlay exclusions in index.css), no React gating: the
+  // seeded task means this runs on the click's own paint. ────────────────────
   const overlayRef = useRef(null);
-  const backdropRef = useRef(null); // dim+blur layer — clipped into the circle reveal
+  const backdropRef = useRef(null); // dim+blur layer behind the box
   const contentRef = useRef(null);
-  const ghostRef = useRef(null); // clone of the clicked card, cross-faded inside the box
   const hasAnimatedOpen = useRef(false);
   const closingRef = useRef(false);
 
-  // Blob morph: mid-transition the box curls its corners into a pill/circle
-  // shape ("35%" radius) so the card→modal in-between never reads as a stark
-  // white rectangle — it softens into a bubble, grows, then unfurls. The
-  // box's overflow:hidden clips the ghost into the rounded shape with it.
-  const BLOB_RADIUS = "35%";
-
-  // FLIP deltas: transform that lays the modal box exactly over a rect.
-  const morphDeltas = (content, rect) => {
+  // Reveal geometry: the circle is centred on the card's centre, expressed
+  // in the modal box's own coordinates; R covers the whole box from there.
+  const revealGeom = (content) => {
     const final = content.getBoundingClientRect();
-    return {
-      x: rect.left + rect.width / 2 - (final.left + final.width / 2),
-      y: rect.top + rect.height / 2 - (final.top + final.height / 2),
-      scaleX: Math.max(rect.width / final.width, 0.01),
-      scaleY: Math.max(rect.height / final.height, 0.01),
-    };
+    const cx = originRect.left + originRect.width / 2 - final.left;
+    const cy = originRect.top + originRect.height / 2 - final.top;
+    const R = Math.ceil(Math.hypot(Math.max(cx, final.width - cx), Math.max(cy, final.height - cy))) + 20;
+    return { at: (r) => `circle(${r}px at ${cx}px ${cy}px)`, R };
   };
 
-  // ── Camera: the user's VIEW flies to the card first, then the card morphs.
+  // ── Camera: the view flies to the card first, then the circle blooms.
   // The camera zooms ONLY the view stage (the board area) — header, nav and
   // Caddy stay rock-steady outside it. Transform-origin at the card's centre
-  // keeps that centre fixed, so the zoomed rect is analytic — no re-measure.
-  // The stage STAYS zoomed the whole time the modal is open; the camera pulls
-  // back out only on close.
+  // keeps that centre fixed while zoomed, so the reveal circle stays aimed
+  // at the card in both states. The stage HOLDS the zoom the whole time the
+  // modal is open; the camera pulls back out only on close.
   const CAMERA_ZOOM = 1.35;
   const appView = () => document.querySelector(".view-stage") || document.getElementById("root");
   // Camera only when the source is still on screen (kanban card, dashboard
   // row). Search/notification rows unmount on click — no camera for those.
   const cameraUsable = () => !!(appView() && originRect?.node && originRect.node.isConnected);
-  const zoomedRect = (z) => {
-    const cx = originRect.left + originRect.width / 2;
-    const cy = originRect.top + originRect.height / 2;
-    return {
-      left: cx - (originRect.width * z) / 2,
-      top: cy - (originRect.height * z) / 2,
-      width: originRect.width * z,
-      height: originRect.height * z,
-    };
-  };
   const aimCameraAtCard = (root) => {
     const rr = root.getBoundingClientRect();
     const ox = originRect.left + originRect.width / 2 - rr.left;
@@ -274,68 +258,29 @@ export default function TaskModal({ taskId, isEditMode, initialNotesOpen, userRo
     const bd = backdropRef.current;
     const tl = gsap.timeline();
     if (originRect) {
-      // Two acts: (1) the CAMERA flies to the card — the whole view zooms in
-      // on it; (2) the card morphs into the modal. The modal box takes over
-      // at the card's ZOOMED rect wearing a GHOST (clone) of the card, so
-      // the hand-off from real card → box is pixel-invisible; the box then
-      // expands to place while the camera settles back behind the dim.
+      // Act 1: the camera flies to the card and HOLDS. Act 2, starting in
+      // the flight's final stretch: a circle scales up from ZERO at the
+      // card's centre and becomes the modal. The box sits at its final spot
+      // the whole time — only its circular clip window grows, so the visible
+      // shape is a true circle from the first pixel to the full modal.
       const root = appView();
       const camera = cameraUsable();
-      const Z = camera ? CAMERA_ZOOM : 1;
-      // Act 2 (the morph) starts DURING the zoom's final stretch, not after
-      // it — so the modal is already opening as the camera settles. The box
-      // takes over at the card's rect AT THAT INSTANT: sample the flight's
-      // ease at p2 to get the camera's mid-flight scale.
       const FLIGHT = 0.42;
       const p2 = camera ? 0.26 : 0;
-      const s0 = camera ? 1 + (Z - 1) * gsap.parseEase("power2.inOut")(Math.min(p2 / FLIGHT, 1)) : 1;
-      const start = camera ? zoomedRect(s0) : originRect; // rect the box takes over at
-      const final = content.getBoundingClientRect();
-      const d = morphDeltas(content, start);
-      gsap.set(content, { ...d, opacity: camera ? 0 : 1, transformOrigin: "center center", willChange: "transform" });
+      const geo = revealGeom(content);
+      gsap.set(content, { clipPath: geo.at(0), willChange: "clip-path" });
       gsap.set(inner, { opacity: 0 });
-      let ghost = null;
-      if (originRect.node) {
-        ghost = originRect.node.cloneNode(true);
-        ghostRef.current = ghost;
-        // Laid out at the card's NATURAL size and pre-stretched by final/origin:
-        // through the box's own scale this lands the ghost at exactly Z× the
-        // card — same glyphs scaled, matching the camera-zoomed real card at
-        // hand-off — and full-modal size at the end. Only opacity animates.
-        gsap.set(ghost, {
-          position: "absolute", top: 0, left: 0, margin: 0, zIndex: 5,
-          width: originRect.width, height: originRect.height,
-          pointerEvents: "none", transformOrigin: "top left",
-          scaleX: final.width / Math.max(originRect.width, 1),
-          scaleY: final.height / Math.max(originRect.height, 1),
-        });
-        content.appendChild(ghost);
-      }
       if (camera) {
         aimCameraAtCard(root);
-        // Act 1 — fly in. The modal stays invisible; the user watches the
-        // real board rush toward the clicked card. The stage then HOLDS this
-        // zoom for as long as the modal is open (released in doClose).
-        tl.to(root, { scale: Z, duration: FLIGHT, ease: "power2.inOut" }, 0);
-        // Act 2 — box takes over the zoomed card invisibly, world dims, box
-        // expands into place over the held zoom.
-        tl.set(content, { opacity: 1 }, p2 - 0.02);
+        tl.to(root, { scale: CAMERA_ZOOM, duration: FLIGHT, ease: "power2.inOut" }, 0);
       }
       if (bd) {
         gsap.set(bd, { opacity: 0 });
         tl.to(bd, { opacity: 1, duration: 0.35, ease: "power2.out", clearProps: "opacity" }, camera ? Math.max(p2 - 0.06, 0) : 0);
       }
-      tl.to(content, { x: 0, y: 0, scaleX: 1, scaleY: 1, duration: 0.52, ease: "expo.inOut" }, p2);
-      // Card → blob → modal: corners curl closed the moment the box takes
-      // over (while the ghost dissolves), and unfurl as the content arrives.
-      tl.to(content, { borderRadius: BLOB_RADIUS, duration: 0.2, ease: "power2.out" }, p2)
-        .to(content, { borderRadius: "16px", duration: 0.3, ease: "power2.inOut" }, p2 + 0.26);
-      // The ghost must dissolve BEFORE the box stretches (expo.inOut barely
-      // moves in its first ~0.2s) — any later and you see giant distorted
-      // card content smeared over the growing modal.
-      if (ghost) tl.to(ghost, { opacity: 0, duration: 0.16, ease: "power1.in" }, p2 + 0.03);
-      tl.to(inner, { opacity: 1, duration: 0.34, ease: "power2.out", stagger: 0.02 }, p2 + (ghost ? 0.2 : 0.28))
-        .set(content, { clearProps: "transform,willChange,borderRadius" })
+      tl.to(content, { clipPath: geo.at(geo.R), duration: 0.55, ease: "power3.out" }, p2)
+        .to(inner, { opacity: 1, duration: 0.3, ease: "power2.out", stagger: 0.02 }, p2 + 0.1)
+        .set(content, { clearProps: "clipPath,willChange" })
         .set(inner, { clearProps: "opacity" });
     } else {
       // No source card (search, notifications, Caddy): plain centre pop.
@@ -348,11 +293,10 @@ export default function TaskModal({ taskId, isEditMode, initialNotesOpen, userRo
     }
   }, [task, originRect]);
 
-  // Animated close — mirrors the open: the modal shrinks back down onto the
-  // card while the CAMERA flies back in on it; the box lands wearing the
-  // card's ghost, unmounts (invisible swap to the real card), and the camera
-  // pulls back out. The pull-out tween outlives the component — GSAP doesn't
-  // care that React unmounted it.
+  // Animated close — the reveal in reverse: the modal's content fades, the
+  // box drains into a circle shrinking to ZERO at the card's centre, and the
+  // camera then pulls back out. The pull-out tween outlives the component —
+  // GSAP doesn't care that React unmounted it.
   const doClose = () => {
     if (closingRef.current) return;
     closingRef.current = true;
@@ -363,43 +307,31 @@ export default function TaskModal({ taskId, isEditMode, initialNotesOpen, userRo
       onClose();
     };
     if (!content || !overlay || window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches) { bail(); return; }
-    const ghost = ghostRef.current && content.contains(ghostRef.current) ? ghostRef.current : null;
-    const inner = Array.from(content.children).filter((el) => el !== ghost);
+    const inner = Array.from(content.children);
     const bd = backdropRef.current;
-    gsap.killTweensOf([content, overlay, ...inner, ...(ghost ? [ghost] : []), ...(root ? [root] : []), ...(bd ? [bd] : [])]);
+    const midOpen = gsap.isTweening(content); // reveal still in flight
+    gsap.killTweensOf([content, overlay, ...inner, ...(root ? [root] : []), ...(bd ? [bd] : [])]);
     const rootScaleNow = root ? Number(gsap.getProperty(root, "scaleX")) || 1 : 1;
-    // The stage sitting at CAMERA_ZOOM is the NORMAL steady state of a
-    // camera open (the zoom holds while the modal is open) — only a box
-    // still mid-scale or a camera stuck between stops means "mid-open".
+    // The stage holding CAMERA_ZOOM is the NORMAL steady state while open —
+    // only a reveal mid-flight or a camera between stops means "mid-open".
     const zoomedNow = !!root && Math.abs(rootScaleNow - CAMERA_ZOOM) < 0.02;
-    const midMorph =
-      Math.abs((Number(gsap.getProperty(content, "scaleX")) || 1) - 1) > 0.001 ||
-      (!zoomedNow && Math.abs(rootScaleNow - 1) > 0.001);
+    const midMorph = midOpen || (!zoomedNow && Math.abs(rootScaleNow - 1) > 0.001);
     const tl = gsap.timeline();
     if (originRect && !midMorph) {
-      // Shrink back down onto the card exactly as it looks right now (still
-      // zoomed if the camera is holding), land wearing the ghost, unmount —
-      // and only THEN the camera pulls back out over the live board.
-      const d = morphDeltas(content, zoomedNow ? zoomedRect(CAMERA_ZOOM) : originRect);
-      tl.to(inner, { opacity: 0, duration: 0.16, ease: "power1.in" }, 0)
-        .to(content, { ...d, transformOrigin: "center center", duration: 0.46, ease: "expo.inOut" }, 0.04);
-      // The ghost reappears only in the last moments, when the box is nearly
-      // card-sized (stretch-smear rule) — it lands AS the card.
-      if (ghost) tl.to(ghost, { opacity: 1, duration: 0.14, ease: "power1.out" }, 0.36);
-      // Modal → blob → card: corners curl in as it shrinks, un-curl to the
-      // card's own radius right at touchdown.
-      tl.to(content, { borderRadius: BLOB_RADIUS, duration: 0.18, ease: "power2.out" }, 0.08)
-        .to(content, { borderRadius: "14px", duration: 0.18, ease: "power2.in" }, 0.32);
-      if (bd) tl.to(bd, { opacity: 0, duration: 0.28, ease: "power1.in" }, 0.24);
+      const geo = revealGeom(content);
+      gsap.set(content, { clipPath: geo.at(geo.R), willChange: "clip-path" });
+      tl.to(inner, { opacity: 0, duration: 0.18, ease: "power1.in" }, 0)
+        .to(content, { clipPath: geo.at(0), duration: 0.46, ease: "power3.in" }, 0.04);
+      if (bd) tl.to(bd, { opacity: 0, duration: 0.28, ease: "power1.in" }, 0.22);
       tl.call(onClose, [], 0.52);
       if (zoomedNow) {
-        tl.to(root, { scale: 1, duration: 0.48, ease: "power2.inOut" }, 0.6)
+        tl.to(root, { scale: 1, duration: 0.48, ease: "power2.inOut" }, 0.58)
           .set(root, { clearProps: "transform,transformOrigin,willChange" });
       }
     } else {
       // Mid-open close: quick fade, and ease the camera home from wherever
       // it currently is.
-      tl.to(content, { opacity: 0, scale: 0.96, duration: 0.22, ease: "power2.in" }, 0);
+      tl.to(content, { opacity: 0, duration: 0.22, ease: "power2.in" }, 0);
       if (bd) tl.to(bd, { opacity: 0, duration: 0.26, ease: "power1.in" }, 0.04);
       if (root && Math.abs(rootScaleNow - 1) > 0.001) {
         tl.to(root, { scale: 1, duration: 0.35, ease: "power2.out" }, 0)
