@@ -216,17 +216,42 @@ export default function TaskModal({ taskId, isEditMode, initialNotesOpen, userRo
   const overlayRef = useRef(null);
   const backdropRef = useRef(null); // dim+blur layer behind the box
   const contentRef = useRef(null);
+  const discRef = useRef(null); // the growing circle itself (a real element)
   const hasAnimatedOpen = useRef(false);
   const closingRef = useRef(false);
 
-  // Reveal geometry: the circle is centred on the card's centre, expressed
-  // in the modal box's own coordinates; R covers the whole box from there.
-  const revealGeom = (content) => {
+  // The reveal circle is a REAL disc element (not a clip on the box), so it
+  // stays a perfect circle on every side while it grows — no flat edges
+  // where a clip would hit the modal's rectangle. Sized so the fully-grown
+  // disc contains the whole modal box from the card's centre.
+  const discGeom = (content) => {
     const final = content.getBoundingClientRect();
-    const cx = originRect.left + originRect.width / 2 - final.left;
-    const cy = originRect.top + originRect.height / 2 - final.top;
-    const R = Math.ceil(Math.hypot(Math.max(cx, final.width - cx), Math.max(cy, final.height - cy))) + 20;
-    return { at: (r) => `circle(${r}px at ${cx}px ${cy}px)`, R };
+    const cx = originRect.left + originRect.width / 2;
+    const cy = originRect.top + originRect.height / 2;
+    const R = Math.ceil(Math.max(
+      Math.hypot(final.left - cx, final.top - cy),
+      Math.hypot(final.right - cx, final.top - cy),
+      Math.hypot(final.left - cx, final.bottom - cy),
+      Math.hypot(final.right - cx, final.bottom - cy),
+    )) + 16;
+    return { cx, cy, R };
+  };
+  const makeDisc = (overlay, content, g) => {
+    const d = document.createElement("div");
+    d.className = "task-modal-disc";
+    gsap.set(d, {
+      position: "absolute",
+      left: g.cx - g.R, top: g.cy - g.R,
+      width: g.R * 2, height: g.R * 2,
+      borderRadius: "50%",
+      background: "var(--color-card-bg)",
+      boxShadow: "0 30px 80px rgba(0,0,0,0.25)",
+      pointerEvents: "none",
+      scale: 0,
+      willChange: "transform",
+    });
+    overlay.insertBefore(d, content); // above the backdrop, below the modal
+    return d;
   };
 
   // ── Camera: the view flies to the card first, then the circle blooms.
@@ -259,16 +284,17 @@ export default function TaskModal({ taskId, isEditMode, initialNotesOpen, userRo
     const tl = gsap.timeline();
     if (originRect) {
       // Act 1: the camera flies to the card and HOLDS. Act 2, starting in
-      // the flight's final stretch: a circle scales up from ZERO at the
-      // card's centre and becomes the modal. The box sits at its final spot
-      // the whole time — only its circular clip window grows, so the visible
-      // shape is a true circle from the first pixel to the full modal.
+      // the flight's final stretch: a white DISC scales up from ZERO at the
+      // card's centre — a perfect circle the whole way — and the modal then
+      // materializes on top of it while the disc melts away.
       const root = appView();
       const camera = cameraUsable();
       const FLIGHT = 0.42;
       const p2 = camera ? 0.26 : 0;
-      const geo = revealGeom(content);
-      gsap.set(content, { clipPath: geo.at(0), willChange: "clip-path" });
+      const g = discGeom(content);
+      const disc = makeDisc(overlay, content, g);
+      discRef.current = disc;
+      gsap.set(content, { opacity: 0 });
       gsap.set(inner, { opacity: 0 });
       if (camera) {
         aimCameraAtCard(root);
@@ -278,9 +304,12 @@ export default function TaskModal({ taskId, isEditMode, initialNotesOpen, userRo
         gsap.set(bd, { opacity: 0 });
         tl.to(bd, { opacity: 1, duration: 0.35, ease: "power2.out", clearProps: "opacity" }, camera ? Math.max(p2 - 0.06, 0) : 0);
       }
-      tl.to(content, { clipPath: geo.at(geo.R), duration: 0.55, ease: "power3.out" }, p2)
-        .to(inner, { opacity: 1, duration: 0.3, ease: "power2.out", stagger: 0.02 }, p2 + 0.1)
-        .set(content, { clearProps: "clipPath,willChange" })
+      tl.to(disc, { scale: 1, duration: 0.5, ease: "power3.out" }, p2)
+        .to(content, { opacity: 1, duration: 0.25, ease: "power2.out" }, p2 + 0.28)
+        .to(inner, { opacity: 1, duration: 0.3, ease: "power2.out", stagger: 0.02 }, p2 + 0.34)
+        .to(disc, { opacity: 0, duration: 0.25, ease: "power1.in" }, p2 + 0.52)
+        .set(disc, { display: "none" })
+        .set(content, { clearProps: "opacity" })
         .set(inner, { clearProps: "opacity" });
     } else {
       // No source card (search, notifications, Caddy): plain centre pop.
@@ -309,8 +338,9 @@ export default function TaskModal({ taskId, isEditMode, initialNotesOpen, userRo
     if (!content || !overlay || window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches) { bail(); return; }
     const inner = Array.from(content.children);
     const bd = backdropRef.current;
-    const midOpen = gsap.isTweening(content); // reveal still in flight
-    gsap.killTweensOf([content, overlay, ...inner, ...(root ? [root] : []), ...(bd ? [bd] : [])]);
+    const disc0 = discRef.current;
+    const midOpen = gsap.isTweening(content) || (disc0 && gsap.isTweening(disc0)); // reveal still in flight
+    gsap.killTweensOf([content, overlay, ...inner, ...(root ? [root] : []), ...(bd ? [bd] : []), ...(disc0 ? [disc0] : [])]);
     const rootScaleNow = root ? Number(gsap.getProperty(root, "scaleX")) || 1 : 1;
     // The stage holding CAMERA_ZOOM is the NORMAL steady state while open —
     // only a reveal mid-flight or a camera between stops means "mid-open".
@@ -318,20 +348,27 @@ export default function TaskModal({ taskId, isEditMode, initialNotesOpen, userRo
     const midMorph = midOpen || (!zoomedNow && Math.abs(rootScaleNow - 1) > 0.001);
     const tl = gsap.timeline();
     if (originRect && !midMorph) {
-      const geo = revealGeom(content);
-      gsap.set(content, { clipPath: geo.at(geo.R), willChange: "clip-path" });
-      tl.to(inner, { opacity: 0, duration: 0.18, ease: "power1.in" }, 0)
-        .to(content, { clipPath: geo.at(0), duration: 0.46, ease: "power3.in" }, 0.04);
-      if (bd) tl.to(bd, { opacity: 0, duration: 0.28, ease: "power1.in" }, 0.22);
-      tl.call(onClose, [], 0.52);
+      // Modal dissolves onto the disc; the disc — a perfect circle — drains
+      // to zero at the card's centre; then the camera pulls back out.
+      const g = discGeom(content);
+      let disc = disc0;
+      if (!disc || !overlay.contains(disc)) { disc = makeDisc(overlay, content, g); discRef.current = disc; }
+      gsap.set(disc, { display: "block", scale: 1, opacity: 0 });
+      tl.to(inner, { opacity: 0, duration: 0.16, ease: "power1.in" }, 0)
+        .to(disc, { opacity: 1, duration: 0.18, ease: "power1.out" }, 0.04)
+        .to(content, { opacity: 0, duration: 0.2, ease: "power1.in" }, 0.14)
+        .to(disc, { scale: 0, duration: 0.42, ease: "power3.in" }, 0.3);
+      if (bd) tl.to(bd, { opacity: 0, duration: 0.28, ease: "power1.in" }, 0.42);
+      tl.call(onClose, [], 0.74);
       if (zoomedNow) {
-        tl.to(root, { scale: 1, duration: 0.48, ease: "power2.inOut" }, 0.58)
+        tl.to(root, { scale: 1, duration: 0.48, ease: "power2.inOut" }, 0.8)
           .set(root, { clearProps: "transform,transformOrigin,willChange" });
       }
     } else {
       // Mid-open close: quick fade, and ease the camera home from wherever
       // it currently is.
       tl.to(content, { opacity: 0, duration: 0.22, ease: "power2.in" }, 0);
+      if (disc0) tl.to(disc0, { opacity: 0, duration: 0.2, ease: "power1.in" }, 0);
       if (bd) tl.to(bd, { opacity: 0, duration: 0.26, ease: "power1.in" }, 0.04);
       if (root && Math.abs(rootScaleNow - 1) > 0.001) {
         tl.to(root, { scale: 1, duration: 0.35, ease: "power2.out" }, 0)
