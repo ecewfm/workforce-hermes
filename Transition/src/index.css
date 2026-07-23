@@ -1188,25 +1188,16 @@ header {
   overflow: visible;
 }
 .robo-arm-seg {
-  stroke: var(--color-accent);
-  stroke-width: 3;
+  stroke: #232b38; /* gunmetal limb, matching the hand */
   stroke-linecap: round;
 }
 .robo-joint {
-  fill: var(--color-card-bg);
-  stroke: var(--color-accent);
-  stroke-width: 2.5;
+  fill: #1a212c;
+  stroke: #465064;
+  stroke-width: 2;
 }
-.robo-palm {
-  fill: var(--color-accent);
-}
-.robo-prong {
-  fill: var(--color-accent);
-  stroke: var(--color-card-bg);
-  stroke-width: 0.8;
-}
-.robo-palm-dot {
-  fill: var(--color-card-bg);
+.rh-led {
+  fill: var(--color-accent); /* one theme-coloured sensor light */
 }
 
 /* Task modal: the dim+blur is DELEGATED to a child .task-modal-backdrop layer
