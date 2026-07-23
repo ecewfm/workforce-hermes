@@ -229,10 +229,13 @@ export default function TaskModal({ taskId, isEditMode, initialNotesOpen, userRo
   };
 
   // ── Camera: the user's VIEW flies to the card first, then the card morphs.
-  // Zooming #root with transform-origin at the card's centre keeps that centre
-  // fixed, so the card's zoomed rect is analytic — no mid-flight re-measure.
+  // The camera zooms ONLY the view stage (the board area) — header, nav and
+  // Caddy stay rock-steady outside it. Transform-origin at the card's centre
+  // keeps that centre fixed, so the zoomed rect is analytic — no re-measure.
+  // The stage STAYS zoomed the whole time the modal is open; the camera pulls
+  // back out only on close.
   const CAMERA_ZOOM = 1.35;
-  const appView = () => document.getElementById("root");
+  const appView = () => document.querySelector(".view-stage") || document.getElementById("root");
   // Camera only when the source is still on screen (kanban card, dashboard
   // row). Search/notification rows unmount on click — no camera for those.
   const cameraUsable = () => !!(appView() && originRect?.node && originRect.node.isConnected);
@@ -298,13 +301,12 @@ export default function TaskModal({ taskId, isEditMode, initialNotesOpen, userRo
       if (camera) {
         aimCameraAtCard(root);
         // Act 1 — fly in. The modal stays invisible; the user watches the
-        // real board rush toward the clicked card.
+        // real board rush toward the clicked card. The stage then HOLDS this
+        // zoom for as long as the modal is open (released in doClose).
         tl.to(root, { scale: Z, duration: 0.42, ease: "power2.inOut" }, 0);
         // Act 2 — box takes over the zoomed card invisibly, world dims, box
-        // expands while the camera eases back out behind the overlay.
+        // expands into place over the held zoom.
         tl.set(content, { opacity: 1 }, p2 - 0.02);
-        tl.to(root, { scale: 1, duration: 0.5, ease: "power2.inOut" }, p2 + 0.08)
-          .set(root, { clearProps: "transform,transformOrigin,willChange" });
       }
       tl.to(overlay, { opacity: 1, duration: 0.35, ease: "power2.out" }, camera ? p2 - 0.02 : 0)
         .to(content, { x: 0, y: 0, scaleX: 1, scaleY: 1, duration: 0.52, ease: "expo.inOut" }, p2);
@@ -332,47 +334,50 @@ export default function TaskModal({ taskId, isEditMode, initialNotesOpen, userRo
     if (closingRef.current) return;
     closingRef.current = true;
     const content = contentRef.current, overlay = overlayRef.current;
-    if (!content || !overlay || window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches) { onClose(); return; }
+    const root = appView();
+    const bail = () => {
+      if (root) { gsap.killTweensOf(root); gsap.set(root, { clearProps: "transform,transformOrigin,willChange" }); }
+      onClose();
+    };
+    if (!content || !overlay || window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches) { bail(); return; }
     const ghost = ghostRef.current && content.contains(ghostRef.current) ? ghostRef.current : null;
     const inner = Array.from(content.children).filter((el) => el !== ghost);
-    const root = appView();
     gsap.killTweensOf([content, overlay, ...inner, ...(ghost ? [ghost] : []), ...(root ? [root] : [])]);
-    // If we're closed mid-open (box or camera still in motion), the FLIP math
-    // would lie — fall back to a quick fade + camera reset instead.
     const rootScaleNow = root ? Number(gsap.getProperty(root, "scaleX")) || 1 : 1;
+    // The stage sitting at CAMERA_ZOOM is the NORMAL steady state of a
+    // camera open (the zoom holds while the modal is open) — only a box
+    // still mid-scale or a camera stuck between stops means "mid-open".
+    const zoomedNow = !!root && Math.abs(rootScaleNow - CAMERA_ZOOM) < 0.02;
     const midMorph =
       Math.abs((Number(gsap.getProperty(content, "scaleX")) || 1) - 1) > 0.001 ||
-      Math.abs(rootScaleNow - 1) > 0.001;
-    const camera = cameraUsable() && !midMorph;
+      (!zoomedNow && Math.abs(rootScaleNow - 1) > 0.001);
+    const tl = gsap.timeline();
     if (originRect && !midMorph) {
-      const Z = camera ? CAMERA_ZOOM : 1;
-      const d = morphDeltas(content, camera ? zoomedRect(Z) : originRect);
-      const tl = gsap.timeline();
-      if (camera) {
-        aimCameraAtCard(root);
-        tl.to(root, { scale: Z, duration: 0.42, ease: "power2.inOut" }, 0);
-      }
+      // Shrink back down onto the card exactly as it looks right now (still
+      // zoomed if the camera is holding), land wearing the ghost, unmount —
+      // and only THEN the camera pulls back out over the live board.
+      const d = morphDeltas(content, zoomedNow ? zoomedRect(CAMERA_ZOOM) : originRect);
       tl.to(inner, { opacity: 0, duration: 0.16, ease: "power1.in" }, 0)
         .to(content, { ...d, transformOrigin: "center center", duration: 0.46, ease: "expo.inOut" }, 0.04);
       // The ghost reappears only in the last moments, when the box is nearly
       // card-sized (stretch-smear rule) — it lands AS the card.
       if (ghost) tl.to(ghost, { opacity: 1, duration: 0.14, ease: "power1.out" }, 0.36);
       tl.to(overlay, { opacity: 0, duration: 0.26, ease: "power1.in" }, 0.26);
-      // Unmount at touchdown (real card is pixel-identical under the ghost),
-      // then the camera pulls back out over the live board.
       tl.call(onClose, [], 0.52);
-      if (camera) {
+      if (zoomedNow) {
         tl.to(root, { scale: 1, duration: 0.48, ease: "power2.inOut" }, 0.6)
           .set(root, { clearProps: "transform,transformOrigin,willChange" });
       }
     } else {
-      const tl = gsap.timeline({ onComplete: onClose });
+      // Mid-open close: quick fade, and ease the camera home from wherever
+      // it currently is.
       tl.to(content, { opacity: 0, scale: 0.96, duration: 0.22, ease: "power2.in" }, 0)
         .to(overlay, { opacity: 0, duration: 0.26, ease: "power1.in" }, 0.04);
       if (root && Math.abs(rootScaleNow - 1) > 0.001) {
-        tl.to(root, { scale: 1, duration: 0.3, ease: "power2.out" }, 0)
+        tl.to(root, { scale: 1, duration: 0.35, ease: "power2.out" }, 0)
           .set(root, { clearProps: "transform,transformOrigin,willChange" });
       }
+      tl.call(onClose, [], 0.32);
     }
   };
 
