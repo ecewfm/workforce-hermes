@@ -1,6 +1,7 @@
 import { useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { useWorkspace } from "../utils/workspaceContext";
+import { morphOriginFrom } from "../utils/modalOrigin";
 
 /**
  * TaskNotificationPopup — shows on login for Programmers.
@@ -72,8 +73,8 @@ export default function TaskNotificationPopup({ userName, onDismiss, onOpenTask 
             <div
               key={task._id}
               className="task-notif-item"
-              onClick={() => {
-                onOpenTask(task._id);
+              onClick={(e) => {
+                onOpenTask(task._id, morphOriginFrom(e.currentTarget));
                 onDismiss();
               }}
             >

@@ -4,6 +4,7 @@ import { api } from "../../convex/_generated/api";
 import { getProjectDeadlines, deadlineTone, fmtDate, DAY_MS } from "../utils/deadlines";
 import { isAdminPlusOrAbove } from "../utils/roles";
 import { useWorkspace } from "../utils/workspaceContext";
+import { morphOriginFrom } from "../utils/modalOrigin";
 
 export default function Dashboard({ onShowAllLinks, actualRole, userName, openTaskModal }) {
   const workspace = useWorkspace();
@@ -61,9 +62,10 @@ export default function Dashboard({ onShowAllLinks, actualRole, userName, openTa
       <div
         key={t._id}
         className="deadline-row"
-        onClick={() => {
+        onClick={(e) => {
+          const origin = morphOriginFrom(e.currentTarget);
           if (closeModalFirst) setShowAllDeadlines(false);
-          if (openTaskModal) openTaskModal(t._id);
+          if (openTaskModal) openTaskModal(t._id, false, false, origin, t);
         }}
       >
         <div className="deadline-row-info">

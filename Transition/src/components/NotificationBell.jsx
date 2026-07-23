@@ -3,6 +3,7 @@ import { useQuery, useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { sendNotification, initNotifications } from "../utils/notifications";
 import { useWorkspace } from "../utils/workspaceContext";
+import { morphOriginFrom } from "../utils/modalOrigin";
 
 /**
  * NotificationBell — sits beside the Settings gear in the header.
@@ -152,14 +153,17 @@ export default function NotificationBell({ userEmail, onOpenTask }) {
     return new Date(ts).toLocaleDateString("en-US", { month: "short", day: "numeric" });
   };
 
-  const handleNotificationClick = async (notif) => {
+  const handleNotificationClick = async (notif, e) => {
+    // Capture the clicked row BEFORE any await — the task modal GSAP-morphs
+    // out of this exact row (rect measured now, while it's still on screen).
+    const origin = morphOriginFrom(e?.currentTarget);
     if (!notif.read) {
       await markRead({ notificationId: notif._id });
       // Optimistically update local state
       setNotifications(prev => prev?.map(n => n._id === notif._id ? { ...n, read: true } : n));
     }
     if (notif.taskId && onOpenTask) {
-      onOpenTask(notif.taskId);
+      onOpenTask(notif.taskId, origin);
       setIsOpen(false);
       setShowAllModal(false);
     }
@@ -246,7 +250,7 @@ export default function NotificationBell({ userEmail, onOpenTask }) {
                   <div
                     key={notif._id}
                     className={`notif-item ${!notif.read ? "notif-unread" : ""}`}
-                    onClick={() => handleNotificationClick(notif)}
+                    onClick={(e) => handleNotificationClick(notif, e)}
                   >
                     <div className="notif-item-icon">
                       {getIcon(notif.type)}
@@ -302,7 +306,7 @@ export default function NotificationBell({ userEmail, onOpenTask }) {
                 <div
                   key={notif._id}
                   className={`notif-item ${!notif.read ? "notif-unread" : ""}`}
-                  onClick={() => handleNotificationClick(notif)}
+                  onClick={(e) => handleNotificationClick(notif, e)}
                   style={{ padding: "16px 32px" }}
                 >
                   <div className="notif-item-icon" style={{ width: 42, height: 42, minWidth: 42 }}>

@@ -5,6 +5,7 @@ import { isAdminLevel, isAdminPlusOrAbove, isManager, defaultViewRole, roleBadge
 import { accessibleWorkspaces, DEFAULT_WORKSPACE, DEPARTMENTS, workspaceLabel } from "./utils/departments";
 import { WorkspaceContext } from "./utils/workspaceContext";
 import { workspaceNeedsPassword, markWorkspaceUnlocked, clearWorkspaceUnlocks, hashPassword } from "./utils/workspacePassword";
+import { morphOriginFrom } from "./utils/modalOrigin";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../convex/_generated/api";
 import { initNotifications } from "./utils/notifications";
@@ -623,7 +624,9 @@ export default function App() {
 
   function handleContextMenu(e, task) {
     e.preventDefault();
-    setContextMenu({ visible: true, x: e.pageX, y: e.pageY, task });
+    // Keep the right-clicked card as the morph origin — "Edit" opens the
+    // task modal out of that card, same as a left-click would.
+    setContextMenu({ visible: true, x: e.pageX, y: e.pageY, task, origin: morphOriginFrom(e.currentTarget) });
   }
 
   /**
@@ -890,7 +893,7 @@ export default function App() {
             </div>
             <NotificationBell
               userEmail={localStorage.getItem("wf_email") || ""}
-              onOpenTask={(taskId) => openTaskModal(taskId)}
+              onOpenTask={(taskId, origin) => openTaskModal(taskId, false, false, origin || null)}
             />
             <button
               className="btn-settings-header"
@@ -974,7 +977,7 @@ export default function App() {
                       <div key={t._id} style={{ padding: "8px", cursor: "pointer", borderRadius: "6px", fontSize: "0.8rem", display: "flex", flexDirection: "column" }}
                         onMouseEnter={e => e.currentTarget.style.background = "var(--color-bg-subtle)"}
                         onMouseLeave={e => e.currentTarget.style.background = "transparent"}
-                        onClick={() => { openTaskModal(t._id); setShowSearch(false); setSearchQuery(""); }}
+                        onClick={(e) => { openTaskModal(t._id, false, false, morphOriginFrom(e.currentTarget), t); setShowSearch(false); setSearchQuery(""); }}
                       >
                         <div style={{ fontWeight: 800 }}>{t.title}</div>
                         <div style={{ fontSize: "0.65rem", color: "#64748b" }}>{t.assignee || "Unassigned"}</div>
@@ -1221,7 +1224,7 @@ export default function App() {
           <div
             className="context-menu-item"
             onClick={() => {
-              openTaskModal(contextMenu.task._id, true);
+              openTaskModal(contextMenu.task._id, true, false, contextMenu.origin || null, contextMenu.task);
               setContextMenu((prev) => ({ ...prev, visible: false }));
             }}
           >
@@ -1445,8 +1448,8 @@ export default function App() {
         <TaskNotificationPopup
           userName={userName}
           onDismiss={() => setShowLoginNotifications(false)}
-          onOpenTask={(taskId) => {
-            openTaskModal(taskId);
+          onOpenTask={(taskId, origin) => {
+            openTaskModal(taskId, false, false, origin || null);
             setShowLoginNotifications(false);
           }}
         />
@@ -1627,7 +1630,7 @@ export default function App() {
                         cursor: "pointer", 
                         transition: "all 0.2s" 
                       }} 
-                      onClick={() => { setShowUserProjectsModal(false); setViewingStaff(null); openTaskModal(t._id); }}
+                      onClick={(e) => { const origin = morphOriginFrom(e.currentTarget); setShowUserProjectsModal(false); setViewingStaff(null); openTaskModal(t._id, false, false, origin, t); }}
                       onMouseEnter={e => e.currentTarget.style.transform = "translateY(-2px)"}
                       onMouseLeave={e => e.currentTarget.style.transform = "translateY(0)"}
                     >

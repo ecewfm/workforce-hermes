@@ -6,6 +6,7 @@ import { getProjectDeadlines, deadlineTone, DAY_MS, milestoneAnchor } from "../u
 import { notifyTaskUpdated, notifyMilestoneCompleted, notifyNoteAdded } from "../utils/notifications";
 import { useWorkspace } from "../utils/workspaceContext";
 import { resolveColumns, taskInColumn } from "../utils/columns";
+import { morphOriginFrom } from "../utils/modalOrigin";
 
 const cleanConvexError = (errorMessage) => {
   if (!errorMessage) return "An unexpected error occurred.";
@@ -455,13 +456,9 @@ export default function KanbanBoard({ userRole, actualRole, userName, openTaskMo
         onDragEnd={(e) => !isFullView && e.currentTarget.classList.remove("dragging")}
         onClick={(e) => {
           setFullViewColumn(null);
-          // Capture the card's on-screen rect + the node itself (the modal
-          // clones it as a "ghost" so the morph starts looking exactly like
-          // this card, not a blank white box) + the task data we already
+          // Origin rect + node (ghost source) + the task data we already
           // hold, so the modal paints and morphs on this same click frame.
-          const r = e.currentTarget.getBoundingClientRect();
-          const origin = { left: r.left, top: r.top, width: r.width, height: r.height, node: e.currentTarget };
-          openTaskModal(t._id, false, false, origin, t);
+          openTaskModal(t._id, false, false, morphOriginFrom(e.currentTarget), t);
         }}
         onContextMenu={(e) => onContextMenu(e, t)}
         style={{
