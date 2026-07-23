@@ -267,7 +267,9 @@ export default function TaskModal({ taskId, isEditMode, initialNotesOpen, userRo
       const root = appView();
       const camera = cameraUsable();
       const FLIGHT = 0.42;
-      const p2 = camera ? 0.34 : 0;
+      // The modal begins opening as the zoom is landing (~76% eased) and
+      // opens FAST, so flight and expansion read as one synced gesture.
+      const p2 = camera ? 0.3 : 0;
       const c = startOffset(content);
       gsap.set(content, { x: c.x, y: c.y, scale: 0.001, transformOrigin: "center center", willChange: "transform" });
       gsap.set(inner, { opacity: 0 });
@@ -279,8 +281,8 @@ export default function TaskModal({ taskId, isEditMode, initialNotesOpen, userRo
         gsap.set(bd, { opacity: 0 });
         tl.to(bd, { opacity: 1, duration: 0.35, ease: "power2.out", clearProps: "opacity" }, camera ? Math.max(p2 - 0.05, 0) : 0);
       }
-      tl.to(content, { x: 0, y: 0, scale: 1, duration: 0.55, ease: "power3.inOut" }, p2)
-        .to(inner, { opacity: 1, duration: 0.3, ease: "power2.out", stagger: 0.02 }, p2 + 0.22)
+      tl.to(content, { x: 0, y: 0, scale: 1, duration: 0.4, ease: "power3.inOut" }, p2)
+        .to(inner, { opacity: 1, duration: 0.26, ease: "power2.out", stagger: 0.02 }, p2 + 0.16)
         .set(content, { clearProps: "transform,willChange" })
         .set(inner, { clearProps: "opacity" });
     } else {
