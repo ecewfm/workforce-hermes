@@ -18,6 +18,7 @@ export default function RoboHand() {
   const baseRef = useRef(null);
   const elbowRef = useRef(null);
   const clawRef = useRef(null);
+  const clawInnerRef = useRef(null);
   const prongTopRef = useRef(null);
   const prongBotRef = useRef(null);
 
@@ -25,8 +26,9 @@ export default function RoboHand() {
     if (window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches) return;
     const svg = svgRef.current, upper = upperRef.current, lower = lowerRef.current;
     const base = baseRef.current, elbow = elbowRef.current, claw = clawRef.current;
+    const clawInner = clawInnerRef.current;
     const prongTop = prongTopRef.current, prongBot = prongBotRef.current;
-    if (!svg || !upper || !lower || !claw) return;
+    if (!svg || !upper || !lower || !claw || !clawInner) return;
 
     let current = null; // the hovered .nav-btn
     const anchor = { x: 0, y: 0 }; // arm base: randomized around the button
@@ -49,9 +51,11 @@ export default function RoboHand() {
       lower.setAttribute("x2", hand.x); lower.setAttribute("y2", hand.y);
       base.setAttribute("cx", anchor.x); base.setAttribute("cy", anchor.y);
       elbow.setAttribute("cx", ex); elbow.setAttribute("cy", ey);
-      // Claw rides the forearm's direction, palm just short of the cursor.
+      // Claw rides the forearm's direction, rotating around its OWN palm
+      // (plain SVG transform: translate then rotate about local 0,0 — GSAP's
+      // svgOrigin would rotate it around the screen corner and lose the hand).
       const angle = (Math.atan2(hand.y - ey, hand.x - ex) * 180) / Math.PI;
-      gsap.set(claw, { x: hand.x, y: hand.y, rotation: angle, svgOrigin: "0 0" });
+      claw.setAttribute("transform", `translate(${hand.x} ${hand.y}) rotate(${angle})`);
     };
 
     const xTo = gsap.quickTo(hand, "x", { duration: 0.22, ease: "power3.out", onUpdate: render });
@@ -60,22 +64,21 @@ export default function RoboHand() {
     const activate = (btn, e) => {
       current = btn;
       const r = btn.getBoundingClientRect();
-      // No uniformity: the arm spawns from a RANDOM side of the button, at a
-      // random point along it, and the elbow bows a random way each reach.
-      const side = Math.floor(Math.random() * 4); // 0 top, 1 right, 2 bottom, 3 left
-      const t = 0.15 + Math.random() * 0.7; // keep away from the sharp corners
-      const OUT = 6;
-      if (side === 0) { anchor.x = r.left + r.width * t; anchor.y = r.top - OUT; }
-      else if (side === 1) { anchor.x = r.right + OUT; anchor.y = r.top + r.height * t; }
-      else if (side === 2) { anchor.x = r.left + r.width * t; anchor.y = r.bottom + OUT; }
-      else { anchor.x = r.left - OUT; anchor.y = r.top + r.height * t; }
+      // The arm comes FROM BEHIND THE BOTTOM of the button — anchored just
+      // under its bottom edge. Variety without uniformity: a random spot
+      // along that edge and a random elbow bow, every reach.
+      const t = 0.12 + Math.random() * 0.76;
+      anchor.x = r.left + r.width * t;
+      anchor.y = r.bottom + 4;
       bendSign = Math.random() < 0.5 ? 1 : -1;
-      // Hand starts tucked at the base, then reaches out to the cursor.
+      // NO fade-in: the layer switches on with everything collapsed at the
+      // base, and the ENTRY is pure motion — the claw pushes out from under
+      // the button and the arm extends up to the cursor.
       hand.x = anchor.x; hand.y = anchor.y;
       render();
-      gsap.killTweensOf(svg);
-      gsap.to(svg, { autoAlpha: 1, duration: 0.12, ease: "power1.out" });
-      gsap.fromTo(claw, { scale: 0 }, { scale: 1, duration: 0.3, ease: "back.out(2.2)" });
+      gsap.killTweensOf([svg, clawInner]);
+      gsap.set(svg, { autoAlpha: 1 });
+      gsap.fromTo(clawInner, { scale: 0, transformOrigin: "center center" }, { scale: 1, duration: 0.3, ease: "back.out(2.2)" });
       xTo(e.clientX); yTo(e.clientY + 6);
       // Idle claw chatter: prongs open/close like it wants to pinch.
       idleTl = gsap.timeline({ repeat: -1, yoyo: true, defaults: { duration: 0.5, ease: "sine.inOut" } })
@@ -86,9 +89,12 @@ export default function RoboHand() {
     const deactivate = () => {
       current = null;
       if (idleTl) { idleTl.kill(); idleTl = null; }
-      // Retract to the base, then blink out.
+      // NO fade-out either: the arm RETRACTS — hand travels back down into
+      // the base, the claw tucks itself away, and only once everything has
+      // collapsed behind the button's bottom does the layer switch off.
       xTo(anchor.x); yTo(anchor.y);
-      gsap.to(svg, { autoAlpha: 0, duration: 0.18, ease: "power1.in", delay: 0.08 });
+      gsap.to(clawInner, { scale: 0, duration: 0.16, ease: "back.in(1.8)", delay: 0.1 });
+      gsap.set(svg, { autoAlpha: 0, delay: 0.3 });
     };
 
     const onOver = (e) => {
@@ -124,12 +130,15 @@ export default function RoboHand() {
       <line ref={lowerRef} className="robo-arm-seg" />
       <circle ref={baseRef} r="4.5" className="robo-joint" />
       <circle ref={elbowRef} r="3.2" className="robo-joint" />
-      {/* claw, drawn pointing +x; rotated to the forearm's direction */}
-      <g ref={clawRef} className="robo-claw">
-        <rect x="-6" y="-5.5" width="9" height="11" rx="2.5" className="robo-palm" />
-        <path ref={prongTopRef} d="M2 -3 Q9 -8 13 -6 Q10 -3.5 5 -0.5 Z" className="robo-prong" />
-        <path ref={prongBotRef} d="M2 3 Q9 8 13 6 Q10 3.5 5 0.5 Z" className="robo-prong" />
-        <circle cx="-1.5" cy="0" r="1.6" className="robo-palm-dot" />
+      {/* claw, drawn pointing +x; the OUTER g is positioned/rotated via a
+          plain SVG transform each frame, the INNER g handles the pop-in */}
+      <g ref={clawRef}>
+        <g ref={clawInnerRef} className="robo-claw">
+          <rect x="-6" y="-5.5" width="9" height="11" rx="2.5" className="robo-palm" />
+          <path ref={prongTopRef} d="M2 -3 Q9 -8 13 -6 Q10 -3.5 5 -0.5 Z" className="robo-prong" />
+          <path ref={prongBotRef} d="M2 3 Q9 8 13 6 Q10 3.5 5 0.5 Z" className="robo-prong" />
+          <circle cx="-1.5" cy="0" r="1.6" className="robo-palm-dot" />
+        </g>
       </g>
     </svg>
   );
