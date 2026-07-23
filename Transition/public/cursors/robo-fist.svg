@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 28 28">
+  <!-- closed robotic fist cursor: emerald, clean rounded knuckles -->
+  <defs>
+    <linearGradient id="m" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#6ee7b7"/>
+      <stop offset="1" stop-color="#047857"/>
+    </linearGradient>
+  </defs>
+  <g stroke="#043326" stroke-width="0.9">
+    <!-- four curled finger segments across the top, like knuckle plates -->
+    <rect x="6.8" y="6.2" width="3.4" height="6.4" rx="1.7" fill="url(#m)"/>
+    <rect x="10.5" y="5.4" width="3.4" height="7.2" rx="1.7" fill="url(#m)"/>
+    <rect x="14.2" y="5.4" width="3.4" height="7.2" rx="1.7" fill="url(#m)"/>
+    <rect x="17.9" y="6.2" width="3.2" height="6.4" rx="1.6" fill="url(#m)"/>
+    <!-- palm block -->
+    <rect x="6.4" y="10.6" width="15" height="8.6" rx="3.4" fill="#059669"/>
+    <!-- thumb wrapped across the front -->
+    <rect x="6.9" y="13.2" width="10.4" height="3.6" rx="1.8" fill="url(#m)"/>
+    <!-- wrist cuff -->
+    <rect x="10.4" y="19" width="7.4" height="5.4" rx="1.7" fill="#065f46"/>
+    <circle cx="19.4" cy="16.4" r="1.4" fill="#d1fae5" stroke="none"/>
+  </g>
+</svg>

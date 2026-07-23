@@ -1175,6 +1175,27 @@ header {
   padding: 15px 40px;
 }
 
+/* ── Robotic-hand CURSOR: an open robo hand everywhere in the app, closing
+   into a fist while the mouse button is held (html.robo-grabbing is toggled
+   on pointerdown/up in RoboHand.jsx). !important so it also beats the many
+   inline cursor styles; typing surfaces keep the text caret. ── */
+* {
+  cursor: url("/cursors/robo-open.svg") 13 4, auto !important;
+}
+/* Over the nav buttons the hand goes into a mid-grab pose — fingers curled
+   around the pointer tip, actively TRYING to grab it. */
+.nav-btn, .nav-btn * {
+  cursor: url("/cursors/robo-grab.svg") 14 9, pointer !important;
+}
+html.robo-grabbing *, html.robo-grabbing .nav-btn {
+  cursor: url("/cursors/robo-fist.svg") 13 9, auto !important;
+}
+input:not([type="button"]):not([type="submit"]):not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+textarea,
+[contenteditable="true"] {
+  cursor: text !important;
+}
+
 /* ── RoboHand: the little robotic arm that reaches for the cursor on the
    nav buttons (RoboHand.jsx). Fixed overlay, never intercepts clicks. ── */
 .robo-hand-layer {
@@ -1188,16 +1209,16 @@ header {
   overflow: visible;
 }
 .robo-arm-seg {
-  stroke: #232b38; /* gunmetal limb, matching the hand */
+  stroke: #047857; /* emerald limb, matching the hand */
   stroke-linecap: round;
 }
 .robo-joint {
-  fill: #1a212c;
-  stroke: #465064;
+  fill: #065f46;
+  stroke: #34d399;
   stroke-width: 2;
 }
 .rh-led {
-  fill: var(--color-accent); /* one theme-coloured sensor light */
+  fill: #d1fae5; /* pale sensor light against the emerald plates */
 }
 
 /* Task modal: the dim+blur is DELEGATED to a child .task-modal-backdrop layer

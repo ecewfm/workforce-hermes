@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 28 28">
+  <!-- mid-grab robotic hand: fingers curled around the pointer (hotspot sits
+       inside the grasp) - shown over nav buttons: "trying to grab" -->
+  <defs>
+    <linearGradient id="m" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#6ee7b7"/>
+      <stop offset="1" stop-color="#047857"/>
+    </linearGradient>
+  </defs>
+  <!-- finger curls: dark outline under, emerald over -->
+  <g fill="none" stroke="#043326" stroke-width="4.4" stroke-linecap="round">
+    <path d="M9.8 13.5 C9.2 8.2 10.6 5.6 13.2 7.2"/>
+    <path d="M12.4 13.3 C12 6.4 13.6 4.8 15 7"/>
+    <path d="M15 13.3 C15.4 6.8 16.6 5.6 16.9 8"/>
+    <path d="M17.4 13.6 C18.2 8.4 19 7.4 18.3 9.4"/>
+    <path d="M8.6 16.4 C5.6 15 6.4 11.2 10.4 10.4"/>
+  </g>
+  <g fill="none" stroke="url(#m)" stroke-width="2.8" stroke-linecap="round">
+    <path d="M9.8 13.5 C9.2 8.2 10.6 5.6 13.2 7.2"/>
+    <path d="M12.4 13.3 C12 6.4 13.6 4.8 15 7"/>
+    <path d="M15 13.3 C15.4 6.8 16.6 5.6 16.9 8"/>
+    <path d="M17.4 13.6 C18.2 8.4 19 7.4 18.3 9.4"/>
+    <path d="M8.6 16.4 C5.6 15 6.4 11.2 10.4 10.4"/>
+  </g>
+  <g stroke="#043326" stroke-width="0.9">
+    <rect x="8.2" y="13" width="11.4" height="7" rx="3" fill="#059669"/>
+    <rect x="10.4" y="19.4" width="7.2" height="5" rx="1.7" fill="#065f46"/>
+    <circle cx="11.4" cy="16.4" r="1.3" fill="#d1fae5" stroke="none"/>
+  </g>
+</svg>
