@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { gsap } from "gsap";
+import { getFxPrefs, applyFxClasses } from "../utils/fxPrefs";
 
 /**
  * RoboHand — GREEN robotic arms that reach for the cursor when you hover a
@@ -68,6 +69,9 @@ export default function RoboHand() {
   // Cursor grip: the app-wide robo-hand cursor (index.css) closes into a
   // fist while the mouse button is held. Not motion — runs regardless of
   // prefers-reduced-motion.
+  // Bootstrap the fx classes (robo cursor on/off) from saved prefs.
+  useEffect(() => { applyFxClasses(); }, []);
+
   useEffect(() => {
     const grab = () => document.documentElement.classList.add("robo-grabbing");
     const release = () => document.documentElement.classList.remove("robo-grabbing");
@@ -91,6 +95,7 @@ export default function RoboHand() {
 
     const lastCursor = { x: 0, y: 0 };
     let hoveredBtn = null;
+    let prefs = getFxPrefs();
     const pendingSpawns = [];
 
     // ── Arm factory: each arm owns its geometry, tweens and "chase brain".
@@ -260,6 +265,7 @@ export default function RoboHand() {
     };
 
     const onOver = (e) => {
+      if (!prefs.roboArms) return; // toggled off in Settings
       const btn = e.target.closest?.(".nav-btn");
       if (!btn || btn === hoveredBtn) return;
       if (hoveredBtn) deactivate();
@@ -276,13 +282,20 @@ export default function RoboHand() {
       arms.forEach((a) => { if (a.active) a.aim(); });
     };
 
+    const onPrefs = (e) => {
+      prefs = e.detail;
+      if (!prefs.roboArms && hoveredBtn) deactivate();
+    };
+
     document.addEventListener("mouseover", onOver);
     document.addEventListener("mouseout", onOut);
     document.addEventListener("mousemove", onMove);
+    window.addEventListener("wf-fx-prefs", onPrefs);
     return () => {
       document.removeEventListener("mouseover", onOver);
       document.removeEventListener("mouseout", onOut);
       document.removeEventListener("mousemove", onMove);
+      window.removeEventListener("wf-fx-prefs", onPrefs);
       clearPendingSpawns();
       arms.forEach((a) => a.destroy());
     };

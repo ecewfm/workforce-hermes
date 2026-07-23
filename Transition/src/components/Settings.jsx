@@ -9,6 +9,7 @@ import { DEPARTMENTS, workspaceLabel, MAIN_ADMIN_EMAIL } from "../utils/departme
 import { hashPassword, markWorkspaceUnlocked } from "../utils/workspacePassword";
 import { DEFAULT_COLUMNS, COLUMN_COLOR_PRESETS, resolveColumns, taskInColumn, makeColumnId } from "../utils/columns";
 import { getGeminiModels, isCaddyEnabled, setCaddyEnabled } from "../utils/aiConfig";
+import { getFxPrefs, setFxPref } from "../utils/fxPrefs";
 
 const ACCENT_COLORS = [
   { name: "Emerald", value: "#10b981" },
@@ -116,6 +117,10 @@ export default function Settings({ userName, userEmail, onClose, showModal, onLo
 
   // --- AI Assistant (Caddy) state ---
   const [caddyEnabled, setCaddyEnabledState] = useState(isCaddyEnabled());
+
+  // --- Motion & fun effects state ---
+  const [fxPrefs, setFxPrefsState] = useState(getFxPrefs());
+  const toggleFx = (key, value) => setFxPrefsState(setFxPref(key, value));
 
   // --- General Preferences state ---
   const [defaultView, setDefaultView] = useState(saved.defaultView);
@@ -616,6 +621,43 @@ export default function Settings({ userName, userEmail, onClose, showModal, onLo
                       checked={caddyEnabled}
                       onChange={(e) => { setCaddyEnabled(e.target.checked); setCaddyEnabledState(e.target.checked); }}
                     />
+                    <span className="toggle-slider" />
+                  </label>
+                </div>
+              </div>
+
+              <div className="settings-card">
+                <label className="settings-field-label">Motion & Fun Effects</label>
+                <p className="settings-field-hint">
+                  The playful robotic touches. Each one is yours to keep or kill — changes apply instantly.
+                </p>
+                <div className="settings-toggle-row">
+                  <div className="toggle-info">
+                    <span className="toggle-label">Camera follows the cursor</span>
+                    <span className="toggle-desc">The whole screen gently pans and tilts toward wherever your pointer is.</span>
+                  </div>
+                  <label className="toggle-switch">
+                    <input type="checkbox" checked={fxPrefs.cameraFollow} onChange={(e) => toggleFx("cameraFollow", e.target.checked)} />
+                    <span className="toggle-slider" />
+                  </label>
+                </div>
+                <div className="settings-toggle-row">
+                  <div className="toggle-info">
+                    <span className="toggle-label">Robotic arms on the nav buttons</span>
+                    <span className="toggle-desc">Hovering a nav button makes robotic arms reach out and try (and fail) to catch your cursor.</span>
+                  </div>
+                  <label className="toggle-switch">
+                    <input type="checkbox" checked={fxPrefs.roboArms} onChange={(e) => toggleFx("roboArms", e.target.checked)} />
+                    <span className="toggle-slider" />
+                  </label>
+                </div>
+                <div className="settings-toggle-row">
+                  <div className="toggle-info">
+                    <span className="toggle-label">Robotic hand cursor</span>
+                    <span className="toggle-desc">Your cursor is a robotic hand — open while roaming, grabbing over nav buttons, a fist while clicking.</span>
+                  </div>
+                  <label className="toggle-switch">
+                    <input type="checkbox" checked={fxPrefs.roboCursor} onChange={(e) => toggleFx("roboCursor", e.target.checked)} />
                     <span className="toggle-slider" />
                   </label>
                 </div>

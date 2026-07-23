@@ -19,6 +19,7 @@ import AdminPanel from "./components/AdminPanel";
 import TaskModal from "./components/TaskModal";
 import NotesModal from "./components/NotesModal";
 import RoboHand from "./components/RoboHand";
+import CameraFollow from "./components/CameraFollow";
 import AIAssistant from "./components/AIAssistant";
 import { isCaddyEnabled } from "./utils/aiConfig";
 import { milestoneAnchor, DAY_MS } from "./utils/deadlines";
@@ -1164,6 +1165,8 @@ export default function App() {
 
       {/* Robotic hand that reaches for the cursor on the nav buttons */}
       <RoboHand />
+      {/* The screen-as-camera that keeps aiming at the cursor */}
+      <CameraFollow />
 
       {/* Task Modal */}
       {modalTaskId && (

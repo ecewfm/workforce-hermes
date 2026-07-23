@@ -37,7 +37,7 @@ const APP_GUIDE = `WHERE THINGS LIVE in Workforce Hermes (use this to answer "wh
 • Settings → Staff Management (Admin+): "Access Type" sets each person's role; "Department Membership" (Managers only — Admins can view) controls which workspaces each person can access. A user reaches exactly the workspaces (departments) ticked for them.
 • Settings → AI Assistant: toggle Caddy on/off.
 • Projects/Kanban, the notebook, announcements, and the handbook are each per-workspace; switch workspaces from the header title (a password may be required).
-• Clicking a project card zooms the board toward it and the task modal grows out of the card to the centre (reversing on close) — that's the intended animation, not a glitch. Same for the robotic touches: the cursor is a robotic hand that grips when you click, and a robotic arm reaches for your cursor on the navigation buttons — deliberate fun, not glitches.
+• Clicking a project card zooms the board toward it and the task modal grows out of the card to the centre (reversing on close) — that's the intended animation, not a glitch. Same for the robotic touches: the cursor is a robotic hand that grips when you click, robotic arms reach for your cursor on the navigation buttons, and the screen gently tilts toward the pointer — deliberate fun, not glitches. Each can be turned on/off under Settings → General Preferences → "Motion & Fun Effects".
 If you're unsure where something is, say it's most likely under Settings and point them there — never claim a real feature doesn't exist.`;
 
 // ── Gemini function-declaration schemas ─────────────────────────────────────

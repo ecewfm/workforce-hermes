@@ -1179,20 +1179,20 @@ header {
    into a fist while the mouse button is held (html.robo-grabbing is toggled
    on pointerdown/up in RoboHand.jsx). !important so it also beats the many
    inline cursor styles; typing surfaces keep the text caret. ── */
-* {
+html.fx-robo-cursor * {
   cursor: url("/cursors/robo-open.svg") 13 4, auto !important;
 }
 /* Over the nav buttons the hand goes into a mid-grab pose — fingers curled
    around the pointer tip, actively TRYING to grab it. */
-.nav-btn, .nav-btn * {
+html.fx-robo-cursor .nav-btn, html.fx-robo-cursor .nav-btn * {
   cursor: url("/cursors/robo-grab.svg") 14 9, pointer !important;
 }
-html.robo-grabbing *, html.robo-grabbing .nav-btn {
+html.fx-robo-cursor.robo-grabbing * {
   cursor: url("/cursors/robo-fist.svg") 13 9, auto !important;
 }
-input:not([type="button"]):not([type="submit"]):not([type="checkbox"]):not([type="radio"]):not([type="range"]),
-textarea,
-[contenteditable="true"] {
+html.fx-robo-cursor input:not([type="button"]):not([type="submit"]):not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+html.fx-robo-cursor textarea,
+html.fx-robo-cursor [contenteditable="true"] {
   cursor: text !important;
 }
 
