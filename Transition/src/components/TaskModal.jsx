@@ -212,10 +212,25 @@ export default function TaskModal({ taskId, isEditMode, initialNotesOpen, userRo
   // keyframes (see .task-modal-overlay exclusions in index.css), no React
   // gating: the seeded task means this runs on the click's own paint. ────────
   const overlayRef = useRef(null);
+  const backdropRef = useRef(null); // dim+blur layer — clipped into the circle reveal
   const contentRef = useRef(null);
   const ghostRef = useRef(null); // clone of the clicked card, cross-faded inside the box
   const hasAnimatedOpen = useRef(false);
   const closingRef = useRef(false);
+
+  // Circle-reveal geometry: the backdrop blooms out of the card's centre as
+  // an expanding circle (and drains back into it on close). R = the radius
+  // needed to cover the whole viewport from that centre.
+  const circleAt = (r) => {
+    const cx = originRect.left + originRect.width / 2;
+    const cy = originRect.top + originRect.height / 2;
+    return `circle(${r}px at ${cx}px ${cy}px)`;
+  };
+  const coverRadius = () => {
+    const cx = originRect.left + originRect.width / 2;
+    const cy = originRect.top + originRect.height / 2;
+    return Math.ceil(Math.hypot(Math.max(cx, window.innerWidth - cx), Math.max(cy, window.innerHeight - cy))) + 10;
+  };
 
   // FLIP deltas: transform that lays the modal box exactly over a rect.
   const morphDeltas = (content, rect) => {
@@ -264,8 +279,8 @@ export default function TaskModal({ taskId, isEditMode, initialNotesOpen, userRo
     // GSAP doesn't honor prefers-reduced-motion by itself — appear in place.
     if (window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches) return;
     const inner = Array.from(content.children);
+    const bd = backdropRef.current;
     const tl = gsap.timeline();
-    gsap.set(overlay, { opacity: 0 });
     if (originRect) {
       // Two acts: (1) the CAMERA flies to the card — the whole view zooms in
       // on it; (2) the card morphs into the modal. The modal box takes over
@@ -275,8 +290,14 @@ export default function TaskModal({ taskId, isEditMode, initialNotesOpen, userRo
       const root = appView();
       const camera = cameraUsable();
       const Z = camera ? CAMERA_ZOOM : 1;
-      const start = camera ? zoomedRect(Z) : originRect; // rect the box takes over at
-      const p2 = camera ? 0.4 : 0; // when act 2 (the morph) begins
+      // Act 2 (the morph) starts DURING the zoom's final stretch, not after
+      // it — so the modal is already opening as the camera settles. The box
+      // takes over at the card's rect AT THAT INSTANT: sample the flight's
+      // ease at p2 to get the camera's mid-flight scale.
+      const FLIGHT = 0.42;
+      const p2 = camera ? 0.26 : 0;
+      const s0 = camera ? 1 + (Z - 1) * gsap.parseEase("power2.inOut")(Math.min(p2 / FLIGHT, 1)) : 1;
+      const start = camera ? zoomedRect(s0) : originRect; // rect the box takes over at
       const final = content.getBoundingClientRect();
       const d = morphDeltas(content, start);
       gsap.set(content, { ...d, opacity: camera ? 0 : 1, transformOrigin: "center center", willChange: "transform" });
@@ -303,13 +324,19 @@ export default function TaskModal({ taskId, isEditMode, initialNotesOpen, userRo
         // Act 1 — fly in. The modal stays invisible; the user watches the
         // real board rush toward the clicked card. The stage then HOLDS this
         // zoom for as long as the modal is open (released in doClose).
-        tl.to(root, { scale: Z, duration: 0.42, ease: "power2.inOut" }, 0);
+        tl.to(root, { scale: Z, duration: FLIGHT, ease: "power2.inOut" }, 0);
         // Act 2 — box takes over the zoomed card invisibly, world dims, box
         // expands into place over the held zoom.
         tl.set(content, { opacity: 1 }, p2 - 0.02);
       }
-      tl.to(overlay, { opacity: 1, duration: 0.35, ease: "power2.out" }, camera ? p2 - 0.02 : 0)
-        .to(content, { x: 0, y: 0, scaleX: 1, scaleY: 1, duration: 0.52, ease: "expo.inOut" }, p2);
+      // The dim+blur BLOOMS out of the card's centre as an expanding circle,
+      // in step with the box growing out of the same spot.
+      if (bd) {
+        gsap.set(bd, { clipPath: circleAt(0) });
+        tl.to(bd, { clipPath: circleAt(coverRadius()), duration: 0.55, ease: "power2.out" }, camera ? Math.max(p2 - 0.06, 0) : 0)
+          .set(bd, { clearProps: "clipPath" });
+      }
+      tl.to(content, { x: 0, y: 0, scaleX: 1, scaleY: 1, duration: 0.52, ease: "expo.inOut" }, p2);
       // The ghost must dissolve BEFORE the box stretches (expo.inOut barely
       // moves in its first ~0.2s) — any later and you see giant distorted
       // card content smeared over the growing modal.
@@ -320,8 +347,11 @@ export default function TaskModal({ taskId, isEditMode, initialNotesOpen, userRo
     } else {
       // No source card (search, notifications, Caddy): plain centre pop.
       gsap.set(content, { opacity: 0, scale: 0.94, transformOrigin: "center center" });
-      tl.to(overlay, { opacity: 1, duration: 0.3, ease: "power2.out" }, 0)
-        .to(content, { opacity: 1, scale: 1, duration: 0.42, ease: "back.out(1.4)", clearProps: "transform,opacity" }, 0);
+      if (bd) {
+        gsap.set(bd, { opacity: 0 });
+        tl.to(bd, { opacity: 1, duration: 0.3, ease: "power2.out", clearProps: "opacity" }, 0);
+      }
+      tl.to(content, { opacity: 1, scale: 1, duration: 0.42, ease: "back.out(1.4)", clearProps: "transform,opacity" }, 0);
     }
   }, [task, originRect]);
 
@@ -342,7 +372,8 @@ export default function TaskModal({ taskId, isEditMode, initialNotesOpen, userRo
     if (!content || !overlay || window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches) { bail(); return; }
     const ghost = ghostRef.current && content.contains(ghostRef.current) ? ghostRef.current : null;
     const inner = Array.from(content.children).filter((el) => el !== ghost);
-    gsap.killTweensOf([content, overlay, ...inner, ...(ghost ? [ghost] : []), ...(root ? [root] : [])]);
+    const bd = backdropRef.current;
+    gsap.killTweensOf([content, overlay, ...inner, ...(ghost ? [ghost] : []), ...(root ? [root] : []), ...(bd ? [bd] : [])]);
     const rootScaleNow = root ? Number(gsap.getProperty(root, "scaleX")) || 1 : 1;
     // The stage sitting at CAMERA_ZOOM is the NORMAL steady state of a
     // camera open (the zoom holds while the modal is open) — only a box
@@ -362,7 +393,11 @@ export default function TaskModal({ taskId, isEditMode, initialNotesOpen, userRo
       // The ghost reappears only in the last moments, when the box is nearly
       // card-sized (stretch-smear rule) — it lands AS the card.
       if (ghost) tl.to(ghost, { opacity: 1, duration: 0.14, ease: "power1.out" }, 0.36);
-      tl.to(overlay, { opacity: 0, duration: 0.26, ease: "power1.in" }, 0.26);
+      // The dim DRAINS back into the card's centre — the reveal in reverse.
+      if (bd) {
+        gsap.set(bd, { clipPath: circleAt(coverRadius()) });
+        tl.to(bd, { clipPath: circleAt(0), duration: 0.4, ease: "power2.in" }, 0.1);
+      }
       tl.call(onClose, [], 0.52);
       if (zoomedNow) {
         tl.to(root, { scale: 1, duration: 0.48, ease: "power2.inOut" }, 0.6)
@@ -371,8 +406,8 @@ export default function TaskModal({ taskId, isEditMode, initialNotesOpen, userRo
     } else {
       // Mid-open close: quick fade, and ease the camera home from wherever
       // it currently is.
-      tl.to(content, { opacity: 0, scale: 0.96, duration: 0.22, ease: "power2.in" }, 0)
-        .to(overlay, { opacity: 0, duration: 0.26, ease: "power1.in" }, 0.04);
+      tl.to(content, { opacity: 0, scale: 0.96, duration: 0.22, ease: "power2.in" }, 0);
+      if (bd) tl.to(bd, { opacity: 0, duration: 0.26, ease: "power1.in" }, 0.04);
       if (root && Math.abs(rootScaleNow - 1) > 0.001) {
         tl.to(root, { scale: 1, duration: 0.35, ease: "power2.out" }, 0)
           .set(root, { clearProps: "transform,transformOrigin,willChange" });
@@ -809,7 +844,8 @@ export default function TaskModal({ taskId, isEditMode, initialNotesOpen, userRo
   if (!task) return null;
 
   return createPortal(
-    <div className="modal-overlay task-modal-overlay" ref={overlayRef} onClick={(e) => { if (e.target === e.currentTarget) doClose(); }}>
+    <div className="modal-overlay task-modal-overlay tm-backdrop-delegated" ref={overlayRef} onClick={(e) => { if (e.target === e.currentTarget) doClose(); }}>
+      <div className="task-modal-backdrop" ref={backdropRef} />
       <div className="modal-content task-modal-content" ref={contentRef} onClick={(e) => e.stopPropagation()}>
         <button className="modal-close" onClick={doClose}>×</button>
 

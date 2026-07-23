@@ -1175,6 +1175,24 @@ header {
   padding: 15px 40px;
 }
 
+/* Task modal: the dim+blur is DELEGATED to a child .task-modal-backdrop layer
+   so GSAP can clip-path it into a circle blooming out of the clicked card —
+   clipping the overlay itself would clip the morphing modal box with it. */
+.modal-overlay.task-modal-overlay.tm-backdrop-delegated {
+  background: transparent !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+.task-modal-backdrop {
+  position: absolute;
+  inset: 0;
+  pointer-events: none; /* clicks fall through to the overlay (close-on-click) */
+  background: rgba(15, 23, 42, 0.4);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+[data-theme="dark"] .task-modal-backdrop { background: rgba(0, 0, 0, 0.6); }
+
 .modal-content {
   background: var(--color-card-bg);
   width: 98%;
@@ -5358,6 +5376,7 @@ body.role-programmer .kanban-col.col-scrap {
 
 /* ---- Glassmorphism ---- */
 [data-skin="glass"] .modal-overlay,
+[data-skin="glass"] .task-modal-backdrop,
 [data-skin="glass"] .custom-modal-overlay,
 [data-skin="glass"] .announcement-overlay,
 [data-skin="glass"] .profile-popover-overlay,
@@ -5422,6 +5441,7 @@ body.role-programmer .kanban-col.col-scrap {
 
 /* ---- Cubic (neubrutalism) ---- */
 [data-skin="cubic"] .modal-overlay,
+[data-skin="cubic"] .task-modal-backdrop,
 [data-skin="cubic"] .custom-modal-overlay,
 [data-skin="cubic"] .announcement-overlay,
 [data-skin="cubic"] .profile-popover-overlay,
@@ -5504,6 +5524,7 @@ body.role-programmer .kanban-col.col-scrap {
 [data-skin="aurora"] body::before { opacity: 0.04; }
 
 [data-skin="aurora"] .modal-overlay,
+[data-skin="aurora"] .task-modal-backdrop,
 [data-skin="aurora"] .custom-modal-overlay,
 [data-skin="aurora"] .announcement-overlay,
 [data-skin="aurora"] .profile-popover-overlay,
@@ -5563,6 +5584,7 @@ body.role-programmer .kanban-col.col-scrap {
 /* ---- Minimal (flat) ---- */
 [data-skin="minimal"] body::before { opacity: 0; }
 [data-skin="minimal"] .modal-overlay,
+[data-skin="minimal"] .task-modal-backdrop,
 [data-skin="minimal"] .custom-modal-overlay,
 [data-skin="minimal"] .announcement-overlay,
 [data-skin="minimal"] .profile-popover-overlay,
@@ -6466,6 +6488,7 @@ body.role-programmer .kanban-col.col-scrap {
 
 /* ---- Overlays: brighter, more refractive scrim ---- */
 [data-skin="liquid"] .modal-overlay,
+[data-skin="liquid"] .task-modal-backdrop,
 [data-skin="liquid"] .custom-modal-overlay,
 [data-skin="liquid"] .announcement-overlay,
 [data-skin="liquid"] .profile-popover-overlay,
