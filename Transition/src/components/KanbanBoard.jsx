@@ -458,7 +458,18 @@ export default function KanbanBoard({ userRole, actualRole, userName, openTaskMo
           setFullViewColumn(null);
           // Origin rect + node (ghost source) + the task data we already
           // hold, so the modal paints and morphs on this same click frame.
-          openTaskModal(t._id, false, false, morphOriginFrom(e.currentTarget), t);
+          const origin = morphOriginFrom(e.currentTarget);
+          // The camera flight happens AFTER the hover pop retracts, so hand
+          // over the card's REST rect, not the popped one (scale 1.08 around
+          // centre — keep in sync with .tf-shell:hover in index.css).
+          const shell = e.currentTarget.closest?.(".tf-shell");
+          if (origin && shell && shell.matches(":hover")) {
+            const POP = 1.08;
+            const cx = origin.left + origin.width / 2, cy = origin.top + origin.height / 2;
+            origin.width /= POP; origin.height /= POP;
+            origin.left = cx - origin.width / 2; origin.top = cy - origin.height / 2;
+          }
+          openTaskModal(t._id, false, false, origin, t);
         }}
         onContextMenu={(e) => onContextMenu(e, t)}
         style={{
