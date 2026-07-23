@@ -265,7 +265,10 @@ export default function TaskModal({ taskId, isEditMode, initialNotesOpen, userRo
       }
       tl.to(overlay, { opacity: 1, duration: 0.4, ease: "power2.out" }, 0)
         .to(content, { x: 0, y: 0, scaleX: 1, scaleY: 1, duration: 0.55, ease: "expo.inOut" }, 0);
-      if (ghost) tl.to(ghost, { opacity: 0, duration: 0.3, ease: "power1.out" }, 0.12);
+      // The ghost must dissolve BEFORE the box stretches (expo.inOut barely
+      // moves in the first ~0.2s) — any later and you see giant distorted
+      // card content smeared over the growing modal.
+      if (ghost) tl.to(ghost, { opacity: 0, duration: 0.16, ease: "power1.in" }, 0.03);
       tl.to(inner, { opacity: 1, duration: 0.34, ease: "power2.out", stagger: 0.02 }, ghost ? 0.2 : 0.28)
         .set(content, { clearProps: "transform,willChange" })
         .set(inner, { clearProps: "opacity" });
@@ -294,9 +297,10 @@ export default function TaskModal({ taskId, isEditMode, initialNotesOpen, userRo
       const d = morphDeltas(content);
       tl.to(inner, { opacity: 0, duration: 0.16, ease: "power1.in" }, 0)
         .to(content, { ...d, transformOrigin: "center center", duration: 0.45, ease: "expo.inOut" }, 0.04);
-      // The ghost card fades back in as the box shrinks, so it LANDS looking
-      // like the card — unmount then swaps to the real card seamlessly.
-      if (ghost) tl.to(ghost, { opacity: 1, duration: 0.22, ease: "power1.out" }, 0.18);
+      // The ghost card only reappears in the last moments, when the box is
+      // nearly card-sized again (same stretch-smear rule as on open) — it
+      // lands AS the card, then unmount swaps in the real one seamlessly.
+      if (ghost) tl.to(ghost, { opacity: 1, duration: 0.14, ease: "power1.out" }, 0.34);
       tl.to(overlay, { opacity: 0, duration: 0.26, ease: "power1.in" }, 0.22);
     } else {
       tl.to(content, { opacity: 0, scale: 0.96, duration: 0.22, ease: "power2.in" }, 0)
