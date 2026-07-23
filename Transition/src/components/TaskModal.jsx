@@ -213,6 +213,7 @@ export default function TaskModal({ taskId, isEditMode, initialNotesOpen, userRo
   // gating: the seeded task means this runs on the click's own paint. ────────
   const overlayRef = useRef(null);
   const contentRef = useRef(null);
+  const ghostRef = useRef(null); // clone of the clicked card, cross-faded inside the box
   const hasAnimatedOpen = useRef(false);
   const closingRef = useRef(false);
 
@@ -239,14 +240,33 @@ export default function TaskModal({ taskId, isEditMode, initialNotesOpen, userRo
     gsap.set(overlay, { opacity: 0 });
     if (originRect) {
       // Start life AS the card: the modal box is scaled/positioned onto the
-      // card's exact rect (its solid bg covers the real card underneath),
-      // then grows into place while its content fades in mid-flight.
+      // card's exact rect, then grows into place. So the start doesn't read
+      // as a blank white box, a GHOST (clone) of the real card is laid over
+      // the box interior and cross-faded into the modal content.
+      const final = content.getBoundingClientRect();
       const d = morphDeltas(content);
       gsap.set(content, { ...d, transformOrigin: "center center", willChange: "transform" });
       gsap.set(inner, { opacity: 0 });
+      let ghost = null;
+      if (originRect.node) {
+        ghost = originRect.node.cloneNode(true);
+        ghostRef.current = ghost;
+        // Pre-stretched by the inverse of the box's starting scale: the two
+        // transforms cancel at t=0 (ghost ≡ card, pixel for pixel) and the
+        // ghost exactly fills the box at t=1. Only its opacity is animated.
+        gsap.set(ghost, {
+          position: "absolute", top: 0, left: 0, margin: 0, zIndex: 5,
+          width: originRect.width, height: originRect.height,
+          pointerEvents: "none", transformOrigin: "top left",
+          scaleX: final.width / Math.max(originRect.width, 1),
+          scaleY: final.height / Math.max(originRect.height, 1),
+        });
+        content.appendChild(ghost);
+      }
       tl.to(overlay, { opacity: 1, duration: 0.4, ease: "power2.out" }, 0)
-        .to(content, { x: 0, y: 0, scaleX: 1, scaleY: 1, duration: 0.55, ease: "expo.inOut" }, 0)
-        .to(inner, { opacity: 1, duration: 0.32, ease: "power2.out", stagger: 0.02 }, 0.28)
+        .to(content, { x: 0, y: 0, scaleX: 1, scaleY: 1, duration: 0.55, ease: "expo.inOut" }, 0);
+      if (ghost) tl.to(ghost, { opacity: 0, duration: 0.3, ease: "power1.out" }, 0.12);
+      tl.to(inner, { opacity: 1, duration: 0.34, ease: "power2.out", stagger: 0.02 }, ghost ? 0.2 : 0.28)
         .set(content, { clearProps: "transform,willChange" })
         .set(inner, { clearProps: "opacity" });
     } else {
@@ -263,8 +283,9 @@ export default function TaskModal({ taskId, isEditMode, initialNotesOpen, userRo
     closingRef.current = true;
     const content = contentRef.current, overlay = overlayRef.current;
     if (!content || !overlay || window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches) { onClose(); return; }
-    const inner = Array.from(content.children);
-    gsap.killTweensOf([content, overlay, ...inner]);
+    const ghost = ghostRef.current && content.contains(ghostRef.current) ? ghostRef.current : null;
+    const inner = Array.from(content.children).filter((el) => el !== ghost);
+    gsap.killTweensOf([content, overlay, ...inner, ...(ghost ? [ghost] : [])]);
     // If we're closed mid-open (box still scaled), rects are transformed and
     // the FLIP math would lie — fall back to a quick fade instead.
     const midMorph = Math.abs((Number(gsap.getProperty(content, "scaleX")) || 1) - 1) > 0.001;
@@ -272,8 +293,11 @@ export default function TaskModal({ taskId, isEditMode, initialNotesOpen, userRo
     if (originRect && !midMorph) {
       const d = morphDeltas(content);
       tl.to(inner, { opacity: 0, duration: 0.16, ease: "power1.in" }, 0)
-        .to(content, { ...d, transformOrigin: "center center", duration: 0.45, ease: "expo.inOut" }, 0.04)
-        .to(overlay, { opacity: 0, duration: 0.26, ease: "power1.in" }, 0.22);
+        .to(content, { ...d, transformOrigin: "center center", duration: 0.45, ease: "expo.inOut" }, 0.04);
+      // The ghost card fades back in as the box shrinks, so it LANDS looking
+      // like the card — unmount then swaps to the real card seamlessly.
+      if (ghost) tl.to(ghost, { opacity: 1, duration: 0.22, ease: "power1.out" }, 0.18);
+      tl.to(overlay, { opacity: 0, duration: 0.26, ease: "power1.in" }, 0.22);
     } else {
       tl.to(content, { opacity: 0, scale: 0.96, duration: 0.22, ease: "power2.in" }, 0)
         .to(overlay, { opacity: 0, duration: 0.26, ease: "power1.in" }, 0.04);

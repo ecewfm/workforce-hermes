@@ -455,11 +455,12 @@ export default function KanbanBoard({ userRole, actualRole, userName, openTaskMo
         onDragEnd={(e) => !isFullView && e.currentTarget.classList.remove("dragging")}
         onClick={(e) => {
           setFullViewColumn(null);
-          // Capture the card's on-screen rect + hand over the task data we
-          // already hold: the modal paints on this same frame and GSAP morphs
-          // it out of this exact rect (container transform).
+          // Capture the card's on-screen rect + the node itself (the modal
+          // clones it as a "ghost" so the morph starts looking exactly like
+          // this card, not a blank white box) + the task data we already
+          // hold, so the modal paints and morphs on this same click frame.
           const r = e.currentTarget.getBoundingClientRect();
-          const origin = { left: r.left, top: r.top, width: r.width, height: r.height };
+          const origin = { left: r.left, top: r.top, width: r.width, height: r.height, node: e.currentTarget };
           openTaskModal(t._id, false, false, origin, t);
         }}
         onContextMenu={(e) => onContextMenu(e, t)}
