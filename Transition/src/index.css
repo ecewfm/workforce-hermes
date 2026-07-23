@@ -1205,7 +1205,7 @@ textarea,
   height: 100vh;
   pointer-events: none;
   z-index: 1900; /* above the app chrome, below modal overlays (2000) */
-  opacity: 0;
+  /* the layer itself stays visible — each arm <g> toggles its own display */
   overflow: visible;
 }
 .robo-arm-seg {
