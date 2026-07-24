@@ -347,6 +347,13 @@ export default function TaskModal({ taskId, isEditMode, initialNotesOpen, userRo
     }
   };
 
+  // While any task modal is open, the cursor-follow camera stands down
+  // (CameraFollow checks this class) — the modal's own camera owns the stage.
+  useEffect(() => {
+    document.documentElement.classList.add("wf-modal-open");
+    return () => document.documentElement.classList.remove("wf-modal-open");
+  }, []);
+
   // Safety: if the modal unmounts through any path that ISN'T doClose (task
   // deleted, workspace switch), never leave the app view stuck zoomed.
   useEffect(() => () => {

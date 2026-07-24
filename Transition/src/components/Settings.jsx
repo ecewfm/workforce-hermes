@@ -634,7 +634,7 @@ export default function Settings({ userName, userEmail, onClose, showModal, onLo
                 <div className="settings-toggle-row">
                   <div className="toggle-info">
                     <span className="toggle-label">Camera follows the cursor</span>
-                    <span className="toggle-desc">The whole screen gently pans and tilts toward wherever your pointer is.</span>
+                    <span className="toggle-desc">Your view gently pans toward wherever your pointer is, like a camera adjusting its aim.</span>
                   </div>
                   <label className="toggle-switch">
                     <input type="checkbox" checked={fxPrefs.cameraFollow} onChange={(e) => toggleFx("cameraFollow", e.target.checked)} />

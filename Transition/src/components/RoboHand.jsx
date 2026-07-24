@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import { gsap } from "gsap";
 import { getFxPrefs, applyFxClasses } from "../utils/fxPrefs";
 
@@ -96,7 +97,6 @@ export default function RoboHand() {
     const lastCursor = { x: 0, y: 0 };
     let hoveredBtn = null;
     let prefs = getFxPrefs();
-    const pendingSpawns = [];
 
     // ── Arm factory: each arm owns its geometry, tweens and "chase brain".
     const makeArm = () => {
@@ -225,42 +225,18 @@ export default function RoboHand() {
       return st;
     };
 
-    // Pool: one lead arm + up to two gatecrashers from other buttons.
-    const arms = [makeArm(), makeArm(), makeArm()];
-
-    const clearPendingSpawns = () => {
-      pendingSpawns.forEach((c) => c.kill());
-      pendingSpawns.length = 0;
-    };
+    // ONE arm only — the hovered button's. (Randomness lives in where it
+    // spawns and how it moves, not in how many there are.)
+    const arms = [makeArm()];
 
     const activate = (btn, e) => {
       hoveredBtn = btn;
       lastCursor.x = e.clientX; lastCursor.y = e.clientY;
       arms[0].spawn(btn);
-      // MAXIMUM RANDOMNESS: 1–2 arms also burst out of OTHER nav buttons
-      // (random ones, random delays) and reach across for the same cursor —
-      // shyer (bigger shortfall) and lazier than the lead arm.
-      const others = [...document.querySelectorAll(".nav-btn")].filter((b) => b !== btn);
-      if (others.length) {
-        const count = Math.random() < 0.45 ? 2 : 1;
-        others.sort(() => Math.random() - 0.5);
-        others.slice(0, count).forEach((other, i) => {
-          const call = gsap.delayedCall(0.15 + Math.random() * 0.4, () => {
-            if (hoveredBtn !== btn) return;
-            arms[i + 1].spawn(other, {
-              startShort: 90,
-              restShort: () => 55 + Math.random() * 45,
-              lungeMin: 1.0, lungeVar: 1.4,
-            });
-          });
-          pendingSpawns.push(call);
-        });
-      }
     };
 
     const deactivate = () => {
       hoveredBtn = null;
-      clearPendingSpawns();
       arms.forEach((a) => a.retract());
     };
 
@@ -278,9 +254,13 @@ export default function RoboHand() {
     };
     const onMove = (e) => {
       if (!hoveredBtn) return;
+      // Watchdog: if a mouseout was ever missed (portal churn, alt-tab),
+      // never leave a hand stranded on screen.
+      if (!hoveredBtn.isConnected || !hoveredBtn.matches(":hover")) { deactivate(); return; }
       lastCursor.x = e.clientX; lastCursor.y = e.clientY;
       arms.forEach((a) => { if (a.active) a.aim(); });
     };
+    const onWindowBlur = () => { if (hoveredBtn) deactivate(); };
 
     const onPrefs = (e) => {
       prefs = e.detail;
@@ -290,18 +270,22 @@ export default function RoboHand() {
     document.addEventListener("mouseover", onOver);
     document.addEventListener("mouseout", onOut);
     document.addEventListener("mousemove", onMove);
+    window.addEventListener("blur", onWindowBlur);
     window.addEventListener("wf-fx-prefs", onPrefs);
     return () => {
       document.removeEventListener("mouseover", onOver);
       document.removeEventListener("mouseout", onOut);
       document.removeEventListener("mousemove", onMove);
+      window.removeEventListener("blur", onWindowBlur);
       window.removeEventListener("wf-fx-prefs", onPrefs);
-      clearPendingSpawns();
       arms.forEach((a) => a.destroy());
     };
   }, []);
 
-  return (
+  // Portaled to <body>: the layer must never sit inside a transformed
+  // ancestor (the cursor-camera transforms .view-stage) — a transform breaks
+  // position:fixed and the layer would scroll/drift with the page.
+  return createPortal(
     <svg ref={svgRef} className="robo-hand-layer" aria-hidden="true">
       <defs>
         {/* emerald metal, top-lit */}
