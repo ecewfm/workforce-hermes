@@ -251,7 +251,12 @@ export default function RoboHand() {
     const activate = (btn, e) => {
       hoveredBtn = btn;
       lastCursor.x = e.clientX; lastCursor.y = e.clientY;
-      arms[0].spawn(btn);
+      // The arm comes from a DIFFERENT button than the hovered one, reaching
+      // across the nav for your cursor — the button you're on never looks
+      // like it's breaking open. (Falls back to itself only if it's alone.)
+      const others = [...document.querySelectorAll(".nav-btn")].filter((b) => b !== btn && b.isConnected);
+      const source = others.length ? others[Math.floor(Math.random() * others.length)] : btn;
+      arms[0].spawn(source);
     };
 
     const deactivate = () => {
