@@ -286,6 +286,9 @@ export default function TaskModal({ taskId, isEditMode, initialNotesOpen, userRo
       gsap.set(content, { x: c.x, y: c.y, scale: 0.001, transformOrigin: "center center", willChange: "transform" });
       gsap.set(inner, { opacity: 0 });
       if (camera) {
+        // Stop any in-flight cursor-camera tweens first — a lingering zoom
+        // tween would keep writing scale under (then after) the flight.
+        gsap.killTweensOf(root);
         aimCameraAtCard(root);
         tl.to(root, { scale: CAMERA_ZOOM, duration: FLIGHT, ease: "power2.inOut" }, 0);
       }

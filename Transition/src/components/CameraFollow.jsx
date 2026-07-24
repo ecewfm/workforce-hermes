@@ -26,6 +26,17 @@ export default function CameraFollow() {
     let stage = null;
     let xTo = null, yTo = null, sTo = null;
     let parked = false;
+    let holdBase = null; // stage x/y while drifting around the modal's held zoom
+    // Ownership changes (modal flight, doClose) kill our quickTo tweens on
+    // the stage — a killed quickTo is dead forever. Track the mode and force
+    // fresh quickTos (stage = null → bind() rebuilds) on every transition.
+    let mode = "free";
+    const setMode = (m) => {
+      if (m === mode) return;
+      mode = m;
+      stage = null;
+      holdBase = null;
+    };
 
     // Cursor in the CONTENT → the camera visibly zooms IN and pans with it.
     // Cursor up on the header/chrome → it visibly zooms back OUT to rest.
@@ -52,7 +63,9 @@ export default function CameraFollow() {
       if (!el) return null;
       if (el !== stage) {
         stage = el;
-        gsap.set(stage, { transformOrigin: "50% 50%" });
+        // NOTE: never set transformOrigin here — in hold mode the task
+        // modal's card-centred origin must survive; in free mode the origin
+        // is the (default/cleared) centre already.
         xTo = gsap.quickTo(stage, "x", { duration: 0.9, ease: "power2.out" });
         yTo = gsap.quickTo(stage, "y", { duration: 0.9, ease: "power2.out" });
         sTo = gsap.quickTo(stage, "scale", { duration: 0.7, ease: "power2.out" });
@@ -66,7 +79,8 @@ export default function CameraFollow() {
     };
 
     const park = () => {
-      if (!parked && stage) { gsap.killTweensOf(stage); gsap.set(stage, { clearProps: "transform" }); }
+      const el = stage || document.querySelector(".view-stage");
+      if (!parked && el) { gsap.killTweensOf(el); gsap.set(el, { clearProps: "transform" }); }
       parked = true;
     };
 
@@ -88,8 +102,27 @@ export default function CameraFollow() {
 
     const onMove = (e) => {
       if (!prefs.cameraFollow) return;
-      if (modalOwnsStage()) return; // task modal's camera — hands off
-      if (overlayOpen()) { park(); return; }
+      if (modalOwnsStage()) {
+        // The modal camera owns scale/origin. Once its flight has settled,
+        // keep the world alive behind the dim: a gentle PAN-ONLY drift
+        // around the held state — never touching scale.
+        setMode("hold");
+        if (!bind()) return;
+        if (!holdBase) {
+          if (gsap.isTweening(stage)) return; // flight still in motion
+          holdBase = {
+            x: Number(gsap.getProperty(stage, "x")) || 0,
+            y: Number(gsap.getProperty(stage, "y")) || 0,
+          };
+        }
+        const hx = e.clientX / window.innerWidth - 0.5;
+        const hy = e.clientY / window.innerHeight - 0.5;
+        xTo(holdBase.x - hx * 8);
+        yTo(holdBase.y - hy * 5);
+        return;
+      }
+      if (overlayOpen()) { park(); setMode("off"); return; }
+      setMode("free");
       parked = false;
       if (!bind()) return;
       // Where is the cursor: over the content stage, or up on the chrome?
