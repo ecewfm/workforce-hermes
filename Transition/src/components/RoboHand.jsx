@@ -143,8 +143,9 @@ export default function RoboHand() {
       st.yTo = gsap.quickTo(st.hand, "y", { duration: 0.28, ease: "power2.out", onUpdate: st.render });
 
       // Aim SHORT of the cursor along the reach line — never past it, never
-      // back behind the base.
+      // back behind the base. Gated while the hand is still climbing out.
       st.aim = () => {
+        if (st.emerging) return;
         const dx = lastCursor.x - st.anchor.x, dy = lastCursor.y - st.anchor.y;
         const dist = Math.hypot(dx, dy) || 1;
         const reach = Math.max(dist - st.shortfall.v, Math.min(dist, 10));
@@ -185,6 +186,7 @@ export default function RoboHand() {
         else if (side === 1) { st.anchor.x = r.right + OUT; st.anchor.y = r.top + r.height * t; }
         else if (side === 2) { st.anchor.x = r.left + r.width * t; st.anchor.y = r.bottom + OUT; }
         else { st.anchor.x = r.left - OUT; st.anchor.y = r.top + r.height * t; }
+        const outDir = [[0, -1], [1, 0], [0, 1], [-1, 0]][side]; // away from the button
         st.bendSign = Math.random() < 0.5 ? 1 : -1;
         st.restShort = opts.restShort || (() => 26 + Math.random() * 14);
         st.lungeMin = opts.lungeMin ?? 0.6;
@@ -193,10 +195,25 @@ export default function RoboHand() {
         // NO fade: switch on collapsed at the base, then pure motion out.
         st.hand.x = st.anchor.x; st.hand.y = st.anchor.y;
         st.render();
+        if (st.emergeTl) st.emergeTl.kill();
         gsap.killTweensOf([st.g, st.inner, st.shortfall]);
         gsap.set(st.g, { display: "block", autoAlpha: 1 });
-        gsap.fromTo(st.inner, { scale: 0, transformOrigin: "center center" }, { scale: 1, duration: 0.3, ease: "back.out(2)" });
-        st.aim();
+        gsap.set(st.inner, { scale: 0, transformOrigin: "center center" });
+        // Phase 1 — CLIMB OUT: the hand squeezes out from behind the button
+        // edge (scaling up as it pushes through) and crawls a couple dozen
+        // px outward. Only THEN does it start chasing the cursor.
+        st.emerging = true;
+        const reach = 20 + Math.random() * 12;
+        st.emergeTl = gsap.timeline({
+          onComplete: () => { st.emerging = false; st.emergeTl = null; st.aim(); },
+        });
+        st.emergeTl
+          .to(st.inner, { scale: 1, duration: 0.34, ease: "back.out(1.6)" }, 0)
+          .to(st.hand, {
+            x: st.anchor.x + outDir[0] * reach,
+            y: st.anchor.y + outDir[1] * reach,
+            duration: 0.4, ease: "power2.out", onUpdate: st.render,
+          }, 0.05);
         st.idleTl = gsap.timeline({ repeat: -1, yoyo: true, defaults: { duration: 0.55, ease: "sine.inOut" } });
         st.fingers.forEach((f, i) => st.idleTl.to(f, { rotation: "-=6", transformOrigin: "left center" }, i * 0.07));
         if (st.thumb) st.idleTl.to(st.thumb, { rotation: "+=7", transformOrigin: "left center" }, 0.05);
@@ -207,6 +224,8 @@ export default function RoboHand() {
       st.retract = () => {
         if (!st.active) return;
         st.active = false;
+        st.emerging = false;
+        if (st.emergeTl) { st.emergeTl.kill(); st.emergeTl = null; }
         if (st.idleTl) { st.idleTl.kill(); st.idleTl = null; }
         if (st.grabTl) { st.grabTl.kill(); st.grabTl = null; }
         if (st.lungeCall) { st.lungeCall.kill(); st.lungeCall = null; }
