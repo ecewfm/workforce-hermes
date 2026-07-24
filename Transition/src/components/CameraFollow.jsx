@@ -54,7 +54,9 @@ export default function CameraFollow() {
     // kill its tweens and erase the zoom-in) nor write — hands off entirely.
     const OVERLAYS = ".modal-overlay,.custom-modal-overlay,.settings-overlay,.announcement-overlay,.profile-popover-overlay,.notif-modal-overlay,.notes-fullscreen-overlay,.handbook-overlay";
     const modalOwnsStage = () => document.documentElement.classList.contains("wf-modal-open");
-    const overlayOpen = () => !!document.querySelector(OVERLAYS);
+    // Overlay presence is MAINTAINED by the mutation observer (below) so the
+    // hot mousemove path never touches querySelector.
+    let overlayNow = !!document.querySelector(OVERLAYS);
 
     // .view-stage remounts on every view switch (key={currentView}) — rebind
     // the tweens whenever the node changes.
@@ -63,9 +65,13 @@ export default function CameraFollow() {
       if (!el) return null;
       if (el !== stage) {
         stage = el;
+        // Promote the stage to its own compositor layer: transform updates
+        // become GPU moves instead of full-content repaints. (This was the
+        // big lag source — a giant stage re-rasterizing every frame.)
         // NOTE: never set transformOrigin here — in hold mode the task
         // modal's card-centred origin must survive; in free mode the origin
         // is the (default/cleared) centre already.
+        gsap.set(stage, { willChange: "transform" });
         xTo = gsap.quickTo(stage, "x", { duration: 0.9, ease: "power2.out" });
         yTo = gsap.quickTo(stage, "y", { duration: 0.9, ease: "power2.out" });
         sTo = gsap.quickTo(stage, "scale", { duration: 0.7, ease: "power2.out" });
@@ -80,7 +86,7 @@ export default function CameraFollow() {
 
     const park = () => {
       const el = stage || document.querySelector(".view-stage");
-      if (!parked && el) { gsap.killTweensOf(el); gsap.set(el, { clearProps: "transform" }); }
+      if (!parked && el) { gsap.killTweensOf(el); gsap.set(el, { clearProps: "transform,willChange" }); }
       parked = true;
     };
 
@@ -92,16 +98,25 @@ export default function CameraFollow() {
       if (moRaf) return;
       moRaf = requestAnimationFrame(() => {
         moRaf = 0;
+        overlayNow = !!document.querySelector(OVERLAYS);
         if (!prefs.cameraFollow) return;
         if (modalOwnsStage()) return; // task modal's camera — hands off
-        if (overlayOpen()) park();
+        if (overlayNow) park();
         else parked = false; // camera resumes on the next mousemove
       });
     });
     mo.observe(document.body, { childList: true, subtree: true });
 
-    const onMove = (e) => {
-      if (!prefs.cameraFollow) return;
+    // The hot path: gaming mice fire mousemove at 500–1000Hz. Process at
+    // most ONE move per display frame — everything heavier than storing the
+    // coordinates happens inside the rAF.
+    let pendingMove = null;
+    let moveRaf = 0;
+    const processMove = () => {
+      moveRaf = 0;
+      const e = pendingMove;
+      pendingMove = null;
+      if (!e || !prefs.cameraFollow) return;
       if (modalOwnsStage()) {
         // The modal camera owns scale/origin. Once its flight has settled,
         // keep the world alive behind the dim: a gentle PAN-ONLY drift
@@ -121,13 +136,14 @@ export default function CameraFollow() {
         yTo(holdBase.y - hy * 5);
         return;
       }
-      if (overlayOpen()) { park(); setMode("off"); return; }
+      if (overlayNow) { park(); setMode("off"); return; }
       setMode("free");
       parked = false;
       if (!bind()) return;
       // Where is the cursor: over the content stage, or up on the chrome?
       // (elementFromPoint is scroll- and sticky-proof; the robo layer and
-      // other pointer-events:none layers are transparent to it.)
+      // other pointer-events:none layers are transparent to it. Max once
+      // per frame thanks to the rAF gate.)
       const under = document.elementFromPoint(e.clientX, e.clientY);
       const inContent = !!(under && under.closest(".view-stage"));
       if (inContent) {
@@ -142,12 +158,16 @@ export default function CameraFollow() {
         sTo(1); xTo(0); yTo(0);
       }
     };
+    const onMove = (e) => {
+      pendingMove = e;
+      if (!moveRaf) moveRaf = requestAnimationFrame(processMove);
+    };
     const onLeave = () => rest();
     const onPrefs = (e) => {
       prefs = e.detail;
       if (!prefs.cameraFollow && stage) {
         gsap.killTweensOf(stage);
-        gsap.set(stage, { clearProps: "transform" });
+        gsap.set(stage, { clearProps: "transform,willChange" });
       }
     };
 
@@ -160,9 +180,10 @@ export default function CameraFollow() {
       window.removeEventListener("wf-fx-prefs", onPrefs);
       mo.disconnect();
       if (moRaf) cancelAnimationFrame(moRaf);
+      if (moveRaf) cancelAnimationFrame(moveRaf);
       if (stage) {
         gsap.killTweensOf(stage);
-        gsap.set(stage, { clearProps: "transform" });
+        gsap.set(stage, { clearProps: "transform,willChange" });
       }
     };
   }, []);

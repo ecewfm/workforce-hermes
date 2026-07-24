@@ -252,13 +252,25 @@ export default function RoboHand() {
       if (e.relatedTarget && hoveredBtn.contains(e.relatedTarget)) return;
       if (e.target.closest?.(".nav-btn") === hoveredBtn) deactivate();
     };
-    const onMove = (e) => {
-      if (!hoveredBtn) return;
+    // rAF-gated: high-polling mice fire mousemove hundreds of times per
+    // second — process at most one per display frame.
+    let pendingMove = null;
+    let moveRaf = 0;
+    const processMove = () => {
+      moveRaf = 0;
+      const e = pendingMove;
+      pendingMove = null;
+      if (!e || !hoveredBtn) return;
       // Watchdog: if a mouseout was ever missed (portal churn, alt-tab),
       // never leave a hand stranded on screen.
       if (!hoveredBtn.isConnected || !hoveredBtn.matches(":hover")) { deactivate(); return; }
       lastCursor.x = e.clientX; lastCursor.y = e.clientY;
       arms.forEach((a) => { if (a.active) a.aim(); });
+    };
+    const onMove = (e) => {
+      if (!hoveredBtn) return;
+      pendingMove = e;
+      if (!moveRaf) moveRaf = requestAnimationFrame(processMove);
     };
     const onWindowBlur = () => { if (hoveredBtn) deactivate(); };
 
@@ -278,6 +290,7 @@ export default function RoboHand() {
       document.removeEventListener("mousemove", onMove);
       window.removeEventListener("blur", onWindowBlur);
       window.removeEventListener("wf-fx-prefs", onPrefs);
+      if (moveRaf) cancelAnimationFrame(moveRaf);
       arms.forEach((a) => a.destroy());
     };
   }, []);
