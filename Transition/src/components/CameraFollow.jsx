@@ -25,11 +25,21 @@ export default function CameraFollow() {
     let prefs = getFxPrefs();
     let stage = null;
     let xTo = null, yTo = null;
+    let parked = false;
 
-    // The scene is 2.2% larger than the window; the camera pans inside that
-    // slack (±14px x / ±7px y), so edges can never show.
-    const CUSHION = 1.022;
-    const PAN_X = 14, PAN_Y = 7;
+    // A simple LITTLE zoom: the scene is 2% larger than the window and the
+    // camera pans inside that slack (±10px x / ±6px y) — edges never show.
+    const CUSHION = 1.02;
+    const PAN_X = 10, PAN_Y = 6;
+
+    // Any overlay that renders INSIDE the stage (kanban full view, dashboard
+    // "show all", settings, …) positions itself with position:fixed — which a
+    // transformed ancestor breaks (cut-off modals). So while ANY overlay is
+    // open, the camera PARKS: transform dropped entirely, native behaviour
+    // restored; it resumes when the overlay closes.
+    const OVERLAYS = ".modal-overlay,.custom-modal-overlay,.settings-overlay,.announcement-overlay,.profile-popover-overlay,.notif-modal-overlay,.notes-fullscreen-overlay,.handbook-overlay";
+    const overlayOpen = () =>
+      document.documentElement.classList.contains("wf-modal-open") || !!document.querySelector(OVERLAYS);
 
     // .view-stage remounts on every view switch (key={currentView}) — rebind
     // the tweens whenever the node changes.
@@ -51,11 +61,18 @@ export default function CameraFollow() {
 
     const onMove = (e) => {
       if (!prefs.cameraFollow) return;
-      // Hands off while the task modal's own camera holds the stage.
-      if (document.documentElement.classList.contains("wf-modal-open")) return;
+      if (overlayOpen()) {
+        if (!parked && stage) { gsap.killTweensOf(stage); gsap.set(stage, { clearProps: "transform" }); }
+        parked = true;
+        return;
+      }
+      parked = false;
       if (!bind()) return;
-      // Re-apply the cushion after anything cleared it (modal clearProps).
-      if ((Number(gsap.getProperty(stage, "scaleX")) || 1) < 1.005) gsap.set(stage, { scale: CUSHION, transformOrigin: "50% 50%" });
+      // Re-apply the cushion after anything cleared it (parking, modals) —
+      // eased, so resuming never reads as a snap.
+      if ((Number(gsap.getProperty(stage, "scaleX")) || 1) < 1.005) {
+        gsap.to(stage, { scale: CUSHION, transformOrigin: "50% 50%", duration: 0.5, ease: "power2.out" });
+      }
       const nx = e.clientX / window.innerWidth - 0.5;
       const ny = e.clientY / window.innerHeight - 0.5;
       // Camera pans TOWARD the cursor → the scene slides the opposite way.

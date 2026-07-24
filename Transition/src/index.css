@@ -1196,6 +1196,11 @@ html.fx-robo-cursor [contenteditable="true"] {
   cursor: text !important;
 }
 
+/* The cursor-camera's zoom cushion visually overflows the stage a few px —
+   clip it so the page can never grow a horizontal scrollbar. `clip` (not
+   `hidden`) avoids creating a new scroll container. */
+html, body { overflow-x: clip; }
+
 /* ── RoboHand: the little robotic arm that reaches for the cursor on the
    nav buttons (RoboHand.jsx). Fixed overlay, never intercepts clicks. ── */
 .robo-hand-layer {
