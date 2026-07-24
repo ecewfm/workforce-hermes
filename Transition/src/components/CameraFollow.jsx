@@ -24,13 +24,13 @@ export default function CameraFollow() {
 
     let prefs = getFxPrefs();
     let stage = null;
-    let xTo = null, yTo = null;
+    let xTo = null, yTo = null, sTo = null;
     let parked = false;
 
-    // A simple LITTLE zoom: the scene is 2% larger than the window and the
-    // camera pans inside that slack (±10px x / ±6px y) — edges never show.
-    const CUSHION = 1.02;
-    const PAN_X = 10, PAN_Y = 6;
+    // Cursor in the CONTENT → the camera visibly zooms IN and pans with it.
+    // Cursor up on the header/chrome → it visibly zooms back OUT to rest.
+    const ZOOM = 1.05;
+    const PAN_X = 16, PAN_Y = 10; // stays well inside the 5% zoom slack
 
     // Any overlay that renders INSIDE the stage (kanban full view, dashboard
     // "show all", settings, …) positions itself with position:fixed — which a
@@ -48,15 +48,17 @@ export default function CameraFollow() {
       if (!el) return null;
       if (el !== stage) {
         stage = el;
+        gsap.set(stage, { transformOrigin: "50% 50%" });
         xTo = gsap.quickTo(stage, "x", { duration: 0.9, ease: "power2.out" });
         yTo = gsap.quickTo(stage, "y", { duration: 0.9, ease: "power2.out" });
+        sTo = gsap.quickTo(stage, "scale", { duration: 0.7, ease: "power2.out" });
       }
       return stage;
     };
 
     const rest = () => {
       if (!stage) return;
-      xTo(0); yTo(0);
+      xTo(0); yTo(0); sTo(1);
     };
 
     const onMove = (e) => {
@@ -68,16 +70,22 @@ export default function CameraFollow() {
       }
       parked = false;
       if (!bind()) return;
-      // Re-apply the cushion after anything cleared it (parking, modals) —
-      // eased, so resuming never reads as a snap.
-      if ((Number(gsap.getProperty(stage, "scaleX")) || 1) < 1.005) {
-        gsap.to(stage, { scale: CUSHION, transformOrigin: "50% 50%", duration: 0.5, ease: "power2.out" });
+      // Where is the cursor: over the content stage, or up on the chrome?
+      // (elementFromPoint is scroll- and sticky-proof; the robo layer and
+      // other pointer-events:none layers are transparent to it.)
+      const under = document.elementFromPoint(e.clientX, e.clientY);
+      const inContent = !!(under && under.closest(".view-stage"));
+      if (inContent) {
+        // Visible zoom IN, panning toward the cursor (scene slides opposite).
+        sTo(ZOOM);
+        const nx = e.clientX / window.innerWidth - 0.5;
+        const ny = e.clientY / window.innerHeight - 0.5;
+        xTo(-nx * PAN_X);
+        yTo(-ny * PAN_Y);
+      } else {
+        // Header side — visible zoom back OUT to rest.
+        sTo(1); xTo(0); yTo(0);
       }
-      const nx = e.clientX / window.innerWidth - 0.5;
-      const ny = e.clientY / window.innerHeight - 0.5;
-      // Camera pans TOWARD the cursor → the scene slides the opposite way.
-      xTo(-nx * PAN_X);
-      yTo(-ny * PAN_Y);
     };
     const onLeave = () => rest();
     const onPrefs = (e) => {
