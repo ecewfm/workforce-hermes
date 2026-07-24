@@ -299,6 +299,7 @@ export default function RoboHand() {
           <stop offset="1" stopColor="#065f46" />
         </linearGradient>
       </defs>
-    </svg>
+    </svg>,
+    document.body
   );
 }
