@@ -29,17 +29,21 @@ export default function CameraFollow() {
 
     // Cursor in the CONTENT → the camera visibly zooms IN and pans with it.
     // Cursor up on the header/chrome → it visibly zooms back OUT to rest.
-    const ZOOM = 1.05;
-    const PAN_X = 16, PAN_Y = 10; // stays well inside the 5% zoom slack
+    const ZOOM = 1.08;
+    const PAN_X = 24, PAN_Y = 14; // stays well inside the 8% zoom slack
 
     // Any overlay that renders INSIDE the stage (kanban full view, dashboard
     // "show all", settings, …) positions itself with position:fixed — which a
-    // transformed ancestor breaks (cut-off modals). So while ANY overlay is
-    // open, the camera PARKS: transform dropped entirely, native behaviour
+    // transformed ancestor breaks (cut-off modals). So while such an overlay
+    // is open, the camera PARKS: transform dropped entirely, native behaviour
     // restored; it resumes when the overlay closes.
+    //
+    // EXCEPTION — the task modal (html.wf-modal-open): its OWN camera drives
+    // the stage (the zoom-to-card flight). We must neither park (that would
+    // kill its tweens and erase the zoom-in) nor write — hands off entirely.
     const OVERLAYS = ".modal-overlay,.custom-modal-overlay,.settings-overlay,.announcement-overlay,.profile-popover-overlay,.notif-modal-overlay,.notes-fullscreen-overlay,.handbook-overlay";
-    const overlayOpen = () =>
-      document.documentElement.classList.contains("wf-modal-open") || !!document.querySelector(OVERLAYS);
+    const modalOwnsStage = () => document.documentElement.classList.contains("wf-modal-open");
+    const overlayOpen = () => !!document.querySelector(OVERLAYS);
 
     // .view-stage remounts on every view switch (key={currentView}) — rebind
     // the tweens whenever the node changes.
@@ -61,13 +65,31 @@ export default function CameraFollow() {
       xTo(0); yTo(0); sTo(1);
     };
 
+    const park = () => {
+      if (!parked && stage) { gsap.killTweensOf(stage); gsap.set(stage, { clearProps: "transform" }); }
+      parked = true;
+    };
+
+    // Park the INSTANT an overlay mounts — not on the next mousemove. (An
+    // overlay opened via click, cursor then held still, must never sit over
+    // a frozen mid-pan stage.) rAF-debounced; childList-only, so cheap.
+    let moRaf = 0;
+    const mo = new MutationObserver(() => {
+      if (moRaf) return;
+      moRaf = requestAnimationFrame(() => {
+        moRaf = 0;
+        if (!prefs.cameraFollow) return;
+        if (modalOwnsStage()) return; // task modal's camera — hands off
+        if (overlayOpen()) park();
+        else parked = false; // camera resumes on the next mousemove
+      });
+    });
+    mo.observe(document.body, { childList: true, subtree: true });
+
     const onMove = (e) => {
       if (!prefs.cameraFollow) return;
-      if (overlayOpen()) {
-        if (!parked && stage) { gsap.killTweensOf(stage); gsap.set(stage, { clearProps: "transform" }); }
-        parked = true;
-        return;
-      }
+      if (modalOwnsStage()) return; // task modal's camera — hands off
+      if (overlayOpen()) { park(); return; }
       parked = false;
       if (!bind()) return;
       // Where is the cursor: over the content stage, or up on the chrome?
@@ -103,6 +125,8 @@ export default function CameraFollow() {
       window.removeEventListener("mousemove", onMove);
       document.documentElement.removeEventListener("mouseleave", onLeave);
       window.removeEventListener("wf-fx-prefs", onPrefs);
+      mo.disconnect();
+      if (moRaf) cancelAnimationFrame(moRaf);
       if (stage) {
         gsap.killTweensOf(stage);
         gsap.set(stage, { clearProps: "transform" });

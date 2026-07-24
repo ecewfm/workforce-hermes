@@ -243,10 +243,22 @@ export default function TaskModal({ taskId, isEditMode, initialNotesOpen, userRo
   // row). Search/notification rows unmount on click — no camera for those.
   const cameraUsable = () => !!(appView() && originRect?.node && originRect.node.isConnected);
   const aimCameraAtCard = (root) => {
+    // The cursor-follow camera may already hold a small zoom/pan on the
+    // stage (centre origin). Take over WITHOUT a visual jump: recover the
+    // stage's untransformed position, express the card centre in layout
+    // coords, and compensate the translate for the origin switch.
+    const w = root.offsetWidth, h = root.offsetHeight;
+    const s0 = Number(gsap.getProperty(root, "scaleX")) || 1;
+    const x0 = Number(gsap.getProperty(root, "x")) || 0;
+    const y0 = Number(gsap.getProperty(root, "y")) || 0;
     const rr = root.getBoundingClientRect();
-    const ox = originRect.left + originRect.width / 2 - rr.left;
-    const oy = originRect.top + originRect.height / 2 - rr.top;
-    gsap.set(root, { transformOrigin: `${ox}px ${oy}px`, willChange: "transform" });
+    const L = rr.left - x0 - (w * (1 - s0)) / 2; // untransformed viewport left
+    const T = rr.top - y0 - (h * (1 - s0)) / 2; // untransformed viewport top
+    const ox = originRect.left + originRect.width / 2 - L;
+    const oy = originRect.top + originRect.height / 2 - T;
+    const tx = x0 + (s0 - 1) * (ox - w / 2);
+    const ty = y0 + (s0 - 1) * (oy - h / 2);
+    gsap.set(root, { transformOrigin: `${ox}px ${oy}px`, x: tx, y: ty, willChange: "transform" });
   };
 
   useLayoutEffect(() => {
@@ -305,8 +317,10 @@ export default function TaskModal({ taskId, isEditMode, initialNotesOpen, userRo
     closingRef.current = true;
     const content = contentRef.current, overlay = overlayRef.current;
     const root = appView();
+    const releaseCamera = () => document.documentElement.classList.remove("wf-modal-open");
     const bail = () => {
       if (root) { gsap.killTweensOf(root); gsap.set(root, { clearProps: "transform,transformOrigin,willChange" }); }
+      releaseCamera();
       onClose();
     };
     if (!content || !overlay || window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches) { bail(); return; }
@@ -334,6 +348,7 @@ export default function TaskModal({ taskId, isEditMode, initialNotesOpen, userRo
         tl.to(root, { scale: 1, duration: 0.48, ease: "power2.inOut" }, 0.64)
           .set(root, { clearProps: "transform,transformOrigin,willChange" });
       }
+      tl.call(releaseCamera); // hand the stage back only once fully settled
     } else {
       // Mid-open close: quick fade, and ease the camera home from wherever
       // it currently is.
@@ -344,14 +359,19 @@ export default function TaskModal({ taskId, isEditMode, initialNotesOpen, userRo
           .set(root, { clearProps: "transform,transformOrigin,willChange" });
       }
       tl.call(onClose, [], 0.32);
+      tl.call(releaseCamera);
     }
   };
 
   // While any task modal is open, the cursor-follow camera stands down
-  // (CameraFollow checks this class) — the modal's own camera owns the stage.
-  useEffect(() => {
+  // (CameraFollow checks this class) — the modal's own camera owns the
+  // stage. Layout effect: the claim must land BEFORE paint so the cursor
+  // camera's mutation observer can never race in and kill the flight. On a
+  // doClose the class outlives the unmount until the pull-back finishes
+  // (doClose removes it from its own timeline).
+  useLayoutEffect(() => {
     document.documentElement.classList.add("wf-modal-open");
-    return () => document.documentElement.classList.remove("wf-modal-open");
+    return () => { if (!closingRef.current) document.documentElement.classList.remove("wf-modal-open"); };
   }, []);
 
   // Safety: if the modal unmounts through any path that ISN'T doClose (task
