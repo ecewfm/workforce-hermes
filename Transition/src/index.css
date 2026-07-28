@@ -1201,56 +1201,36 @@ html.fx-robo-cursor [contenteditable="true"] {
    `hidden`) avoids creating a new scroll container. */
 html, body { overflow-x: clip; }
 
-/* ── "Consult with AI" — New Task planner ─────────────────────────────────── */
-.btn-consult-ai {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  width: 100%;
-  margin: 0 0 26px 0;
-  padding: 14px 18px;
-  border: 1px solid color-mix(in srgb, var(--color-accent) 40%, transparent);
-  border-radius: var(--radius-md, 12px);
-  background: linear-gradient(120deg, color-mix(in srgb, var(--color-accent) 14%, var(--color-card-bg)), var(--color-card-bg));
-  color: var(--color-text-primary);
-  cursor: pointer;
-  text-align: left;
-  transition: transform 0.15s ease, box-shadow 0.2s ease, border-color 0.2s ease;
-}
-.btn-consult-ai:hover {
-  transform: translateY(-2px);
-  border-color: var(--color-accent);
-  box-shadow: 0 10px 24px -12px color-mix(in srgb, var(--color-accent) 70%, transparent);
-}
-.consult-ai-spark {
-  flex-shrink: 0;
-  width: 38px; height: 38px;
-  display: flex; align-items: center; justify-content: center;
-  border-radius: 50%;
-  background: var(--color-accent);
-  color: #fff;
-  font-size: 1.1rem;
-  box-shadow: 0 4px 12px -3px color-mix(in srgb, var(--color-accent) 80%, transparent);
-}
-.btn-consult-ai > span:last-child { display: flex; flex-direction: column; gap: 2px; }
-.btn-consult-ai strong { font-weight: 800; font-size: 0.95rem; }
-.btn-consult-ai em { font-style: normal; font-size: 0.74rem; color: var(--color-text-secondary); }
-
-.consult-overlay { align-items: center !important; }
-.consult-modal {
+/* ── "Consult with AI" — the AI-first New Task planner (inline panel) ─────── */
+.consult-panel-wrap { display: flex; justify-content: center; }
+.consult-panel {
   position: relative;
-  background: var(--color-card-bg);
-  width: 92%;
-  max-width: 640px;
-  max-height: calc(100vh - 80px);
-  overflow-y: auto;
-  border-radius: var(--radius-lg, 18px);
-  border: 1px solid var(--glass-border, rgba(0,0,0,0.08));
-  box-shadow: var(--shadow-xl, 0 30px 80px rgba(0,0,0,0.25));
-  padding: 26px 28px 28px;
-  animation: modalIn var(--dur-med, 0.28s) var(--ease-out-expo, cubic-bezier(0.16,1,0.3,1)) both;
+  width: 100%;
+  max-width: 680px;
+  padding: 30px 32px 22px;
 }
-.consult-head { display: flex; gap: 14px; align-items: flex-start; margin-bottom: 20px; padding-right: 30px; }
+.btn-back-consult {
+  position: absolute; left: 0; top: 2px;
+  border: none; background: transparent; cursor: pointer;
+  color: var(--color-accent); font-weight: 700; font-size: 0.8rem; padding: 4px 6px;
+  border-radius: 8px; transition: background 0.15s;
+}
+.btn-back-consult:hover { background: color-mix(in srgb, var(--color-accent) 12%, transparent); }
+.consult-skip {
+  display: block; margin: 18px auto 0;
+  border: none; background: transparent; cursor: pointer;
+  color: var(--color-text-secondary); font-size: 0.78rem; text-decoration: underline;
+  text-underline-offset: 3px; transition: color 0.15s;
+}
+.consult-skip:hover:not(:disabled) { color: var(--color-text-primary); }
+.consult-skip:disabled { opacity: 0.5; cursor: not-allowed; }
+.consult-regen {
+  border: 1px solid var(--color-bg-primary); background: transparent; cursor: pointer;
+  color: var(--color-text-secondary); font-weight: 700; font-size: 0.82rem;
+  padding: 12px 20px; border-radius: 10px; transition: border-color 0.2s, color 0.2s;
+}
+.consult-regen:hover:not(:disabled) { border-color: var(--color-text-secondary); color: var(--color-text-primary); }
+.consult-head { display: flex; gap: 14px; align-items: flex-start; margin-bottom: 20px; }
 .consult-badge {
   flex-shrink: 0;
   width: 42px; height: 42px;

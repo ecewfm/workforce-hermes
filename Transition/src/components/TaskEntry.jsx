@@ -4,7 +4,7 @@ import { api } from "../../convex/_generated/api";
 import { FALLBACK_MILESTONES } from "../utils/defaults";
 import { useWorkspace } from "../utils/workspaceContext";
 import { WORKSPACE_META, isInDepartment } from "../utils/departments";
-import ConsultAIModal from "./ConsultAIModal";
+import ConsultPanel from "./ConsultPanel";
 import { isCaddyEnabled } from "../utils/aiConfig";
 
 export default function TaskEntry({ staff, userRole, userName, onCreated, showModal }) {
@@ -42,8 +42,11 @@ export default function TaskEntry({ staff, userRole, userName, onCreated, showMo
   const [selectedAssignees, setSelectedAssignees] = useState(new Set());
   const [showOptions, setShowOptions] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [showConsult, setShowConsult] = useState(false);
-  const [consultStart, setConsultStart] = useState("");
+  // Two-step wizard: AI plans first ("consult"), then the prefilled details
+  // form ("form"). If Caddy is off, jump straight to the manual form.
+  const [step, setStep] = useState(() => (isCaddyEnabled() ? "consult" : "form"));
+  const [draftTitle, setDraftTitle] = useState("");
+  const [draftDesc, setDraftDesc] = useState("");
   const formRef = useRef(null);
   const milestonesTouched = useRef(false);
 
@@ -108,23 +111,29 @@ export default function TaskEntry({ staff, userRole, userName, onCreated, showMo
     milestonesTouched.current = false;
     setMilestones(templateMilestones.map((m) => ({ ...m })));
     setSelectedAssignees(new Set());
+    setDraftTitle("");
+    setDraftDesc("");
+    setStep(isCaddyEnabled() ? "consult" : "form");
   }
 
-  function openConsult() {
-    // Hand the currently-typed start date to the planner for calendar context.
-    setConsultStart(document.getElementById("task-date")?.value || "");
-    setShowConsult(true);
-  }
-
-  // Apply an AI-proposed plan: swap in its milestones, and fill title/desc
-  // only if the user hasn't already typed them (never clobber their input).
+  // AI plan accepted → prefill milestones + title/description drafts (the form
+  // inputs read these as defaultValue when the form step mounts) and advance
+  // to the details step for final touches.
   function applyPlan(plan) {
     milestonesTouched.current = true;
     setMilestones(plan.milestones.map((m) => ({ name: m.name, days: m.days })));
-    const titleEl = document.getElementById("task-title");
-    if (titleEl && !titleEl.value.trim() && plan.title) titleEl.value = plan.title;
-    const descEl = document.getElementById("task-desc");
-    if (descEl && !descEl.value.trim() && plan.description) descEl.value = plan.description;
+    setDraftTitle(plan.title || "");
+    setDraftDesc(plan.description || "");
+    setStep("form");
+  }
+
+  // Skip AI → blank task on the workspace template.
+  function startBlank() {
+    milestonesTouched.current = false;
+    setMilestones(templateMilestones.map((m) => ({ ...m })));
+    setDraftTitle("");
+    setDraftDesc("");
+    setStep("form");
   }
 
   async function handleSubmit(e) {
@@ -176,26 +185,36 @@ export default function TaskEntry({ staff, userRole, userName, onCreated, showMo
   const totalDays = milestones.reduce((sum, m) => sum + m.days, 0);
   const months = (totalDays / 30).toFixed(1);
 
+  if (step === "consult") {
+    return (
+      <div id="entry-view" className="view-section">
+        <div className="container">
+          <ConsultPanel
+            department={workspaceDept}
+            workspaceLabel={WORKSPACE_META[workspace]?.label || "this workspace"}
+            onApply={applyPlan}
+            onSkip={startBlank}
+          />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div id="entry-view" className="view-section">
       <div className="container">
         <div className="entry-grid">
           {/* Left: Form */}
           <div className="section-card">
-            <div style={{ textAlign: "center", marginBottom: 20 }}>
-              <h1 style={{ fontWeight: 900, margin: 0, fontSize: "2rem", color: "var(--color-text-primary)" }}>Create New Task</h1>
-              <p style={{ color: "var(--color-text-secondary)", fontSize: "0.9rem", marginTop: 5 }}>Enter project details and milestones</p>
+            <div style={{ textAlign: "center", marginBottom: 20, position: "relative" }}>
+              {isCaddyEnabled() && (
+                <button type="button" className="btn-back-consult" onClick={() => setStep("consult")}>
+                  ← Plan with AI
+                </button>
+              )}
+              <h1 style={{ fontWeight: 900, margin: 0, fontSize: "2rem", color: "var(--color-text-primary)" }}>Final touches</h1>
+              <p style={{ color: "var(--color-text-secondary)", fontSize: "0.9rem", marginTop: 5 }}>Set assignees and a start date, tweak anything, then create the task</p>
             </div>
-
-            {isCaddyEnabled() && (
-              <button type="button" className="btn-consult-ai" onClick={openConsult}>
-                <span className="consult-ai-spark">✦</span>
-                <span>
-                  <strong>Consult with AI</strong>
-                  <em>Describe your task — get milestones &amp; a timeline tailored to it</em>
-                </span>
-              </button>
-            )}
 
             <form ref={formRef} onSubmit={handleSubmit}>
               <div style={{ marginBottom: 30 }}>
@@ -204,7 +223,7 @@ export default function TaskEntry({ staff, userRole, userName, onCreated, showMo
                 </h3>
                 <div className="form-group">
                   <label className="form-label">Task Title *</label>
-                  <input type="text" id="task-title" className="form-input" placeholder="Project Name" required />
+                  <input type="text" id="task-title" className="form-input" placeholder="Project Name" defaultValue={draftTitle} required />
                 </div>
                 <div className="form-group">
                   <label className="form-label">Assignees *</label>
@@ -239,7 +258,7 @@ export default function TaskEntry({ staff, userRole, userName, onCreated, showMo
                 </div>
                 <div className="form-group">
                   <label className="form-label">Description</label>
-                  <textarea id="task-desc" className="form-input" style={{ height: 80 }} placeholder="Details..."></textarea>
+                  <textarea id="task-desc" className="form-input" style={{ height: 80 }} placeholder="Details..." defaultValue={draftDesc}></textarea>
                 </div>
               </div>
 
@@ -270,9 +289,9 @@ export default function TaskEntry({ staff, userRole, userName, onCreated, showMo
 
           {/* Right: Guide */}
           <div className="section-card">
-            <h2 style={{ fontWeight: 900, marginTop: 0, textTransform: "uppercase", fontSize: "1.2rem", marginBottom: 10 }}>Standard Milestone Guide</h2>
+            <h2 style={{ fontWeight: 900, marginTop: 0, textTransform: "uppercase", fontSize: "1.2rem", marginBottom: 10 }}>Milestone Overview</h2>
             <p style={{ fontSize: "0.72rem", color: "var(--color-text-secondary)", margin: "0 0 12px 0" }}>
-              Defaults come from the workspace template — Admin+ can change them in Settings → Workspace Defaults.
+              This task's milestones and total timeline. Edit any of them on the left before creating.
             </p>
             <div style={{ height: 2, background: "linear-gradient(to right, var(--color-accent), transparent)", marginBottom: 25 }}></div>
             <div className="guide-list">
@@ -291,15 +310,6 @@ export default function TaskEntry({ staff, userRole, userName, onCreated, showMo
           </div>
         </div>
       </div>
-
-      <ConsultAIModal
-        open={showConsult}
-        onClose={() => setShowConsult(false)}
-        department={workspaceDept}
-        workspaceLabel={WORKSPACE_META[workspace]?.label || "this workspace"}
-        startDateISO={consultStart}
-        onApply={applyPlan}
-      />
     </div>
   );
 }

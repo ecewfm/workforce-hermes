@@ -1,17 +1,14 @@
 import { useState, useEffect, useRef } from "react";
-import { createPortal } from "react-dom";
 import { consultTaskPlan } from "../utils/taskPlanner";
 
 /**
- * ConsultAIModal — the "Consult with AI" planner for New Task. The user
- * describes what they're building; the AI (department-aware) proposes a set
- * of task-specific milestones with day estimates and a derived completion
- * deadline. They can refine, then apply the plan to prefill the form.
- *
- * Portaled to <body> so the cursor-camera transform on .view-stage can never
- * displace or clip it.
+ * ConsultPanel — the AI-first step of New Task (rendered inline, not a modal).
+ * The person describes what they're planning; the AI proposes task-specific
+ * milestones with day estimates. "Use this plan" hands the plan to the parent,
+ * which reveals the prefilled details form for final touches. "Start blank"
+ * skips straight to the manual form (fallback when AI is off / not wanted).
  */
-export default function ConsultAIModal({ open, onClose, department, workspaceLabel, startDateISO, onApply }) {
+export default function ConsultPanel({ department, workspaceLabel, onApply, onSkip }) {
   const [brief, setBrief] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -20,35 +17,11 @@ export default function ConsultAIModal({ open, onClose, department, workspaceLab
   const historyRef = useRef([]);
   const briefRef = useRef(null);
 
-  // Reset everything each time the modal is (re)opened.
-  useEffect(() => {
-    if (open) {
-      setBrief(""); setError(""); setPlan(null); setRefinement(""); setLoading(false);
-      historyRef.current = [];
-      setTimeout(() => briefRef.current?.focus(), 60);
-    }
-  }, [open]);
-
-  useEffect(() => {
-    if (!open) return;
-    const onEsc = (e) => { if (e.key === "Escape" && !loading) onClose(); };
-    window.addEventListener("keydown", onEsc);
-    return () => window.removeEventListener("keydown", onEsc);
-  }, [open, loading, onClose]);
-
-  if (!open) return null;
+  useEffect(() => { setTimeout(() => briefRef.current?.focus(), 80); }, []);
 
   const todayISO = new Date().toISOString().slice(0, 10);
   const totalDays = plan ? plan.milestones.reduce((s, m) => s + m.days, 0) : 0;
-
-  const completionDate = () => {
-    const base = startDateISO ? new Date(startDateISO + "T00:00:00") : new Date();
-    if (isNaN(base.getTime())) return null;
-    const d = new Date(base);
-    d.setDate(d.getDate() + totalDays);
-    return d;
-  };
-  const fmt = (d) => d?.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+  const weeks = totalDays ? Math.round(totalDays / 7) : 0;
 
   async function generate(isRefine) {
     const text = isRefine ? refinement.trim() : brief.trim();
@@ -59,7 +32,7 @@ export default function ConsultAIModal({ open, onClose, department, workspaceLab
         department,
         workspaceLabel,
         brief: brief.trim(),
-        startDateISO,
+        startDateISO: "",
         todayISO,
         history: isRefine ? historyRef.current : [],
         refinement: isRefine ? refinement.trim() : "",
@@ -74,20 +47,16 @@ export default function ConsultAIModal({ open, onClose, department, workspaceLab
     }
   }
 
-  const comp = completionDate();
-
-  return createPortal(
-    <div className="modal-overlay consult-overlay" onClick={(e) => { if (e.target === e.currentTarget && !loading) onClose(); }}>
-      <div className="consult-modal">
-        <button className="modal-close" onClick={onClose} disabled={loading}>×</button>
-
+  return (
+    <div className="consult-panel-wrap">
+      <div className="section-card consult-panel">
         <div className="consult-head">
           <div className="consult-badge">✦ AI</div>
           <div>
-            <h2 className="consult-title">Consult with AI</h2>
+            <h1 className="consult-title">Plan a new task</h1>
             <p className="consult-sub">
               Describe what you're planning — the AI knows how <strong>{workspaceLabel}</strong> work gets done and will
-              propose milestones and a timeline tailored to it.
+              propose milestones and a timeline tailored to it. You'll set assignees and make final touches next.
             </p>
           </div>
         </div>
@@ -118,7 +87,7 @@ export default function ConsultAIModal({ open, onClose, department, workspaceLab
               <div className="consult-plan-head">
                 <span>Proposed milestones</span>
                 <span className="consult-plan-meta">
-                  {plan.milestones.length} steps · {totalDays} days{comp ? ` · done by ${fmt(comp)}` : ""}
+                  {plan.milestones.length} steps · {totalDays} days{weeks ? ` (~${weeks} wk)` : ""}
                 </span>
               </div>
 
@@ -146,17 +115,22 @@ export default function ConsultAIModal({ open, onClose, department, workspaceLab
               </div>
 
               <div className="consult-actions">
-                <button className="btn-secondary" onClick={onClose} disabled={loading}>Cancel</button>
-                <button className="btn-primary consult-apply" onClick={() => { onApply(plan); onClose(); }} disabled={loading}>
+                <button className="consult-regen" onClick={() => { setPlan(null); historyRef.current = []; }} disabled={loading}>
+                  Start over
+                </button>
+                <button className="btn-primary consult-apply" onClick={() => onApply(plan)} disabled={loading}>
                   Use this plan →
                 </button>
               </div>
             </div>
           )}
         </div>
+
+        <button className="consult-skip" onClick={onSkip} disabled={loading}>
+          Skip AI · start from a blank task
+        </button>
       </div>
-    </div>,
-    document.body
+    </div>
   );
 }
 
