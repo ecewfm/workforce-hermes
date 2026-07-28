@@ -1201,6 +1201,143 @@ html.fx-robo-cursor [contenteditable="true"] {
    `hidden`) avoids creating a new scroll container. */
 html, body { overflow-x: clip; }
 
+/* ── "Consult with AI" — New Task planner ─────────────────────────────────── */
+.btn-consult-ai {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  margin: 0 0 26px 0;
+  padding: 14px 18px;
+  border: 1px solid color-mix(in srgb, var(--color-accent) 40%, transparent);
+  border-radius: var(--radius-md, 12px);
+  background: linear-gradient(120deg, color-mix(in srgb, var(--color-accent) 14%, var(--color-card-bg)), var(--color-card-bg));
+  color: var(--color-text-primary);
+  cursor: pointer;
+  text-align: left;
+  transition: transform 0.15s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+}
+.btn-consult-ai:hover {
+  transform: translateY(-2px);
+  border-color: var(--color-accent);
+  box-shadow: 0 10px 24px -12px color-mix(in srgb, var(--color-accent) 70%, transparent);
+}
+.consult-ai-spark {
+  flex-shrink: 0;
+  width: 38px; height: 38px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 50%;
+  background: var(--color-accent);
+  color: #fff;
+  font-size: 1.1rem;
+  box-shadow: 0 4px 12px -3px color-mix(in srgb, var(--color-accent) 80%, transparent);
+}
+.btn-consult-ai > span:last-child { display: flex; flex-direction: column; gap: 2px; }
+.btn-consult-ai strong { font-weight: 800; font-size: 0.95rem; }
+.btn-consult-ai em { font-style: normal; font-size: 0.74rem; color: var(--color-text-secondary); }
+
+.consult-overlay { align-items: center !important; }
+.consult-modal {
+  position: relative;
+  background: var(--color-card-bg);
+  width: 92%;
+  max-width: 640px;
+  max-height: calc(100vh - 80px);
+  overflow-y: auto;
+  border-radius: var(--radius-lg, 18px);
+  border: 1px solid var(--glass-border, rgba(0,0,0,0.08));
+  box-shadow: var(--shadow-xl, 0 30px 80px rgba(0,0,0,0.25));
+  padding: 26px 28px 28px;
+  animation: modalIn var(--dur-med, 0.28s) var(--ease-out-expo, cubic-bezier(0.16,1,0.3,1)) both;
+}
+.consult-head { display: flex; gap: 14px; align-items: flex-start; margin-bottom: 20px; padding-right: 30px; }
+.consult-badge {
+  flex-shrink: 0;
+  width: 42px; height: 42px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 12px;
+  background: linear-gradient(135deg, var(--color-accent), color-mix(in srgb, var(--color-accent) 55%, #000));
+  color: #fff; font-weight: 800; font-size: 0.8rem;
+}
+.consult-title { margin: 0; font-size: 1.35rem; font-weight: 900; color: var(--color-text-primary); }
+.consult-sub { margin: 4px 0 0; font-size: 0.82rem; color: var(--color-text-secondary); line-height: 1.5; }
+.consult-label { display: block; font-size: 0.78rem; font-weight: 700; color: var(--color-text-secondary); margin-bottom: 8px; }
+.consult-textarea {
+  width: 100%; box-sizing: border-box;
+  min-height: 92px; resize: vertical;
+  padding: 12px 14px;
+  border: 1px solid var(--color-bg-primary);
+  border-radius: 10px;
+  background: var(--color-bg-subtle, var(--color-card-bg));
+  color: var(--color-text-primary);
+  font-size: 0.9rem; font-family: inherit; line-height: 1.5;
+  outline: none; transition: border-color 0.2s;
+}
+.consult-textarea:focus { border-color: var(--color-accent); }
+.consult-generate {
+  margin-top: 14px; width: 100%;
+  padding: 13px; border: none; border-radius: 10px;
+  background: var(--color-accent); color: #fff;
+  font-weight: 800; font-size: 0.92rem; cursor: pointer;
+  transition: filter 0.2s, transform 0.1s;
+}
+.consult-generate:hover:not(:disabled) { filter: brightness(1.06); }
+.consult-generate:disabled { opacity: 0.55; cursor: not-allowed; }
+.consult-error {
+  margin-top: 14px; padding: 10px 14px;
+  border-radius: 10px; font-size: 0.82rem;
+  background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca;
+}
+.consult-result { margin-top: 20px; }
+.consult-rationale {
+  margin: 0 0 16px; padding: 12px 14px;
+  font-size: 0.83rem; line-height: 1.55; color: var(--color-text-secondary);
+  background: color-mix(in srgb, var(--color-accent) 8%, var(--color-card-bg));
+  border-left: 3px solid var(--color-accent); border-radius: 0 8px 8px 0;
+}
+.consult-plan-head {
+  display: flex; justify-content: space-between; align-items: baseline; gap: 10px;
+  font-weight: 800; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.4px;
+  color: var(--color-text-primary); margin-bottom: 10px;
+}
+.consult-plan-meta { font-size: 0.72rem; font-weight: 700; color: var(--color-accent); text-transform: none; letter-spacing: 0; }
+.consult-milestones { list-style: none; margin: 0; padding: 0; counter-reset: cm; }
+.consult-milestones li {
+  counter-increment: cm;
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 12px; margin-bottom: 6px;
+  background: var(--color-bg-subtle, var(--color-card-bg));
+  border: 1px solid var(--color-bg-primary); border-radius: 10px;
+}
+.consult-milestones li::before {
+  content: counter(cm);
+  flex-shrink: 0;
+  width: 24px; height: 24px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 50%; font-size: 0.72rem; font-weight: 800;
+  background: var(--color-accent); color: #fff;
+}
+.cm-name { flex: 1; font-size: 0.86rem; font-weight: 600; color: var(--color-text-primary); }
+.cm-days { flex-shrink: 0; font-size: 0.78rem; font-weight: 800; color: var(--color-accent); }
+.consult-refine { display: flex; gap: 8px; margin: 16px 0 4px; }
+.consult-refine-input {
+  flex: 1; box-sizing: border-box;
+  padding: 10px 12px; border: 1px solid var(--color-bg-primary); border-radius: 10px;
+  background: var(--color-bg-subtle, var(--color-card-bg)); color: var(--color-text-primary);
+  font-size: 0.82rem; font-family: inherit; outline: none; transition: border-color 0.2s;
+}
+.consult-refine-input:focus { border-color: var(--color-accent); }
+.consult-refine-btn {
+  flex-shrink: 0; padding: 0 18px; border: 1px solid var(--color-accent); border-radius: 10px;
+  background: transparent; color: var(--color-accent); font-weight: 800; font-size: 0.82rem; cursor: pointer;
+  transition: background 0.2s, color 0.2s;
+}
+.consult-refine-btn:hover:not(:disabled) { background: var(--color-accent); color: #fff; }
+.consult-refine-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.consult-actions { display: flex; justify-content: flex-end; gap: 12px; margin-top: 22px; }
+.consult-apply { width: auto !important; padding: 12px 26px !important; }
+[data-theme="dark"] .consult-error { background: #3b1717; color: #fca5a5; border-color: #7f1d1d; }
+
 /* ── RoboHand: the little robotic arm that reaches for the cursor on the
    nav buttons (RoboHand.jsx). Fixed overlay, never intercepts clicks. ── */
 .robo-hand-layer {

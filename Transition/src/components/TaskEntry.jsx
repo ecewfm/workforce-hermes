@@ -4,6 +4,8 @@ import { api } from "../../convex/_generated/api";
 import { FALLBACK_MILESTONES } from "../utils/defaults";
 import { useWorkspace } from "../utils/workspaceContext";
 import { WORKSPACE_META, isInDepartment } from "../utils/departments";
+import ConsultAIModal from "./ConsultAIModal";
+import { isCaddyEnabled } from "../utils/aiConfig";
 
 export default function TaskEntry({ staff, userRole, userName, onCreated, showModal }) {
   const workspace = useWorkspace();
@@ -40,6 +42,8 @@ export default function TaskEntry({ staff, userRole, userName, onCreated, showMo
   const [selectedAssignees, setSelectedAssignees] = useState(new Set());
   const [showOptions, setShowOptions] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [showConsult, setShowConsult] = useState(false);
+  const [consultStart, setConsultStart] = useState("");
   const formRef = useRef(null);
   const milestonesTouched = useRef(false);
 
@@ -106,6 +110,23 @@ export default function TaskEntry({ staff, userRole, userName, onCreated, showMo
     setSelectedAssignees(new Set());
   }
 
+  function openConsult() {
+    // Hand the currently-typed start date to the planner for calendar context.
+    setConsultStart(document.getElementById("task-date")?.value || "");
+    setShowConsult(true);
+  }
+
+  // Apply an AI-proposed plan: swap in its milestones, and fill title/desc
+  // only if the user hasn't already typed them (never clobber their input).
+  function applyPlan(plan) {
+    milestonesTouched.current = true;
+    setMilestones(plan.milestones.map((m) => ({ name: m.name, days: m.days })));
+    const titleEl = document.getElementById("task-title");
+    if (titleEl && !titleEl.value.trim() && plan.title) titleEl.value = plan.title;
+    const descEl = document.getElementById("task-desc");
+    if (descEl && !descEl.value.trim() && plan.description) descEl.value = plan.description;
+  }
+
   async function handleSubmit(e) {
     e.preventDefault();
     setSubmitting(true);
@@ -161,10 +182,20 @@ export default function TaskEntry({ staff, userRole, userName, onCreated, showMo
         <div className="entry-grid">
           {/* Left: Form */}
           <div className="section-card">
-            <div style={{ textAlign: "center", marginBottom: 30 }}>
+            <div style={{ textAlign: "center", marginBottom: 20 }}>
               <h1 style={{ fontWeight: 900, margin: 0, fontSize: "2rem", color: "var(--color-text-primary)" }}>Create New Task</h1>
               <p style={{ color: "var(--color-text-secondary)", fontSize: "0.9rem", marginTop: 5 }}>Enter project details and milestones</p>
             </div>
+
+            {isCaddyEnabled() && (
+              <button type="button" className="btn-consult-ai" onClick={openConsult}>
+                <span className="consult-ai-spark">✦</span>
+                <span>
+                  <strong>Consult with AI</strong>
+                  <em>Describe your task — get milestones &amp; a timeline tailored to it</em>
+                </span>
+              </button>
+            )}
 
             <form ref={formRef} onSubmit={handleSubmit}>
               <div style={{ marginBottom: 30 }}>
@@ -260,6 +291,15 @@ export default function TaskEntry({ staff, userRole, userName, onCreated, showMo
           </div>
         </div>
       </div>
+
+      <ConsultAIModal
+        open={showConsult}
+        onClose={() => setShowConsult(false)}
+        department={workspaceDept}
+        workspaceLabel={WORKSPACE_META[workspace]?.label || "this workspace"}
+        startDateISO={consultStart}
+        onApply={applyPlan}
+      />
     </div>
   );
 }
