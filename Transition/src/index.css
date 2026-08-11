@@ -1201,6 +1201,20 @@ html.fx-robo-cursor [contenteditable="true"] {
    `hidden`) avoids creating a new scroll container. */
 html, body { overflow-x: clip; }
 
+/* Lock the background from scrolling while ANY full-screen overlay is open —
+   the overlay's own inner panel keeps its scroll (position:fixed, so it's
+   unaffected). `clip` freezes the page at its current position (no jump). */
+html:has(.modal-overlay),
+html:has(.custom-modal-overlay),
+html:has(.settings-overlay),
+html:has(.handbook-overlay),
+html:has(.notes-fullscreen-overlay),
+html:has(.announcement-overlay),
+html:has(.notif-modal-overlay),
+html:has(.profile-popover-overlay) {
+  overflow: clip;
+}
+
 /* ── "Consult with AI" — the AI-first New Task planner (inline panel) ─────── */
 .consult-panel-wrap { display: flex; justify-content: center; }
 .consult-panel {
@@ -6038,8 +6052,9 @@ body.role-programmer .kanban-col.col-scrap {
   flex: 1;
   min-width: 250px;
   min-height: 0;
-  /* Side columns never scroll — they fit their content; only the main column scrolls. */
-  overflow: hidden;
+  /* Scrolls independently when its content is taller than the panel (e.g. a
+     long JSON block) so nothing gets clipped — same as the main column. */
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 16px;
