@@ -62,6 +62,11 @@ export const authApi = {
     return r;
   },
   setSecurityQuestion: ({ question, answer }) => call("set-question", { question, answer }, true),
+  async changePassword({ currentPassword, newPassword }) {
+    const r = await call("change-password", { currentPassword, newPassword }, true);
+    await adoptSession(r.session);
+    return r;
+  },
   resetPassword: ({ targetEmail }) => call("admin-reset", { targetEmail }, true),
 };
 

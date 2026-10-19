@@ -7,6 +7,7 @@
 //   get-question  { email }                         → { question }
 //   verify-answer { email, answer }                 → { success, setupToken }
 //   set-question  { question, answer }   + Bearer   → { success }
+//   change-password { currentPassword, newPassword } + Bearer → { success, session }
 //   admin-reset   { targetEmail }        + Bearer   → { success }   (Admin+ / Manager)
 //
 // Everyone keeps their CURRENT password. On first sign-in here the password is
@@ -253,6 +254,25 @@ const actions = {
     await saveCreds(E, s.id, { security_question: String(question).trim(), security_answer_hash: sha256(String(answer).trim().toLowerCase()) });
     await log(E, "SECURITY_QUESTION_SET", email, email, `Security question updated to: "${String(question).trim()}"`);
     return { success: true };
+  },
+
+  // Change your OWN password (Settings → Account). Needs the session AND the
+  // current password, so a left-open laptop can't be used to lock you out.
+  async "change-password"(E, { currentPassword, newPassword }, req) {
+    const email = await userFromBearer(E, req);
+    if (email === MAIN_ADMIN) throw httpError(403, "Change the Main Admin password with scripts/set-staff-password.mjs.");
+    if (String(newPassword || "").length < 6) throw httpError(400, "New password must be at least 6 characters.");
+    if (await tooManyFailures(E, email)) throw httpError(429, "Too many attempts. Wait 15 minutes and try again.");
+    if (!(await signIn(E, email, String(currentPassword || "")))) {
+      await log(E, "LOGIN_FAILED", email, email, "Wrong current password on password change.");
+      throw httpError(401, "Your current password is incorrect.");
+    }
+    if (newPassword === currentPassword) throw httpError(400, "Pick a password different from your current one.");
+    const s = await getStaff(E, email);
+    if (!s || !approved(s.role)) throw httpError(403, "This account can't change its password.");
+    await upsertAuthUser(E, s, email, String(newPassword));
+    await log(E, "PASSWORD_CHANGED", email, email, "User changed their password in Settings.");
+    return { success: true, session: await signIn(E, email, String(newPassword)) };
   },
 
   async "admin-reset"(E, { targetEmail }, req) {

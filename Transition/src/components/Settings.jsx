@@ -161,6 +161,8 @@ export default function Settings({ userName, userEmail, onClose, showModal, onLo
   const deleteStaffMut = useMutation(api.staff.deleteStaff);
   const addStaffMut = useMutation(api.staff.addStaff);
   const setSecurityQuestionMut = useMutation(api.staff.setSecurityQuestion);
+  const changePasswordMut = useMutation(api.staff.changePassword);
+  const [changingPassword, setChangingPassword] = useState(false);
   const updateStaffDepartmentMut = useMutation(api.staff.updateStaffDepartment);
   // Staff Management sub-tab: "access" (role) | "department" (workspace access)
   const [staffSubTab, setStaffSubTab] = useState("access");
@@ -454,12 +456,21 @@ export default function Settings({ userName, userEmail, onClose, showModal, onLo
     });
   }
 
-  function handleChangePassword() {
+  async function handleChangePassword() {
     if (!currentPassword) { showModal({ title: "Error", message: "Please enter your current password.", type: "alert" }); return; }
     if (newPassword.length < 6) { showModal({ title: "Error", message: "New password must be at least 6 characters.", type: "alert" }); return; }
     if (newPassword !== confirmPassword) { showModal({ title: "Error", message: "New passwords do not match.", type: "alert" }); return; }
-    showModal({ title: "Password Updated", message: "Your password has been changed successfully.", type: "success" });
-    setCurrentPassword(""); setNewPassword(""); setConfirmPassword("");
+    if (changingPassword) return;
+    setChangingPassword(true);
+    try {
+      await changePasswordMut({ currentPassword, newPassword });
+      showModal({ title: "Password Updated", message: "Your password has been changed. Use the new one next time you sign in.", type: "success" });
+      setCurrentPassword(""); setNewPassword(""); setConfirmPassword("");
+    } catch (err) {
+      showModal({ title: "Couldn't change password", message: err.message || "Please try again.", type: "alert" });
+    } finally {
+      setChangingPassword(false);
+    }
   }
 
   return (
@@ -727,7 +738,7 @@ export default function Settings({ userName, userEmail, onClose, showModal, onLo
                     <div className="settings-field"><label className="settings-input-label">New Password</label><input type="password" className="settings-input" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="Min. 6 characters" /></div>
                     <div className="settings-field"><label className="settings-input-label">Confirm New Password</label><input type="password" className="settings-input" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} placeholder="Re-enter new password" /></div>
                   </div>
-                  <button className="settings-btn-primary" onClick={handleChangePassword}>Change Password</button>
+                  <button className="settings-btn-primary" onClick={handleChangePassword} disabled={changingPassword}>{changingPassword ? "Changing…" : "Change Password"}</button>
                 </div>
               </div>
 

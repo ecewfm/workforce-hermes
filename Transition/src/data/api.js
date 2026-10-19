@@ -167,6 +167,7 @@ export const api = {
     getSecurityQuestion: mutation("staff.getSecurityQuestion", [], authApi.getSecurityQuestion),
     verifySecurityAnswer: mutation("staff.verifySecurityAnswer", [], authApi.verifySecurityAnswer),
     setSecurityQuestion: mutation("staff.setSecurityQuestion", ["staff"], authApi.setSecurityQuestion),
+    changePassword: mutation("staff.changePassword", [], authApi.changePassword),
     resetPassword: mutation("staff.resetPassword", ["staff"], authApi.resetPassword),
   },
 
