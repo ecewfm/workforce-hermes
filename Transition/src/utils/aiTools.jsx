@@ -1,11 +1,13 @@
-import { useConvex } from "convex/react";
-import { api } from "../../convex/_generated/api";
+import { useConvex } from "../data/react";
+import { api } from "../data/api";
 import { useWorkspace } from "./workspaceContext";
 import { isAdminPlusOrAbove } from "./roles";
 import { DAY_MS } from "./deadlines";
 import { resolveColumns } from "./columns";
 import { WORKSPACE_META } from "./departments";
 import { ENABLE_WEB_SEARCH } from "./aiConfig";
+import { fallbackMilestonesFor } from "./defaults";
+import { planTask } from "./taskPlanner";
 
 // Display date string matching how the rest of the app stamps notes/ideas.
 function estNow() {
@@ -37,7 +39,9 @@ const APP_GUIDE = `WHERE THINGS LIVE in Workforce Hermes (use this to answer "wh
 • Settings → Staff Management (Admin+): "Access Type" sets each person's role; "Department Membership" (Managers only — Admins can view) controls which workspaces each person can access. A user reaches exactly the workspaces (departments) ticked for them.
 • Settings → AI Assistant: toggle Caddy on/off.
 • Projects/Kanban, the notebook, announcements, and the handbook are each per-workspace; switch workspaces from the header title (a password may be required).
-• New Task is AI-first: it opens on a "Plan a new task" step where the person describes what they're planning and the AI proposes task-specific milestones + a fitting timeline, tailored to how THIS workspace's department works (Workforce = software delivery; Operations = process rollout with pilot/training; Executives = analysis→proposal→approval→oversight). They can refine the plan, then "Use this plan →" opens the details step (assignees, start date, editable milestones) to finish and create the task. A "Skip AI · start from a blank task" link goes straight to the manual form (also used automatically when Caddy is off).
+• New Task is AI-first: it opens on a "Plan a new task" step. The person describes what they're planning (one-click example briefs help) and can set a start date. The AI thinks it through — its reasoning shows live as a step list — then streams in a plan tailored to how THIS workspace's department works (Workforce = software delivery; Operations = classified by project type, e.g. campaign launch, SOP change, KPI improvement, tool rollout, training, scheduling change, with sign-offs, a pilot, training and post-go-live monitoring built in; Executives = analysis→proposal→approval→oversight). The plan shows project type, size, a goal, a timeline bar with the finish date, assumptions and risks, and every milestone has a "done when". Everything is editable right there (rename, change days, reorder, add, remove); quick chips or a typed note ("it's only one site") refine it. "Use this plan →" opens the details step (assignees, start date, editable milestones) to create the task.
+• "Skip AI" on New Task starts from the workspace's DEFAULT milestones (also used when Caddy is off). Operations' built-in default is a general 8-step, 56-day template that fits any operations project: Scope & Goals (5d) → Plan & Design (7d) → Review & Sign-off (3d) → Prepare & Set Up (7d) → Pilot / Test Run (10d) → Train & Communicate (5d) → Go-Live / Full Rollout (5d) → Monitor & Hand Over (14d). Admin+ can change any workspace's default in Settings → Workspace Defaults ("Restore Original" brings the built-in one back).
+• You (Caddy) can also act on the screen: open a project's card, take the person to a screen (board, overview, new task, notebook, announcements, handbook, settings, project links), or open the New Task planner with their idea already filled in and planning started.
 • Clicking a project card zooms the board toward it and the task modal grows out of the card to the centre (reversing on close) — that's the intended animation, not a glitch. Same for the robotic touches: the cursor is a robotic hand that grips when you click, a robotic arm reaches for your cursor on the navigation buttons, and the view gently pans toward the pointer like a camera — deliberate fun, not glitches. Each can be turned on/off under Settings → General Preferences → "Motion & Fun Effects".
 If you're unsure where something is, say it's most likely under Settings and point them there — never claim a real feature doesn't exist.`;
 
@@ -70,7 +74,7 @@ const TOOLS = [
   },
   {
     name: "create_project",
-    description: "Create a new project (task). ALWAYS include a helpful `description` you compose yourself — never leave it blank or just repeat the title. Defaults the assignee to the current user unless another person's name is given.",
+    description: "Create a new project (task) RIGHT AWAY. Milestones are planned automatically by the AI planner for this workspace's department (falls back to the workspace's default template). ALWAYS include a helpful `description` you compose yourself — never leave it blank or just repeat the title. Defaults the assignee to the current user unless another person's name is given. If the person wants to review or shape the plan first, use plan_new_task instead.",
     parameters: {
       type: "object",
       properties: {
@@ -166,13 +170,48 @@ const TOOLS = [
       required: ["date"],
     },
   },
+  {
+    name: "plan_new_task",
+    description: "Open the New Task planner ON SCREEN with this brief filled in and start the AI milestone plan, so the person can watch it think, then review, edit and refine it before creating the task. Prefer this whenever someone wants to plan / scope / get milestones for a new task.",
+    parameters: {
+      type: "object",
+      properties: {
+        brief: { type: "string", description: "A clear description of the task in the person's own terms: what needs to happen, scale (teams, sites, headcount), constraints, deadlines." },
+      },
+      required: ["brief"],
+    },
+  },
+  {
+    name: "open_project",
+    description: "Open an existing project's card (its full task view) on screen.",
+    parameters: {
+      type: "object",
+      properties: { project_name: { type: "string", description: "The project/task name (fuzzy match ok)." } },
+      required: ["project_name"],
+    },
+  },
+  {
+    name: "go_to",
+    description: "Take the person to a screen in the app.",
+    parameters: {
+      type: "object",
+      properties: {
+        place: {
+          type: "string",
+          enum: ["board", "overview", "new_task", "notebook", "announcements", "handbook", "settings", "project_links"],
+          description: "board = the Kanban project board (labelled DASHBOARD in the nav); overview = the admin OVERVIEW stats page.",
+        },
+      },
+      required: ["place"],
+    },
+  },
 ];
 
 /**
  * Hook that wires the AI tools to Convex for the current user + workspace.
  * Returns { tools, executeTool, systemInstruction }.
  */
-export function useAiActions({ userName, userEmail, actualRole }) {
+export function useAiActions({ userName, userEmail, actualRole, uiActions }) {
   const convex = useConvex();
   const workspace = useWorkspace();
   const isManager = isAdminPlusOrAbove(actualRole);
@@ -278,16 +317,59 @@ export function useAiActions({ userName, userEmail, actualRole }) {
 
       case "create_project": {
         const cfg = await convex.query(api.appConfig.getAppConfig, { workspace });
-        const milestones = (cfg?.defaultMilestones || []).map((m) => ({ name: m.name, days: m.days }));
+        const template = (cfg?.defaultMilestones?.length ? cfg.defaultMilestones : fallbackMilestonesFor(workspace))
+          .map(({ name, days }) => ({ name, days }));
+        const title = (args.title || "Untitled Project").trim();
+        const description = (args.description || "").trim();
+        // Let the planner tailor milestones to this task; the template is the
+        // safety net if planning fails (quota, network…).
+        let milestones = template;
+        let plannedByAI = false;
+        try {
+          const { plan } = await planTask({
+            department: WORKSPACE_META[workspace]?.department,
+            workspaceLabel: wsLabel,
+            brief: description ? `${title}\n\n${description}` : title,
+            template,
+            thinkingLevel: "medium",
+          });
+          milestones = plan.milestones.map(({ name, days }) => ({ name, days }));
+          plannedByAI = true;
+        } catch (err) {
+          console.warn("[Caddy] planner failed, using the template:", err);
+        }
         const assignee = (args.assignee || "").trim() || userName;
-        await convex.mutation(api.tasks.addTask, {
-          workspace,
-          title: (args.title || "Untitled Project").trim(),
+        await convex.mutation(api.tasks.addTask, { workspace, title, assignee, description, milestones });
+        return {
+          created: true,
+          title,
           assignee,
-          description: (args.description || "").trim(),
-          milestones,
-        });
-        return { created: true, title: args.title, assignee, workspace };
+          workspace,
+          milestonesSource: plannedByAI ? "planned by AI for this task" : "workspace default template",
+          milestones: milestones.map((m) => `${m.name} (${m.days}d)`),
+          totalDays: milestones.reduce((s, m) => s + m.days, 0),
+        };
+      }
+
+      case "plan_new_task": {
+        const brief = (args.brief || "").trim();
+        if (!brief) return { error: "No brief given." };
+        if (!uiActions?.planNewTask) return { error: "The planner can't be opened from here." };
+        uiActions.planNewTask(brief);
+        return { opened: true, note: "The New Task planner is open with the brief filled in and is planning now. The person reviews, edits and creates it there." };
+      }
+
+      case "open_project": {
+        const found = await resolveTask(args.project_name);
+        if (found.error || found.ambiguous) return found;
+        if (!uiActions?.openProject) return { error: "Projects can't be opened from here." };
+        uiActions.openProject(found.task._id);
+        return { opened: true, project: found.task.title };
+      }
+
+      case "go_to": {
+        if (!uiActions?.goTo) return { error: "Navigation isn't available here." };
+        return uiActions.goTo(args.place);
       }
 
       case "set_project_description": {
@@ -396,6 +478,7 @@ export function useAiActions({ userName, userEmail, actualRole }) {
     `• Reporting project updates (default to the last 7 days unless the user specifies a range) — EXPLAIN what actually changed.`,
     `• Creating projects — assign to the current user by default unless they name someone else.`,
     `• Adding notebook ideas, posting notes on projects, adding features, logging bugs, and moving projects between columns.`,
+    `• Acting on the screen: open a project (open_project), take them somewhere (go_to), or open the New Task planner with their idea filled in (plan_new_task). When someone wants to PLAN a new task or get milestones for it, use plan_new_task so they can watch the AI think and edit the plan — only use create_project when they clearly want it created immediately.`,
     `If someone asks HOW or WHERE to do something you don't have a tool for (like setting a password or changing access), guide them to the right screen using the app guide below — don't say you can't help or that it doesn't exist.`,
     APP_GUIDE,
     `A note (add_note) and a description (set_project_description) are DIFFERENT: a description is the project's summary field; a note is a timeline update. To add or change a project's description use set_project_description — never post it as a note.`,

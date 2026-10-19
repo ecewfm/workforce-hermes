@@ -17,6 +17,127 @@ function firstAvailableIdx(models) {
   return 0; // all cooling down — try the first anyway
 }
 
+// Local `npm run dev` (Vite) has no /api routes, so fall back to calling Gemini
+// directly with a DEV-ONLY key. This is compiled out of production builds
+// (import.meta.env.DEV === false), so the key never ships — prod always goes
+// through the /api/gemini proxy. Don't set VITE_GEMINI_API_KEY on Vercel.
+const DEV_KEY = import.meta.env.DEV ? (import.meta.env.VITE_GEMINI_API_KEY || "").trim() : "";
+
+// POST one Gemini call — straight to Google in local dev, via our proxy in prod.
+// `stream` switches to streamGenerateContent (server-sent events).
+function postGemini({ model, body, stream = false, signal }) {
+  if (DEV_KEY) {
+    const method = stream ? "streamGenerateContent?alt=sse&" : "generateContent?";
+    return fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:${method}key=${encodeURIComponent(DEV_KEY)}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      signal,
+    });
+  }
+  return fetch("/api/gemini", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ model, body, stream }),
+    signal,
+  });
+}
+
+// A 404 from our OWN proxy route (Vercel serves an HTML 404) means /api/gemini
+// isn't deployed. A Gemini model-not-found 404 comes back as JSON through the
+// proxy — that one is retryable on the next model.
+function proxyRouteMissing(status, errText) {
+  if (DEV_KEY || status !== 404) return false;
+  try { JSON.parse(errText); return false; } catch { return true; }
+}
+
+/**
+ * Stream ONE generateContent call (no tools) and hand back thought summaries
+ * and answer text separately as they arrive — so the UI can show the model
+ * thinking live. Same model fallback as runAssistant: a model that fails
+ * before producing any answer text is skipped for the next one.
+ *
+ * @param {object}   opts
+ * @param {string[]} opts.models       ordered model chain
+ * @param {(model:string)=>object} opts.buildBody  request body for a model (thinking config differs per model)
+ * @param {(chunk:string, all:string)=>void} [opts.onThought]  thought-summary text
+ * @param {(chunk:string, all:string)=>void} [opts.onText]     answer text
+ * @param {(model:string)=>void} [opts.onRestart]  a model failed mid-stream; output so far is void
+ * @param {AbortSignal} [opts.signal]
+ * @returns {Promise<{text:string, thoughts:string, model:string, finishReason:string}>}
+ */
+export async function streamGenerate({ models, buildBody, onThought, onText, onRestart, signal }) {
+  let idx = firstAvailableIdx(models);
+  while (true) {
+    const model = models[idx];
+    const tryNext = (reason) => {
+      if (idx < models.length - 1) { idx++; onRestart?.(models[idx]); return true; }
+      throw reason instanceof Error ? reason : new Error(String(reason));
+    };
+
+    let res;
+    try {
+      res = await postGemini({ model, body: buildBody(model), stream: true, signal });
+    } catch (err) {
+      if (signal?.aborted) throw err;
+      tryNext(new Error("Couldn't reach the assistant service (network error). Check your connection."));
+      continue;
+    }
+    if (!res.ok) {
+      const errText = await res.text().catch(() => "");
+      if (proxyRouteMissing(res.status, errText)) {
+        throw new Error("The AI endpoint /api/gemini returned 404 — the server function isn't deployed yet. Redeploy the latest build to Vercel.");
+      }
+      if (res.status === 429) rateLimitedUntil[model] = Date.now() + COOLDOWN_MS;
+      // A 400 is usually this model rejecting a config option (e.g. thinking) —
+      // worth one more model before giving up.
+      if (isRetryable(res.status) || res.status === 400) { tryNext(new Error(parseGeminiError(res.status, errText, model))); continue; }
+      throw new Error(parseGeminiError(res.status, errText, model));
+    }
+
+    let text = "";
+    let thoughts = "";
+    let finishReason = "";
+    try {
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      const handleEvent = (raw) => {
+        const data = raw.split(/\r?\n/).filter((l) => l.startsWith("data:")).map((l) => l.slice(5).trim()).join("");
+        if (!data) return;
+        let evt;
+        try { evt = JSON.parse(data); } catch { return; }
+        if (evt.error) throw new Error(evt.error.message || "The model stopped with an error.");
+        const cand = evt.candidates?.[0];
+        if (cand?.finishReason) finishReason = cand.finishReason;
+        for (const p of cand?.content?.parts || []) {
+          if (!p.text) continue;
+          if (p.thought) { thoughts += p.text; onThought?.(p.text, thoughts); }
+          else { text += p.text; onText?.(p.text, text); }
+        }
+      };
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        let m;
+        while ((m = buffer.match(/\r?\n\r?\n/))) {
+          handleEvent(buffer.slice(0, m.index));
+          buffer = buffer.slice(m.index + m[0].length);
+        }
+      }
+      if (buffer.trim()) handleEvent(buffer);
+    } catch (err) {
+      if (signal?.aborted) throw err;
+      // Died mid-stream before any answer — start over on the next model.
+      if (!text) { tryNext(err); continue; }
+      throw err;
+    }
+    if (!text && idx < models.length - 1) { tryNext("empty"); continue; }
+    return { text, thoughts, model, finishReason };
+  }
+}
+
 /**
  * Run one assistant turn with Gemini function-calling.
  *
@@ -39,11 +160,6 @@ export async function runAssistant({ history = [], userText, tools = [], systemI
   // Start on the first model that isn't in a rate-limit cooldown.
   let modelIdx = firstAvailableIdx(models);
 
-  // Local `npm run dev` (Vite) has no /api routes, so fall back to calling Gemini
-  // directly with a DEV-ONLY key. This whole branch is compiled out of production
-  // builds (import.meta.env.DEV === false), so the key never ships — prod always
-  // goes through the /api/gemini proxy. Don't set VITE_GEMINI_API_KEY on Vercel.
-  const DEV_KEY = import.meta.env.DEV ? (import.meta.env.VITE_GEMINI_API_KEY || "").trim() : "";
   // Google Search grounding (only when enabled — see aiConfig) alongside our
   // own function tools.
   const toolDecls = [
@@ -58,36 +174,15 @@ export async function runAssistant({ history = [], userText, tools = [], systemI
       const model = models[modelIdx];
       let res;
       try {
-        if (DEV_KEY) {
-          // Local dev only — direct call.
-          res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(DEV_KEY)}`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(body),
-          });
-        } else {
-          // Production — server proxy keeps the key server-side.
-          res = await fetch("/api/gemini", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ model, body }),
-          });
-        }
+        res = await postGemini({ model, body });
       } catch {
         if (modelIdx < models.length - 1) { modelIdx++; onStatus?.("thinking", "Switching to backup model…"); continue; }
         throw new Error("Couldn't reach the assistant service (network error). Check your connection.");
       }
       if (res.ok) return res.json();
       const errText = await res.text().catch(() => "");
-      // A 404 from our OWN proxy route (Vercel serves an HTML 404) means
-      // /api/gemini isn't deployed. A Gemini model-not-found 404 comes back as
-      // JSON through the proxy — let that fall through to the model-retry below.
-      if (!DEV_KEY && res.status === 404) {
-        let routeMissing = true;
-        try { JSON.parse(errText); routeMissing = false; } catch { routeMissing = true; }
-        if (routeMissing) {
-          throw new Error("The AI endpoint /api/gemini returned 404 — the server function isn't deployed yet. Redeploy the latest build to Vercel.");
-        }
+      if (proxyRouteMissing(res.status, errText)) {
+        throw new Error("The AI endpoint /api/gemini returned 404 — the server function isn't deployed yet. Redeploy the latest build to Vercel.");
       }
       // Put a rate-limited model on cooldown so later messages skip it.
       if (res.status === 429) rateLimitedUntil[model] = Date.now() + COOLDOWN_MS;
@@ -147,14 +242,19 @@ export async function runAssistant({ history = [], userText, tools = [], systemI
 function toolStatusLabel(name) {
   const map = {
     get_project_updates: "Reading project activity…",
+    get_recent_updates: "Reading recent activity…",
     list_projects: "Looking up projects…",
-    create_project: "Creating the project…",
+    create_project: "Planning milestones & creating the project…",
     add_note: "Posting the update…",
     set_project_description: "Writing the description…",
     add_notebook_idea: "Saving to the notebook…",
     add_feature: "Adding the feature…",
     add_bug: "Logging the bug…",
-    update_setting: "Updating settings…",
+    set_project_status: "Moving the project…",
+    set_production_deadline: "Setting the deadline…",
+    open_project: "Opening the project…",
+    go_to: "Taking you there…",
+    plan_new_task: "Opening the planner…",
   };
   return map[name] || "Working…";
 }

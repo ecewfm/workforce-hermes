@@ -1,6 +1,6 @@
-import { useState, useRef, useEffect, useCallback } from "react";
-import { useQuery, useMutation } from "convex/react";
-import { api } from "../../convex/_generated/api";
+import { useState, useRef, useEffect } from "react";
+import { useQuery, useMutation } from "../data/react";
+import { api } from "../data/api";
 import { sendNotification, initNotifications } from "../utils/notifications";
 import { useWorkspace } from "../utils/workspaceContext";
 import { morphOriginFrom } from "../utils/modalOrigin";
@@ -8,16 +8,15 @@ import { morphOriginFrom } from "../utils/modalOrigin";
 /**
  * NotificationBell — sits beside the Settings gear in the header.
  * 
- * Bandwidth strategy:
- * - Unread count: Convex realtime (tiny payload, keeps badge live)
- * - Full notification list: Vercel proxy with edge cache (fetched on dropdown open)
- * - Mutations (markRead, markAllRead): Direct Convex
+ * Data (Supabase, live):
+ * - Unread count + latest: always subscribed (tiny payloads, keep the badge live)
+ * - Full list: subscribed only while the dropdown is open
+ * - markRead / markAllRead: database functions (your own notifications only)
  */
 export default function NotificationBell({ userEmail, onOpenTask }) {
   const workspace = useWorkspace();
   const [isOpen, setIsOpen] = useState(false);
   const [notifications, setNotifications] = useState(null);
-  const [isLoadingList, setIsLoadingList] = useState(false);
   const panelRef = useRef(null);
 
   // Unread count and latest notification (for desktop banners) — scoped to the
@@ -56,34 +55,14 @@ export default function NotificationBell({ userEmail, onOpenTask }) {
     }
   }, [latestNotif]);
 
-  // Fetch full list via Vercel proxy (edge-cached, saves Convex bandwidth)
-  const fetchNotifications = useCallback(async () => {
-    if (!userEmail) return;
-    setIsLoadingList(true);
-    try {
-      const resp = await fetch(`/api/getNotifications?email=${encodeURIComponent(userEmail)}&workspace=${encodeURIComponent(workspace)}`);
-      if (resp.ok) {
-        const data = await resp.json();
-        setNotifications(data);
-      }
-    } catch (err) {
-      console.error("Failed to fetch notifications:", err);
-    } finally {
-      setIsLoadingList(false);
-    }
-  }, [userEmail, workspace]);
-
-  // Fetch on dropdown open
+  // Full list: a live query, only while the dropdown / "see all" is open.
+  // Always the signed-in user's own notifications (enforced server-side).
+  const listOpen = isOpen || showAllModal;
+  const liveList = useQuery(api.notifications.getNotifications, listOpen && userEmail ? { email: userEmail, workspace } : "skip");
   useEffect(() => {
-    if (isOpen) fetchNotifications();
-  }, [isOpen, fetchNotifications]);
-
-  // Refresh list when unread count changes (new notification arrived)
-  useEffect(() => {
-    if (isOpen && unreadCount !== undefined) {
-      fetchNotifications();
-    }
-  }, [unreadCount]);
+    if (liveList !== undefined) setNotifications(liveList);
+  }, [liveList]);
+  const isLoadingList = listOpen && liveList === undefined;
 
   // Close dropdown when clicking outside
   useEffect(() => {

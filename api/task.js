@@ -1,5 +1,38 @@
-import { ConvexHttpClient } from "convex/browser";
-import { anyApi as api } from "convex/server";
+// Backed by Supabase (service role → the same database functions the app
+// uses, so notifications still fire). The function names below mirror the old
+// Convex ones so the handler reads the same as before.
+const api = { tasks: new Proxy({}, { get: (_, name) => name }) };
+
+function makeClient() {
+  const url = (process.env.SUPABASE_URL || "").replace(/\/$/, "");
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
+  if (!url || !key) throw new Error("Task API is not configured: set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.");
+  async function rpc(fn, params) {
+    const res = await fetch(`${url}/rest/v1/rpc/${fn}`, {
+      method: "POST",
+      headers: { apikey: key, Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+      body: JSON.stringify(params),
+    });
+    const text = await res.text();
+    let data = null;
+    try { data = text ? JSON.parse(text) : null; } catch { data = text; }
+    if (!res.ok) throw new Error(data?.message || `Database error (${res.status})`);
+    return data;
+  }
+  const defined = (o) => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined));
+  const calls = {
+    getTasksLight: (a) => rpc("get_tasks_light", { p_workspace: a.workspace || "workforce" }),
+    getTaskById: (a) => rpc("get_task", { p_task_id: a.taskId }),
+    addTaskFeature: (a) => rpc("add_task_feature", { p_task_id: a.taskId, p_feature: a.feature, p_actor_name: a.actorName || null, p_actor_email: a.actorEmail || null }),
+    addNoteToTask: async (a) => [await rpc("add_note_to_task", { p_task_id: a.taskId, p_text: a.noteText, p_writer: a.writer || null, p_actor_email: a.writerEmail || null })],
+    updateTaskFeature: (a) => rpc("update_task_feature", { p_task_id: a.taskId, p_feature_id: a.featureId, p_updates: a.updates }),
+    updateFeatureStatus: (a) => rpc("update_feature_status", { p_task_id: a.taskId, p_feature_id: a.featureId, p_status: a.status, p_writer: a.writer || null }),
+    updateTaskLinks: (a) => rpc("update_task_links", { p_task_id: a.taskId, p_links: defined({ appscriptLink: a.appscriptLink, webappLink: a.webappLink, projectLink: a.projectLink }) }),
+    deleteTaskFeature: (a) => rpc("delete_task_feature", { p_task_id: a.taskId, p_feature_id: a.featureId }),
+  };
+  const run = (name, args) => calls[name](args);
+  return { query: run, mutation: run };
+}
 
 /**
  * Task API — programmatic read/write access to a task's bugs, features,
@@ -133,12 +166,11 @@ export default async function handler(req, res) {
     return res.status(401).json({ error: "Invalid or missing API key. Send it as 'x-api-key' or 'Authorization: Bearer <key>'.", usage });
   }
 
-  const convexUrl = process.env.VITE_CONVEX_URL || "https://honorable-ostrich-665.convex.cloud";
-  const client = new ConvexHttpClient(convexUrl);
   const body = parseBody(req);
   const author = resolveAuthor(body);
 
   try {
+    const client = makeClient();
     // ── GET: usage guide + task list, or usage guide + one task ──────
     if (req.method === "GET") {
       if (!taskId) {

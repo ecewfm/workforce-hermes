@@ -1,8 +1,8 @@
 import { useState, useRef, useEffect, useMemo } from "react";
-import { useQuery, useMutation } from "convex/react";
-import { api } from "../../convex/_generated/api";
+import { useQuery, useMutation } from "../data/react";
+import { api } from "../data/api";
 import { loadSettings, saveSettings, applySettings, DEFAULT_SETTINGS, SKINS } from "../utils/settingsManager";
-import { FALLBACK_MILESTONES } from "../utils/defaults";
+import { fallbackMilestonesFor } from "../utils/defaults";
 import { isAdminPlusOrAbove, isManager, ASSIGNABLE_ROLES } from "../utils/roles";
 import { useWorkspace } from "../utils/workspaceContext";
 import { DEPARTMENTS, workspaceLabel, MAIN_ADMIN_EMAIL } from "../utils/departments";
@@ -193,7 +193,7 @@ export default function Settings({ userName, userEmail, onClose, showModal, onLo
   // --- Workspace Defaults state (Admin+ — per-workspace via Convex appConfig) ---
   const appConfig = useQuery(api.appConfig.getAppConfig, { workspace });
   const saveAppConfigMut = useMutation(api.appConfig.saveAppConfig);
-  const [templateRows, setTemplateRows] = useState(() => FALLBACK_MILESTONES.map((m) => ({ ...m })));
+  const [templateRows, setTemplateRows] = useState(() => fallbackMilestonesFor(workspace).map(({ name, days }) => ({ name, days })));
   const templateDirty = useRef(false);
   const [savingTemplate, setSavingTemplate] = useState(false);
   const [prodDeadlineInput, setProdDeadlineInput] = useState("");
@@ -215,8 +215,8 @@ export default function Settings({ userName, userEmail, onClose, showModal, onLo
   useEffect(() => {
     if (appConfig === undefined) return;
     if (!templateDirty.current) {
-      const src = appConfig?.defaultMilestones?.length ? appConfig.defaultMilestones : FALLBACK_MILESTONES;
-      setTemplateRows(src.map((m) => ({ ...m })));
+      const src = appConfig?.defaultMilestones?.length ? appConfig.defaultMilestones : fallbackMilestonesFor(workspace);
+      setTemplateRows(src.map(({ name, days }) => ({ name, days })));
     }
     if (!columnsDirty.current) {
       setColumnRows(resolveColumns(appConfig?.columns).map((c) => ({ ...c })));
@@ -855,9 +855,9 @@ export default function Settings({ userName, userEmail, onClose, showModal, onLo
                       onClick={() => {
                         showModal({
                           title: "Restore Original Template",
-                          message: `Reset the template to the original ${FALLBACK_MILESTONES.reduce((s, m) => s + m.days, 0)}-day standard? This saves immediately for everyone.`,
+                          message: `Reset the template to the original ${fallbackMilestonesFor(workspace).reduce((s, m) => s + m.days, 0)}-day standard for this workspace? This saves immediately for everyone.`,
                           type: "confirm",
-                          onConfirm: () => handleSaveTemplate(FALLBACK_MILESTONES),
+                          onConfirm: () => handleSaveTemplate(fallbackMilestonesFor(workspace)),
                         });
                       }}
                     >

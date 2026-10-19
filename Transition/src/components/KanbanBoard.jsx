@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useLayoutEffect } from "react";
 import { gsap } from "gsap";
-import { useQuery, useMutation } from "convex/react";
-import { api } from "../../convex/_generated/api";
+import { useQuery, useMutation } from "../data/react";
+import { api } from "../data/api";
 import { getProjectDeadlines, deadlineTone, DAY_MS, milestoneAnchor } from "../utils/deadlines";
 import { notifyTaskUpdated, notifyMilestoneCompleted, notifyNoteAdded } from "../utils/notifications";
 import { useWorkspace } from "../utils/workspaceContext";

@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
-import { useMutation, useQuery } from "convex/react";
-import { api } from "../../convex/_generated/api";
+import { useMutation, useQuery } from "../data/react";
+import { api, uploadFeatureImage } from "../data/api";
 import { notifyFeatureAdded, notifyFeatureCompleted } from "../utils/notifications";
 
 export default function FeatureModal({ mode, feature, taskId, onClose, canEdit, userName, type, taskTitle, showModal }) {
@@ -17,7 +17,6 @@ export default function FeatureModal({ mode, feature, taskId, onClose, canEdit, 
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
 
-  const generateUploadUrl = useMutation(api.tasks.generateUploadUrl);
   const addTaskFeature = useMutation(api.tasks.addTaskFeature);
   const updateTaskFeature = useMutation(api.tasks.updateTaskFeature);
   const updateFeatureStatus = useMutation(api.tasks.updateFeatureStatus);
@@ -77,18 +76,8 @@ export default function FeatureModal({ mode, feature, taskId, onClose, canEdit, 
     try {
       const finalStorageIds = initialStorageIds.filter((_, idx) => !removedExistingIndexes.has(idx));
       for (const file of files) {
-        const postUrl = await generateUploadUrl();
-        const result = await fetch(postUrl, {
-          method: "POST",
-          headers: { "Content-Type": file.type },
-          body: file,
-        });
-        if (!result.ok) {
-          const errorText = await result.text();
-          throw new Error(`Upload failed for ${file.name}: ${result.status} ${errorText}`);
-        }
-        const { storageId } = await result.json();
-        finalStorageIds.push(storageId);
+        // Straight into the private Supabase Storage bucket; returns its path.
+        finalStorageIds.push(await uploadFeatureImage(file));
       }
 
       if (mode === "add") {

@@ -1,5 +1,5 @@
-import { useQuery } from "convex/react";
-import { api } from "../../convex/_generated/api";
+import { useQuery } from "../data/react";
+import { api } from "../data/api";
 import { useWorkspace } from "../utils/workspaceContext";
 import { morphOriginFrom } from "../utils/modalOrigin";
 

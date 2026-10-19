@@ -12,6 +12,7 @@
     "node": "20.x"
   },
   "dependencies": {
+    "@supabase/supabase-js": "2.117.2",
     "convex": "^1.17.4",
     "gsap": "^3.15.0",
     "react": "^19.0.0",

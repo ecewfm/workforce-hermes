@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { useQuery, useMutation } from "convex/react";
-import { api } from "../../convex/_generated/api";
+import { useQuery, useMutation } from "../data/react";
+import { api } from "../data/api";
 import { getProjectDeadlines, deadlineTone, fmtDate, DAY_MS } from "../utils/deadlines";
 import { isAdminPlusOrAbove } from "../utils/roles";
 import { useWorkspace } from "../utils/workspaceContext";

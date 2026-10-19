@@ -1,0 +1,10 @@
+# Files never uploaded on `vercel deploy` from a local machine.
+# Local secrets:
+.env*
+**/.env*
+# Not needed for the build (Vercel installs/builds itself):
+**/node_modules
+Transition/dist
+# Old data / legacy code that doesn't belong in a deployment:
+snapshot_*.zip
+Appscript

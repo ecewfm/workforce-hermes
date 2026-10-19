@@ -47,6 +47,34 @@ export function getGeminiModels() {
   return [...new Set(chain.length ? chain : [DEFAULT_MODEL, DEFAULT_FALLBACK])];
 }
 
+// Models for the New Task planner, tried in order before the normal chain.
+// Planning is infrequent and quality matters more than speed, so it leads with
+// stronger models (each still falls back on rate-limit/error). Override with a
+// comma-separated VITE_GEMINI_PLANNER_MODELS.
+const DEFAULT_PLANNER_MODELS = ["gemini-3.5-flash", "gemini-3-flash-preview"];
+export function getPlannerModels() {
+  const custom = String(import.meta.env.VITE_GEMINI_PLANNER_MODELS || "")
+    .split(",").map((m) => m.trim()).filter(Boolean);
+  return [...new Set([...(custom.length ? custom : DEFAULT_PLANNER_MODELS), ...getGeminiModels()])];
+}
+
+/**
+ * The thinkingConfig to send for a model, or null if it can't think.
+ *   • Gemini 3+ take a qualitative thinkingLevel ("low" | "medium" | "high").
+ *   • Gemini 2.5 take a token budget instead (a level there is a 400 error).
+ * includeThoughts asks for short thought SUMMARIES, which the planner streams
+ * into the UI so people can watch the reasoning happen.
+ */
+export function thinkingConfigFor(model, level = "high", includeThoughts = true) {
+  const m = String(model || "");
+  if (/^gemini-2\.5/.test(m) || /^gemini-(flash|flash-lite|pro)-latest$/.test(m)) {
+    const budget = { low: 1024, medium: 4096, high: 8192 }[level] ?? -1;
+    return { thinkingBudget: budget, includeThoughts };
+  }
+  if (/^gemini-([3-9]|\d{2,})/.test(m)) return { thinkingLevel: level, includeThoughts };
+  return null;
+}
+
 // Google Search grounding lets Caddy research the web — but it draws on a
 // SEPARATE grounding quota that the free tier barely allows, so leaving it on
 // causes 429s even when token/RPD usage is tiny. OFF by default; set

@@ -1,19 +1,12 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
-import { ConvexProvider, ConvexReactClient } from "convex/react";
 import App from "./App.jsx";
 import "./index.css";
 
-/**
- * After running `npx convex dev`, your .env.local will have
- * VITE_CONVEX_URL set automatically. That URL is read here.
- */
-const convex = new ConvexReactClient(import.meta.env.VITE_CONVEX_URL);
-
+// Data now comes from Supabase via src/data (no provider needed — the client
+// is a shared module; see src/data/supabase.js).
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
-    <ConvexProvider client={convex}>
-      <App />
-    </ConvexProvider>
+    <App />
   </React.StrictMode>
 );

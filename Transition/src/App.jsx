@@ -6,8 +6,10 @@ import { accessibleWorkspaces, DEFAULT_WORKSPACE, DEPARTMENTS, workspaceLabel } 
 import { WorkspaceContext } from "./utils/workspaceContext";
 import { workspaceNeedsPassword, markWorkspaceUnlocked, clearWorkspaceUnlocks, hashPassword } from "./utils/workspacePassword";
 import { morphOriginFrom } from "./utils/modalOrigin";
-import { useQuery, useMutation } from "convex/react";
-import { api } from "../convex/_generated/api";
+import { useQuery, useMutation } from "./data/react";
+import { api } from "./data/api";
+import { supabase, hasStoredSession } from "./data/supabase";
+import { signOut } from "./data/auth";
 import { initNotifications } from "./utils/notifications";
 import WorkspaceSelect, { WorkspaceCards } from "./components/WorkspaceSelect";
 import WorkspacePasswordGate from "./components/WorkspacePasswordGate";
@@ -55,10 +57,12 @@ export default function App() {
   // --- Auth state ---
   const [authStage, setAuthStage] = useState(() => {
     // "login" | "set-password" | "set-security-question" | "select-workspace" | "authenticated" | "denied"
+    // A real signed-in session is required — the old localStorage flag alone
+    // (e.g. left over from before the Supabase move) sends you to the login.
     if (localStorage.getItem("wf_authenticated") === "true") {
       const email = localStorage.getItem("wf_email");
-      if (!email) {
-        localStorage.clear();
+      if (!email || !hasStoredSession()) {
+        localStorage.removeItem("wf_authenticated");
         return "login";
       }
       return "authenticated";
@@ -135,6 +139,8 @@ export default function App() {
   const [viewingStaff, setViewingStaff] = useState(null);
   // When set, the Kanban board is filtered to this person's projects (chosen from search)
   const [kanbanFilterStaff, setKanbanFilterStaff] = useState(null);
+  // A brief Caddy handed to the New Task planner ({ brief, nonce }); cleared once used.
+  const [plannerSeed, setPlannerSeed] = useState(null);
 
   const [showLoginNotifications, setShowLoginNotifications] = useState(false);
   const [showAllProjects, setShowAllProjects] = useState(false);
@@ -159,41 +165,32 @@ export default function App() {
     onConfirm: () => { },
   });
 
-  // --- Convex (Optimized for Bandwidth) ---
+  // --- Data (Supabase, live) ---
   const [staff, setStaff] = useState([]);
   // Header search + modals read the active workspace's tasks.
   const tasks = useQuery(api.tasks.getTasksLight, { workspace: activeWorkspace || DEFAULT_WORKSPACE });
-  const convexStaff = useQuery(api.staff.getStaff);
+  // Staff list (live — role/department changes show up without a reload).
+  const liveStaff = useQuery(api.staff.getStaff);
   // Active workspace's config — read here to gate entry when a password is set.
   const activeWsConfig = useQuery(api.appConfig.getAppConfig, { workspace: activeWorkspace || DEFAULT_WORKSPACE });
-
-  // Fetch staff list via Vercel Proxy (with Edge Caching to save Convex Bandwidth)
-  const fetchStaff = async () => {
-    try {
-      const resp = await fetch("/api/getStaff");
-      if (resp.ok) {
-        const data = await resp.json();
-        setStaff(data);
-      } else if (convexStaff) {
-        setStaff(convexStaff);
-      }
-    } catch (err) {
-      console.error("Failed to fetch staff from proxy:", err);
-      if (convexStaff) setStaff(convexStaff);
-    }
-  };
+  const verifyWorkspacePassword = useMutation(api.appConfig.verifyWorkspacePassword);
 
   useEffect(() => {
-    if (staff.length === 0 && convexStaff) {
-      setStaff(convexStaff);
-    }
-  }, [convexStaff, staff.length]);
+    if (Array.isArray(liveStaff)) setStaff(liveStaff);
+  }, [liveStaff]);
 
+  // The session is the source of truth for who you are: keep wf_email in sync
+  // with it, and drop back to the login if it ends (expired / signed out).
   useEffect(() => {
-    fetchStaff();
-    // Refresh staff list every 5 minutes (instead of every second) to save bandwidth
-    const interval = setInterval(fetchStaff, 5 * 60 * 1000);
-    return () => clearInterval(interval);
+    supabase.auth.getSession().then(({ data }) => {
+      const email = data.session?.user?.email?.toLowerCase();
+      if (email && localStorage.getItem("wf_email") !== email) localStorage.setItem("wf_email", email);
+    });
+    const { data: sub } = supabase.auth.onAuthStateChange((event) => {
+      if (event === "SIGNED_OUT" && localStorage.getItem("wf_authenticated") === "true") logout();
+    });
+    return () => sub.subscription.unsubscribe();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const addStaffMutation = useMutation(api.staff.addStaff);
@@ -206,7 +203,6 @@ export default function App() {
   const updateAdminCredentials = useMutation(api.tasks.updateAdminCredentials);
   const updateTaskDetailsMut = useMutation(api.tasks.updateTaskDetails);
   const setTaskDeadlineMut = useMutation(api.tasks.setTaskDeadline);
-  console.log("DEBUG: updateTaskDetailsMut is defined:", !!updateTaskDetailsMut);
 
   const activeProfile = useMemo(() => {
     if (!viewingStaff) return null;
@@ -531,12 +527,14 @@ export default function App() {
   // Routes back to login so they can authenticate normally.
   // -------------------------------------------------------
   function handleSetupComplete() {
+    signOut(); // end the setup session; they sign in with the new password
     setPendingEmail("");
     setAuthStage("login");
     setLoginError("");
   }
 
   function logout() {
+    signOut();
     localStorage.removeItem("wf_authenticated");
     localStorage.removeItem("wf_email");
     localStorage.removeItem("wf_last_activity");
@@ -623,6 +621,31 @@ export default function App() {
   function openNotesModal(taskId) {
     setNotesModalTaskId(taskId);
   }
+
+  // What Caddy can do on screen. Each closes the chat panel so the result is
+  // visible; returns a small result object for the model.
+  const caddyUiActions = {
+    openProject: (taskId) => {
+      setShowAI(false);
+      openTaskModal(taskId);
+    },
+    planNewTask: (brief) => {
+      setShowAI(false);
+      setPlannerSeed({ brief, nonce: Date.now() });
+      switchView("entry");
+    },
+    goTo: (place) => {
+      const adminOnly = { overview: "dashboard", announcements: "announcements" };
+      const views = { board: "kanban", new_task: "entry", notebook: "notebook", ...adminOnly };
+      if (place === "overview" && userRole === "Programmer") return { error: "The Overview is only in the Admin view." };
+      if (place === "announcements" && !isAdminPlusOrAbove(actualRole)) return { error: "Announcements are for Admin+ and Managers only." };
+      if (views[place]) { setShowAI(false); switchView(views[place]); return { done: true, place }; }
+      if (place === "handbook") { setShowAI(false); setShowHandbook(true); return { done: true, place }; }
+      if (place === "settings") { setShowAI(false); setShowSettings(true); return { done: true, place }; }
+      if (place === "project_links") { setShowAI(false); setShowAllProjects(true); return { done: true, place }; }
+      return { error: `Unknown place "${place}".` };
+    },
+  };
 
   function handleContextMenu(e, task) {
     e.preventDefault();
@@ -784,8 +807,9 @@ export default function App() {
         <WorkspacePasswordGate
           workspace={activeWorkspace}
           onSubmit={async (pw) => {
-            const h = await hashPassword(pw);
-            if (h === activeWsConfig.workspacePasswordHash) {
+            // Checked server-side — the hash never reaches the browser.
+            const ok = await verifyWorkspacePassword({ workspace: activeWorkspace, passwordHash: await hashPassword(pw) }).catch(() => false);
+            if (ok) {
               markWorkspaceUnlocked(activeWorkspace);
               setWsUnlockBump((n) => n + 1);
               return true;
@@ -1149,6 +1173,8 @@ export default function App() {
             userName={userName}
             onCreated={() => switchView("kanban")}
             showModal={showModal}
+            plannerSeed={plannerSeed}
+            onPlannerSeedUsed={() => setPlannerSeed(null)}
           />
         )}
         {currentView === "notebook" && (
@@ -1219,6 +1245,7 @@ export default function App() {
           userName={userName}
           userEmail={localStorage.getItem("wf_email") || ""}
           actualRole={actualRole}
+          uiActions={caddyUiActions}
         />
       )}
 

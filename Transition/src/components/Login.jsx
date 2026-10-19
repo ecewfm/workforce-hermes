@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { useMutation } from "convex/react";
-import { api } from "../../convex/_generated/api";
+import { useMutation } from "../data/react";
+import { api } from "../data/api";
 
 export default function Login({ onLogin, externalError = "", onResetSuccess, onNewUserSetup }) {
   const [mode, setMode] = useState("email"); // "email", "password", "forgot", "verify"

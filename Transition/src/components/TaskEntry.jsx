@@ -1,13 +1,13 @@
 import { useState, useEffect, useRef } from "react";
-import { useQuery, useMutation } from "convex/react";
-import { api } from "../../convex/_generated/api";
-import { FALLBACK_MILESTONES } from "../utils/defaults";
+import { useQuery, useMutation } from "../data/react";
+import { api } from "../data/api";
+import { fallbackMilestonesFor, withTemplateHints } from "../utils/defaults";
 import { useWorkspace } from "../utils/workspaceContext";
 import { WORKSPACE_META, isInDepartment } from "../utils/departments";
 import ConsultPanel from "./ConsultPanel";
 import { isCaddyEnabled } from "../utils/aiConfig";
 
-export default function TaskEntry({ staff, userRole, userName, onCreated, showModal }) {
+export default function TaskEntry({ staff, userRole, userName, onCreated, showModal, plannerSeed, onPlannerSeedUsed }) {
   const workspace = useWorkspace();
   // Only staff who belong to THIS workspace's department can be assigned a task
   // created here (e.g. the Operations workspace lists only Operations members).
@@ -38,7 +38,7 @@ export default function TaskEntry({ staff, userRole, userName, onCreated, showMo
     }
   });
 
-  const [milestones, setMilestones] = useState(() => FALLBACK_MILESTONES.map((m) => ({ ...m })));
+  const [milestones, setMilestones] = useState(() => fallbackMilestonesFor(workspace));
   const [selectedAssignees, setSelectedAssignees] = useState(new Set());
   const [showOptions, setShowOptions] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -47,20 +47,32 @@ export default function TaskEntry({ staff, userRole, userName, onCreated, showMo
   const [step, setStep] = useState(() => (isCaddyEnabled() ? "consult" : "form"));
   const [draftTitle, setDraftTitle] = useState("");
   const [draftDesc, setDraftDesc] = useState("");
+  const [draftStart, setDraftStart] = useState("");
   const formRef = useRef(null);
   const milestonesTouched = useRef(false);
 
-  const templateMilestones = appConfig?.defaultMilestones?.length
-    ? appConfig.defaultMilestones
-    : FALLBACK_MILESTONES;
+  // The workspace's saved template, else its built-in default (Operations has
+  // its own general-purpose one). `hint` explains each generic step.
+  const templateMilestones = withTemplateHints(
+    appConfig?.defaultMilestones?.length ? appConfig.defaultMilestones : fallbackMilestonesFor(workspace),
+    workspace
+  );
 
   // Swap in the workspace template once it loads — but never clobber rows the
   // user has already started editing.
   useEffect(() => {
-    if (appConfig?.defaultMilestones?.length && !milestonesTouched.current) {
-      setMilestones(appConfig.defaultMilestones.map((m) => ({ ...m })));
+    if (appConfig !== undefined && !milestonesTouched.current) {
+      setMilestones(templateMilestones.map((m) => ({ ...m })));
     }
-  }, [appConfig]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [appConfig, workspace]);
+
+  // Caddy asked to plan a task → jump (back) to the AI step; ConsultPanel
+  // picks the brief up from the seed and starts planning.
+  useEffect(() => {
+    if (plannerSeed?.brief) setStep("consult");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [plannerSeed?.nonce]);
 
   // Keep the assignee selection consistent with the active workspace: drop any
   // selected names that aren't assignable here (e.g. after switching workspace),
@@ -91,7 +103,9 @@ export default function TaskEntry({ staff, userRole, userName, onCreated, showMo
     milestonesTouched.current = true;
     setMilestones((prev) => {
       const next = [...prev];
-      next[index] = { ...next[index], [field]: field === "days" ? parseInt(value) || 0 : value };
+      // Renaming a row drops its hint (it may no longer describe the step).
+      const { hint, ...row } = next[index];
+      next[index] = { ...(field === "name" ? row : next[index]), [field]: field === "days" ? parseInt(value) || 0 : value };
       return next;
     });
   }
@@ -113,17 +127,20 @@ export default function TaskEntry({ staff, userRole, userName, onCreated, showMo
     setSelectedAssignees(new Set());
     setDraftTitle("");
     setDraftDesc("");
+    setDraftStart("");
     setStep(isCaddyEnabled() ? "consult" : "form");
   }
 
   // AI plan accepted → prefill milestones + title/description drafts (the form
   // inputs read these as defaultValue when the form step mounts) and advance
   // to the details step for final touches.
-  function applyPlan(plan) {
+  function applyPlan(plan, startDate) {
     milestonesTouched.current = true;
-    setMilestones(plan.milestones.map((m) => ({ name: m.name, days: m.days })));
+    // doneWhen rides along as the row hint (shown in the overview, not saved).
+    setMilestones(plan.milestones.map((m) => ({ name: m.name, days: m.days, ...(m.doneWhen ? { hint: `Done when: ${m.doneWhen}` } : {}) })));
     setDraftTitle(plan.title || "");
-    setDraftDesc(plan.description || "");
+    setDraftDesc([plan.description, plan.successMeasure && `Goal: ${plan.successMeasure}`].filter(Boolean).join("\n\n"));
+    setDraftStart(startDate || "");
     setStep("form");
   }
 
@@ -133,6 +150,7 @@ export default function TaskEntry({ staff, userRole, userName, onCreated, showMo
     setMilestones(templateMilestones.map((m) => ({ ...m })));
     setDraftTitle("");
     setDraftDesc("");
+    setDraftStart("");
     setStep("form");
   }
 
@@ -191,9 +209,13 @@ export default function TaskEntry({ staff, userRole, userName, onCreated, showMo
         <div className="container">
           <ConsultPanel
             department={workspaceDept}
+            workspace={workspace}
             workspaceLabel={WORKSPACE_META[workspace]?.label || "this workspace"}
+            template={templateMilestones}
             onApply={applyPlan}
             onSkip={startBlank}
+            seed={plannerSeed}
+            onSeedUsed={onPlannerSeedUsed}
           />
         </div>
       </div>
@@ -254,7 +276,7 @@ export default function TaskEntry({ staff, userRole, userName, onCreated, showMo
                 </div>
                 <div className="form-group">
                   <label className="form-label">Start Date *</label>
-                  <input type="date" id="task-date" className="form-input" required />
+                  <input type="date" id="task-date" className="form-input" defaultValue={draftStart} required />
                 </div>
                 <div className="form-group">
                   <label className="form-label">Description</label>
@@ -297,7 +319,10 @@ export default function TaskEntry({ staff, userRole, userName, onCreated, showMo
             <div className="guide-list">
               {milestones.map((m, idx) => (
                 <div key={idx} className="guide-item">
-                  <div className="guide-label">M{idx + 1}: {m.name || "Unnamed Milestone"}</div>
+                  <div className="guide-label">
+                    M{idx + 1}: {m.name || "Unnamed Milestone"}
+                    {m.hint && <div className="guide-hint">{m.hint}</div>}
+                  </div>
                   <div className="guide-days">({m.days} days)</div>
                 </div>
               ))}

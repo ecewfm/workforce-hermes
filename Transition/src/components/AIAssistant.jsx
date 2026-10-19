@@ -100,8 +100,8 @@ function Markdown({ text }) {
   return <>{blocks}</>;
 }
 
-export default function AIAssistant({ open, onClose, userName, userEmail, actualRole }) {
-  const { tools, executeTool, systemInstruction } = useAiActions({ userName, userEmail, actualRole });
+export default function AIAssistant({ open, onClose, userName, userEmail, actualRole, uiActions }) {
+  const { tools, executeTool, systemInstruction } = useAiActions({ userName, userEmail, actualRole, uiActions });
   const [messages, setMessages] = useState([]); // { role: "user"|"assistant", text, error? }
   const [input, setInput] = useState("");
   const [status, setStatus] = useState(null); // { phase, label }

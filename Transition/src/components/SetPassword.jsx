@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { useMutation } from "convex/react";
-import { api } from "../../convex/_generated/api";
+import { useMutation } from "../data/react";
+import { api } from "../data/api";
 
 const SECURITY_QUESTIONS = [
   "What was the name of your first pet?",

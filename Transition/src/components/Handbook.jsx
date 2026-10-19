@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from "react";
-import { useQuery, useMutation } from "convex/react";
-import { api } from "../../convex/_generated/api";
+import { useQuery, useMutation } from "../data/react";
+import { api } from "../data/api";
 import {
   BLOCK_GROUPS,
   TEMPLATES,

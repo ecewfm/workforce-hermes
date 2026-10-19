@@ -1082,6 +1082,9 @@ header {
   font-size: 0.75rem;
   color: #64748b;
   font-weight: 500;
+  white-space: nowrap;
+  flex-shrink: 0;
+  margin-left: auto;
 }
 
 .timeline-summary-box {
@@ -1331,6 +1334,184 @@ html:has(.profile-popover-overlay) {
 .consult-actions { display: flex; justify-content: flex-end; gap: 12px; margin-top: 22px; }
 .consult-apply { width: auto !important; padding: 12px 26px !important; }
 [data-theme="dark"] .consult-error { background: #3b1717; color: #fca5a5; border-color: #7f1d1d; }
+
+/* Planner v2 — live thinking, streamed plan, editable milestones */
+.consult-panel { max-width: 760px; }
+.consult-examples { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 10px; }
+.consult-examples-label { font-size: 0.72rem; font-weight: 700; color: var(--color-text-secondary); margin-right: 2px; }
+.consult-chip {
+  border: 1px solid color-mix(in srgb, var(--color-accent) 35%, transparent);
+  background: color-mix(in srgb, var(--color-accent) 7%, transparent);
+  color: var(--color-accent); font-size: 0.74rem; font-weight: 700;
+  padding: 5px 11px; border-radius: 999px; cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+.consult-chip:hover { background: color-mix(in srgb, var(--color-accent) 16%, transparent); border-color: var(--color-accent); }
+.consult-start-row { display: flex; align-items: center; gap: 10px; margin-top: 14px; }
+.consult-start-row label { font-size: 0.78rem; font-weight: 700; color: var(--color-text-secondary); }
+.consult-start-row label span { font-weight: 500; opacity: 0.75; }
+.consult-date {
+  padding: 7px 10px; border: 1px solid var(--color-bg-primary); border-radius: 8px;
+  background: var(--color-bg-subtle, var(--color-card-bg)); color: var(--color-text-primary);
+  font-family: inherit; font-size: 0.8rem; outline: none;
+}
+.consult-date:focus { border-color: var(--color-accent); }
+.consult-brief-recap {
+  padding: 10px 14px; border-radius: 10px;
+  background: var(--color-bg-subtle, var(--color-card-bg)); border: 1px dashed var(--color-bg-primary);
+}
+.consult-brief-recap-label { font-size: 0.68rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; color: var(--color-text-secondary); }
+.consult-brief-recap p { margin: 4px 0 0; font-size: 0.84rem; line-height: 1.5; color: var(--color-text-primary); }
+
+/* Live thinking card */
+.consult-thinking {
+  margin-top: 18px; padding: 16px 18px; border-radius: 14px;
+  background: color-mix(in srgb, var(--color-accent) 6%, var(--color-card-bg));
+  border: 1px solid color-mix(in srgb, var(--color-accent) 25%, transparent);
+}
+.ct-head { display: flex; align-items: center; gap: 10px; }
+.ct-orb {
+  width: 18px; height: 18px; border-radius: 50%; flex-shrink: 0;
+  background: conic-gradient(var(--color-accent), color-mix(in srgb, var(--color-accent) 25%, transparent), var(--color-accent));
+  animation: ctSpin 1.1s linear infinite;
+  -webkit-mask: radial-gradient(circle, transparent 42%, #000 44%); mask: radial-gradient(circle, transparent 42%, #000 44%);
+}
+.ct-label { flex: 1; font-weight: 800; font-size: 0.86rem; color: var(--color-accent); }
+.ct-timer { font-size: 0.72rem; font-weight: 700; color: var(--color-text-secondary); font-variant-numeric: tabular-nums; }
+.ct-cancel {
+  border: none; background: transparent; cursor: pointer; font-size: 0.75rem; font-weight: 700;
+  color: var(--color-text-secondary); text-decoration: underline; text-underline-offset: 3px;
+}
+.ct-cancel:hover { color: var(--color-text-primary); }
+.ct-steps { list-style: none; margin: 12px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.ct-steps li {
+  position: relative; padding-left: 24px; font-size: 0.82rem; line-height: 1.4;
+  color: var(--color-text-secondary); animation: ctStepIn 0.3s ease-out both;
+}
+.ct-steps li::before {
+  content: ""; position: absolute; left: 2px; top: 3px; width: 12px; height: 12px; border-radius: 50%;
+  border: 2px solid color-mix(in srgb, var(--color-accent) 40%, transparent); box-sizing: border-box;
+}
+.ct-steps li.done::before { content: "✓"; border: none; background: var(--color-accent); color: #fff; font-size: 8px; font-weight: 900; display: flex; align-items: center; justify-content: center; }
+.ct-steps li.active { color: var(--color-text-primary); font-weight: 700; }
+.ct-steps li.active::before { border-color: var(--color-accent); border-top-color: transparent; animation: ctSpin 0.8s linear infinite; }
+.ct-live {
+  margin: 10px 0 0 24px; font-size: 0.76rem; line-height: 1.5; color: var(--color-text-secondary);
+  display: -webkit-box; -webkit-line-clamp: 3; line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+}
+@keyframes ctSpin { to { transform: rotate(360deg); } }
+@keyframes ctStepIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+
+/* Plan summary + timeline */
+.consult-draft { margin-top: 16px; }
+.consult-summary { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+.cs-chip {
+  font-size: 0.72rem; font-weight: 800; padding: 4px 10px; border-radius: 999px;
+  background: var(--color-bg-subtle, var(--color-card-bg)); color: var(--color-text-secondary);
+  border: 1px solid var(--color-bg-primary);
+}
+.cs-chip--type { background: var(--color-accent); color: #fff; border-color: transparent; }
+.cs-size-small { color: #047857; border-color: #a7f3d0; background: #ecfdf5; }
+.cs-size-medium { color: #b45309; border-color: #fde68a; background: #fffbeb; }
+.cs-size-large { color: #b91c1c; border-color: #fecaca; background: #fef2f2; }
+[data-theme="dark"] .cs-size-small { background: #052e22; border-color: #065f46; color: #6ee7b7; }
+[data-theme="dark"] .cs-size-medium { background: #2d1f05; border-color: #78350f; color: #fcd34d; }
+[data-theme="dark"] .cs-size-large { background: #3b1717; border-color: #7f1d1d; color: #fca5a5; }
+.consult-plan-title { margin: 0 0 4px; font-size: 1.1rem; font-weight: 900; color: var(--color-text-primary); }
+.consult-plan-desc { margin: 0 0 10px; font-size: 0.84rem; line-height: 1.55; color: var(--color-text-secondary); }
+.consult-goal {
+  display: flex; gap: 8px; align-items: baseline; margin: 0 0 14px;
+  font-size: 0.82rem; line-height: 1.5; color: var(--color-text-primary);
+}
+.consult-goal span {
+  flex-shrink: 0; font-size: 0.66rem; font-weight: 900; text-transform: uppercase; letter-spacing: 0.5px;
+  padding: 2px 7px; border-radius: 6px; background: color-mix(in srgb, var(--color-accent) 14%, transparent); color: var(--color-accent);
+}
+.consult-timeline { display: flex; gap: 3px; height: 26px; border-radius: 8px; overflow: hidden; }
+.ctl-seg {
+  min-width: 18px; display: flex; align-items: center; justify-content: center;
+  background: color-mix(in srgb, var(--color-accent) calc(100% - var(--seg-i) * 7%), #fff);
+  color: #fff; font-size: 0.66rem; font-weight: 800; cursor: default;
+}
+[data-theme="dark"] .ctl-seg { background: color-mix(in srgb, var(--color-accent) calc(100% - var(--seg-i) * 7%), #000); }
+.consult-dates { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 10px 0 18px; font-size: 0.78rem; color: var(--color-text-secondary); }
+.consult-dates label { font-weight: 700; }
+.consult-dates-arrow { opacity: 0.6; }
+.consult-finish strong { color: var(--color-text-primary); }
+
+/* Editable milestone rows */
+.cms-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.cms-row {
+  display: flex; align-items: center; gap: 10px; padding: 8px 10px;
+  background: var(--color-bg-subtle, var(--color-card-bg)); border: 1px solid var(--color-bg-primary); border-radius: 10px;
+  transition: border-color 0.15s;
+}
+.cms-row:focus-within { border-color: var(--color-accent); }
+.cms-list--draft .cms-row { animation: ctStepIn 0.3s ease-out both; }
+.cms-num {
+  flex-shrink: 0; width: 24px; height: 24px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--color-accent); color: #fff; font-size: 0.72rem; font-weight: 800;
+}
+.cms-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.cms-name, .cms-name-static {
+  width: 100%; box-sizing: border-box; font-size: 0.86rem; font-weight: 700; color: var(--color-text-primary);
+}
+.cms-name {
+  border: 1px solid transparent; background: transparent; border-radius: 6px; padding: 3px 6px; margin-left: -6px;
+  font-family: inherit; outline: none;
+}
+.cms-name:hover { border-color: var(--color-bg-primary); }
+.cms-name:focus { border-color: var(--color-accent); background: var(--color-card-bg); }
+.cms-done { font-size: 0.72rem; line-height: 1.4; color: var(--color-text-secondary); }
+.cms-days { flex-shrink: 0; display: flex; align-items: center; gap: 3px; font-size: 0.74rem; font-weight: 800; color: var(--color-accent); }
+.cms-days input {
+  width: 52px; padding: 5px 6px; text-align: right; border: 1px solid var(--color-bg-primary); border-radius: 6px;
+  background: var(--color-card-bg); color: var(--color-text-primary); font-family: inherit; font-size: 0.8rem; font-weight: 700; outline: none;
+}
+.cms-days input:focus { border-color: var(--color-accent); }
+.cms-days-static { flex-shrink: 0; font-size: 0.78rem; font-weight: 800; color: var(--color-accent); }
+.cms-tools { flex-shrink: 0; display: flex; gap: 2px; }
+.cms-tools button {
+  width: 24px; height: 24px; border: none; border-radius: 6px; background: transparent; cursor: pointer;
+  color: var(--color-text-secondary); font-size: 0.8rem; font-weight: 800;
+}
+.cms-tools button:hover:not(:disabled) { background: var(--color-bg-primary); color: var(--color-text-primary); }
+.cms-tools button:disabled { opacity: 0.3; cursor: default; }
+.cms-tools .cms-del:hover { background: #fee2e2; color: #b91c1c; }
+.consult-add-ms {
+  margin-top: 8px; border: 1px dashed var(--color-bg-primary); background: transparent; cursor: pointer;
+  width: 100%; padding: 8px; border-radius: 10px; color: var(--color-text-secondary); font-weight: 700; font-size: 0.78rem;
+}
+.consult-add-ms:hover { border-color: var(--color-accent); color: var(--color-accent); }
+
+/* Assumptions / risks / reasoning */
+.consult-notes { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px; margin-top: 16px; }
+.cn-box { padding: 12px 14px; border-radius: 10px; background: var(--color-bg-subtle, var(--color-card-bg)); border: 1px solid var(--color-bg-primary); }
+.cn-box--risk { border-left: 3px solid #f59e0b; }
+.cn-title { font-size: 0.7rem; font-weight: 900; text-transform: uppercase; letter-spacing: 0.5px; color: var(--color-text-secondary); margin-bottom: 6px; }
+.cn-box ul { margin: 0; padding-left: 18px; }
+.cn-box li { font-size: 0.79rem; line-height: 1.5; color: var(--color-text-primary); margin-bottom: 3px; }
+.cn-hint { margin-top: 6px; font-size: 0.7rem; color: var(--color-text-secondary); font-style: italic; }
+.consult-why { margin-top: 14px; }
+.consult-why summary { cursor: pointer; font-size: 0.78rem; font-weight: 700; color: var(--color-accent); }
+.consult-why .consult-rationale { margin-top: 10px; }
+.consult-reasoning { margin: 8px 0 0; padding-left: 20px; }
+.consult-reasoning li { font-size: 0.78rem; color: var(--color-text-primary); margin-bottom: 8px; }
+.consult-reasoning p { margin: 3px 0 0; font-size: 0.75rem; line-height: 1.5; color: var(--color-text-secondary); white-space: pre-line; }
+.consult-refine-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 18px; }
+
+/* New Task form: what each milestone means */
+.guide-hint { font-size: 0.68rem; font-weight: 500; line-height: 1.4; color: var(--color-text-secondary); margin-top: 2px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .ct-orb, .ct-steps li.active::before { animation-duration: 3s; }
+  .ct-steps li, .cms-list--draft .cms-row { animation: none; }
+}
+@media (max-width: 600px) {
+  .consult-panel { padding: 22px 16px 18px; }
+  .cms-tools button:not(.cms-del) { display: none; }
+}
 
 /* ── RoboHand: the little robotic arm that reaches for the cursor on the
    nav buttons (RoboHand.jsx). Fixed overlay, never intercepts clicks. ── */

@@ -46,7 +46,7 @@ export const deleteIdea = mutation({
   },
 });
 
-// Fallback milestone template (mirrors src/utils/defaults.js FALLBACK_MILESTONES),
+// Fallback milestone templates per workspace (mirror src/utils/defaults.js),
 // used to seed a converted project when the workspace has no saved template.
 const FALLBACK_MILESTONES = [
   { name: "Project Planning & Design", days: 22 },
@@ -60,6 +60,22 @@ const FALLBACK_MILESTONES = [
   { name: "Deployment & Soft Launch", days: 17 },
   { name: "Post-Launch Support", days: 22 },
 ];
+
+// Operations: a general rollout lifecycle that fits any operations project.
+const OPERATIONS_FALLBACK_MILESTONES = [
+  { name: "Scope & Goals", days: 5 },
+  { name: "Plan & Design", days: 7 },
+  { name: "Review & Sign-off", days: 3 },
+  { name: "Prepare & Set Up", days: 7 },
+  { name: "Pilot / Test Run", days: 10 },
+  { name: "Train & Communicate", days: 5 },
+  { name: "Go-Live / Full Rollout", days: 5 },
+  { name: "Monitor & Hand Over", days: 14 },
+];
+
+function fallbackMilestonesFor(ws: string) {
+  return ws === "operations" ? OPERATIONS_FALLBACK_MILESTONES : FALLBACK_MILESTONES;
+}
 
 /**
  * Take an idea: convert it into a project (Kanban task) assigned to whoever took
@@ -86,7 +102,7 @@ export const takeIdea = mutation({
     const template =
       cfg?.defaultMilestones && cfg.defaultMilestones.length
         ? cfg.defaultMilestones
-        : FALLBACK_MILESTONES;
+        : fallbackMilestonesFor(ws);
     const now = Date.now();
     const milestones = template.map((m) => ({ name: m.name, days: m.days, createdAtTime: now }));
 

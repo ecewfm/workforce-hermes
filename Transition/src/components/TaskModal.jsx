@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef, useLayoutEffect } from "react";
 import { gsap } from "gsap";
 import { createPortal } from "react-dom";
-import { useQuery, useMutation } from "convex/react";
-import { api } from "../../convex/_generated/api";
+import { useQuery, useMutation } from "../data/react";
+import { api } from "../data/api";
 import { notifyNoteAdded, notifyMilestoneCompleted } from "../utils/notifications";
 import { isAdminPlusOrAbove, isAdminLevel as isAdminLevelRole, canEditAnyCard } from "../utils/roles";
 import { milestoneAnchor, DAY_MS } from "../utils/deadlines";
