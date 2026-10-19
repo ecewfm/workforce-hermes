@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef, useLayoutEffect } from "react";
-import { gsap } from "gsap";
 import { createPortal } from "react-dom";
 import { useQuery, useMutation } from "../data/react";
 import { api } from "../data/api";
@@ -7,6 +6,7 @@ import { notifyNoteAdded, notifyMilestoneCompleted } from "../utils/notification
 import { isAdminPlusOrAbove, isAdminLevel as isAdminLevelRole, canEditAnyCard } from "../utils/roles";
 import { milestoneAnchor, DAY_MS } from "../utils/deadlines";
 import FeatureModal from "./FeatureModal";
+import { createCardMorph } from "../utils/cardMorph";
 
 function deobfuscate(str) {
   if (!str || typeof str !== "string") return str;
@@ -39,10 +39,23 @@ export default function TaskModal({ taskId, isEditMode, initialNotesOpen, userRo
   // The board hands us its (light) copy of the task so the modal can render —
   // and the morph can start — on the very click frame, instead of waiting a
   // network round-trip. Light tasks lack notes/features; the live query
-  // replaces the seed the moment it resolves.
-  const task = liveTask !== undefined
-    ? liveTask
-    : (seedTask ? { ...seedTask, notes: seedTask.notes || [], features: seedTask.features || [] } : liveTask);
+  // replaces the seed once it resolves.
+  //
+  // While the open morph plays, the modal keeps showing what it opened with:
+  // swapping the full task in mid-flight re-lays-out the whole modal (notes,
+  // features…) and would land a long frame in the middle of the motion. The
+  // full task goes in the moment the morph settles.
+  const [settled, setSettled] = useState(false);
+  const seedRef = useRef(null);
+  if (seedTask && !seedRef.current) seedRef.current = { ...seedTask, notes: seedTask.notes || [], features: seedTask.features || [], _seed: true };
+  const heldRef = useRef(undefined);
+  let task;
+  if (seedRef.current && (!settled || liveTask === undefined)) task = seedRef.current;
+  else if (!settled && heldRef.current) task = heldRef.current; // no seed: hold the first full copy
+  else task = liveTask;
+  heldRef.current = task;
+  // Notes/features aren't in the board's light copy — say "loading", not "none".
+  const detailsLoading = !!task?._seed;
   const updateTaskMilestones = useMutation(api.tasks.updateTaskMilestones);
   const addNoteToTask = useMutation(api.tasks.addNoteToTask);
   const deleteTask = useMutation(api.tasks.deleteTask);
@@ -207,163 +220,60 @@ export default function TaskModal({ taskId, isEditMode, initialNotesOpen, userRo
 
   const [refreshBadges, setRefreshBadges] = useState(0);
 
-  // ── GSAP open/close: the task modal OPENS FROM the clicked card — it
-  // scales up from a point at the card's centre and travels to the screen
-  // centre in one continuous motion (and reverses on close). One timeline
-  // owns all motion — no CSS keyframes (see .task-modal-overlay exclusions
-  // in index.css), no React gating: the seeded task means this runs on the
-  // click's own paint. ───────────────────────────────────────────────────────
+  // ── Open/close motion: the clicked card itself morphs into this modal and
+  // back (src/utils/cardMorph.js — Web Animations, so the compositor plays it
+  // even while React is busy). No CSS keyframes on this modal (see the
+  // .task-modal-overlay exclusions in index.css); the seeded task means the
+  // morph starts on the click's own frame. ───────────────────────────────────
   const overlayRef = useRef(null);
   const backdropRef = useRef(null); // dim+blur layer behind the box
   const contentRef = useRef(null);
-  const hasAnimatedOpen = useRef(false);
   const closingRef = useRef(false);
+  const morphRef = useRef(null);
+  if (!morphRef.current) morphRef.current = createCardMorph();
+  const appView = () => document.querySelector(".view-stage");
 
-  // Where the modal opens FROM: the clicked card's centre, expressed as an
-  // offset from the modal's resting (centred) position. The modal itself
-  // scales up from a point there and travels to the centre as it opens —
-  // no visible circle/disc layer, just the modal acting out its opening.
-  const startOffset = (content) => {
-    const final = content.getBoundingClientRect();
-    return {
-      x: originRect.left + originRect.width / 2 - (final.left + final.width / 2),
-      y: originRect.top + originRect.height / 2 - (final.top + final.height / 2),
-    };
-  };
-
-  // ── Camera: the view flies to the card first, then the modal opens.
-  // The camera zooms ONLY the view stage (the board area) — header, nav and
-  // Caddy stay rock-steady outside it. Transform-origin at the card's centre
-  // keeps that centre fixed while zoomed, so the modal's start point stays
-  // aimed at the card in both states. The stage HOLDS the zoom the whole
-  // time the modal is open; the camera pulls back out only on close.
-  const CAMERA_ZOOM = 1.35;
-  const appView = () => document.querySelector(".view-stage") || document.getElementById("root");
-  // Camera only when the source is still on screen (kanban card, dashboard
-  // row). Search/notification rows unmount on click — no camera for those.
-  const cameraUsable = () => !!(appView() && originRect?.node && originRect.node.isConnected);
-  const aimCameraAtCard = (root) => {
-    // The cursor-follow camera may already hold a small zoom/pan on the
-    // stage (centre origin). Take over WITHOUT a visual jump: recover the
-    // stage's untransformed position, express the card centre in layout
-    // coords, and compensate the translate for the origin switch.
-    const w = root.offsetWidth, h = root.offsetHeight;
-    const s0 = Number(gsap.getProperty(root, "scaleX")) || 1;
-    const x0 = Number(gsap.getProperty(root, "x")) || 0;
-    const y0 = Number(gsap.getProperty(root, "y")) || 0;
-    const rr = root.getBoundingClientRect();
-    const L = rr.left - x0 - (w * (1 - s0)) / 2; // untransformed viewport left
-    const T = rr.top - y0 - (h * (1 - s0)) / 2; // untransformed viewport top
-    const ox = originRect.left + originRect.width / 2 - L;
-    const oy = originRect.top + originRect.height / 2 - T;
-    const tx = x0 + (s0 - 1) * (ox - w / 2);
-    const ty = y0 + (s0 - 1) * (oy - h / 2);
-    gsap.set(root, { transformOrigin: `${ox}px ${oy}px`, x: tx, y: ty, willChange: "transform" });
-  };
-
+  const hasTask = !!task;
   useLayoutEffect(() => {
-    if (hasAnimatedOpen.current) return;
-    const content = contentRef.current, overlay = overlayRef.current;
-    if (!task || !content || !overlay) return;
-    hasAnimatedOpen.current = true;
-    // GSAP doesn't honor prefers-reduced-motion by itself — appear in place.
-    if (window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches) return;
-    const inner = Array.from(content.children);
-    const bd = backdropRef.current;
-    const tl = gsap.timeline();
-    if (originRect) {
-      // Act 1: the camera flies to the card — a VISIBLE beat. Act 2: the
-      // task modal itself opens — it grows from a point at the card's
-      // centre and travels to the screen centre in one continuous motion,
-      // its content arriving as it takes shape. No circle layer, no ghost.
-      const root = appView();
-      const camera = cameraUsable();
-      const FLIGHT = 0.42;
-      // The modal begins opening as the zoom is landing (~76% eased) and
-      // opens FAST, so flight and expansion read as one synced gesture.
-      const p2 = camera ? 0.3 : 0;
-      const c = startOffset(content);
-      gsap.set(content, { x: c.x, y: c.y, scale: 0.001, transformOrigin: "center center", willChange: "transform" });
-      gsap.set(inner, { opacity: 0 });
-      if (camera) {
-        // Stop any in-flight cursor-camera tweens first — a lingering zoom
-        // tween would keep writing scale under (then after) the flight.
-        gsap.killTweensOf(root);
-        aimCameraAtCard(root);
-        tl.to(root, { scale: CAMERA_ZOOM, duration: FLIGHT, ease: "power2.inOut" }, 0);
-      }
-      if (bd) {
-        gsap.set(bd, { opacity: 0 });
-        tl.to(bd, { opacity: 1, duration: 0.35, ease: "power2.out", clearProps: "opacity" }, camera ? Math.max(p2 - 0.05, 0) : 0);
-      }
-      tl.to(content, { x: 0, y: 0, scale: 1, duration: 0.4, ease: "power3.inOut" }, p2)
-        .to(inner, { opacity: 1, duration: 0.26, ease: "power2.out", stagger: 0.02 }, p2 + 0.16)
-        .set(content, { clearProps: "transform,willChange" })
-        .set(inner, { clearProps: "opacity" });
-    } else {
-      // No source card (search, notifications, Caddy): plain centre pop.
-      gsap.set(content, { opacity: 0, scale: 0.94, transformOrigin: "center center" });
-      if (bd) {
-        gsap.set(bd, { opacity: 0 });
-        tl.to(bd, { opacity: 1, duration: 0.3, ease: "power2.out", clearProps: "opacity" }, 0);
-      }
-      tl.to(content, { opacity: 1, scale: 1, duration: 0.42, ease: "back.out(1.4)", clearProps: "transform,opacity" }, 0);
-    }
-  }, [task, originRect]);
+    if (!hasTask) return;
+    const morph = morphRef.current;
+    morph.open({
+      box: contentRef.current,
+      backdrop: backdropRef.current,
+      origin: originRect,
+      stage: appView(),
+      onSettled: () => setSettled(true),
+    });
+    // Unmount by any path (incl. StrictMode's rehearsal): never leave the
+    // stage zoomed or the card hidden.
+    return () => morph.dispose(appView());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasTask]);
 
-  // Animated close — the open in reverse: content fades, the modal shrinks
-  // to a point while traveling back to the card's centre, and the camera
-  // then pulls back out. The pull-out tween outlives the component — GSAP
-  // doesn't care that React unmounted it.
+  // The card to land on when closing: the one we opened from if it's still
+  // on the board, else that task's card wherever it sits now (it may have
+  // re-rendered or moved column), else wherever we came from (a dashboard row).
+  const landingCard = () => {
+    const from = originRect?.node;
+    if (from?.isConnected && from.classList?.contains("task-card")) return from;
+    const onBoard = appView()?.querySelector(`.task-card[data-id="${CSS.escape(String(taskId))}"]`);
+    return onBoard || (from?.isConnected ? from : null);
+  };
+
   const doClose = () => {
     if (closingRef.current) return;
     closingRef.current = true;
-    const content = contentRef.current, overlay = overlayRef.current;
-    const root = appView();
-    const releaseCamera = () => document.documentElement.classList.remove("wf-modal-open");
-    const bail = () => {
-      if (root) { gsap.killTweensOf(root); gsap.set(root, { clearProps: "transform,transformOrigin,willChange" }); }
-      releaseCamera();
-      onClose();
-    };
-    if (!content || !overlay || window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches) { bail(); return; }
-    const inner = Array.from(content.children);
-    const bd = backdropRef.current;
-    const midOpen =
-      gsap.isTweening(content) ||
-      Math.abs((Number(gsap.getProperty(content, "scaleX")) || 1) - 1) > 0.001; // still opening
-    gsap.killTweensOf([content, overlay, ...inner, ...(root ? [root] : []), ...(bd ? [bd] : [])]);
-    const rootScaleNow = root ? Number(gsap.getProperty(root, "scaleX")) || 1 : 1;
-    // The stage holding CAMERA_ZOOM is the NORMAL steady state while open —
-    // only a reveal mid-flight or a camera between stops means "mid-open".
-    const zoomedNow = !!root && Math.abs(rootScaleNow - CAMERA_ZOOM) < 0.02;
-    const midMorph = midOpen || (!zoomedNow && Math.abs(rootScaleNow - 1) > 0.001);
-    const tl = gsap.timeline();
-    if (originRect && !midMorph) {
-      // Reverse: the modal shrinks to a point WHILE traveling from the
-      // centre back to the card, then the camera pulls out.
-      const c = startOffset(content);
-      tl.to(inner, { opacity: 0, duration: 0.16, ease: "power1.in" }, 0)
-        .to(content, { x: c.x, y: c.y, scale: 0.001, duration: 0.5, ease: "power3.inOut", transformOrigin: "center center" }, 0.05);
-      if (bd) tl.to(bd, { opacity: 0, duration: 0.24, ease: "power1.in" }, 0.34);
-      tl.call(onClose, [], 0.58);
-      if (zoomedNow) {
-        tl.to(root, { scale: 1, duration: 0.48, ease: "power2.inOut" }, 0.64)
-          .set(root, { clearProps: "transform,transformOrigin,willChange" });
-      }
-      tl.call(releaseCamera); // hand the stage back only once fully settled
-    } else {
-      // Mid-open close: quick fade, and ease the camera home from wherever
-      // it currently is.
-      tl.to(content, { opacity: 0, duration: 0.22, ease: "power2.in" }, 0);
-      if (bd) tl.to(bd, { opacity: 0, duration: 0.26, ease: "power1.in" }, 0.04);
-      if (root && Math.abs(rootScaleNow - 1) > 0.001) {
-        tl.to(root, { scale: 1, duration: 0.35, ease: "power2.out" }, 0)
-          .set(root, { clearProps: "transform,transformOrigin,willChange" });
-      }
-      tl.call(onClose, [], 0.32);
-      tl.call(releaseCamera);
-    }
+    morphRef.current.close({
+      box: contentRef.current,
+      backdrop: backdropRef.current,
+      overlay: overlayRef.current,
+      stage: appView(),
+      card: landingCard(),
+      onDone: () => {
+        document.documentElement.classList.remove("wf-modal-open");
+        onClose();
+      },
+    });
   };
 
   // While any task modal is open, the cursor-follow camera stands down
@@ -371,21 +281,10 @@ export default function TaskModal({ taskId, isEditMode, initialNotesOpen, userRo
   // stage. Layout effect: the claim must land BEFORE paint so the cursor
   // camera's mutation observer can never race in and kill the flight. On a
   // doClose the class outlives the unmount until the pull-back finishes
-  // (doClose removes it from its own timeline).
+  // (doClose's onDone removes it).
   useLayoutEffect(() => {
     document.documentElement.classList.add("wf-modal-open");
     return () => { if (!closingRef.current) document.documentElement.classList.remove("wf-modal-open"); };
-  }, []);
-
-  // Safety: if the modal unmounts through any path that ISN'T doClose (task
-  // deleted, workspace switch), never leave the app view stuck zoomed.
-  useEffect(() => () => {
-    if (closingRef.current) return; // doClose owns the camera hand-back
-    const root = appView();
-    if (root) {
-      gsap.killTweensOf(root);
-      gsap.set(root, { clearProps: "transform,transformOrigin,willChange" });
-    }
   }, []);
 
   // 1. Pure effects (no state dependencies other than taskId)
@@ -996,7 +895,9 @@ export default function TaskModal({ taskId, isEditMode, initialNotesOpen, userRo
                   </div>
                 );
               })}
-              {(task.features || []).filter(f => (f.type || "feature") === featureView).length === 0 && (
+              {detailsLoading ? (
+                <div className="tm-loading-rows" aria-label={`Loading ${featureView === "bug" ? "bugs" : "features"}`}><span /><span /></div>
+              ) : (task.features || []).filter(f => (f.type || "feature") === featureView).length === 0 && (
                 <div style={{ textAlign: "center", color: "#94a3b8", fontStyle: "italic", fontSize: "0.8rem", marginTop: 20 }}>
                   No {featureView === "bug" ? "bugs" : "features"} added yet.
                 </div>
@@ -1650,7 +1551,9 @@ export default function TaskModal({ taskId, isEditMode, initialNotesOpen, userRo
                   </div>
                 );
               })}
-              {(task.notes || []).length === 0 && (
+              {detailsLoading ? (
+                <div className="tm-loading-rows" aria-label="Loading updates"><span /><span /><span /></div>
+              ) : (task.notes || []).length === 0 && (
                 <div style={{ textAlign: "center", color: "var(--color-text-secondary)", fontStyle: "italic", marginTop: 40, fontSize: "0.8rem" }}>No updates yet.</div>
               )}
             </div>

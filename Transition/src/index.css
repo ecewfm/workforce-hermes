@@ -522,12 +522,47 @@ header {
   -webkit-backdrop-filter: none !important;
 }
 
-/* Click-to-open is a GSAP container transform: the modal box starts ON the
-   card's rect and morphs into place (TaskModal.jsx). The card itself needs no
+/* Click-to-open is a container transform: the modal box starts ON the card's
+   rect and morphs into place (utils/cardMorph.js). The card itself needs no
    animation — the morphing box covers it exactly. */
 .modal-content.task-modal-content {
   transform-origin: center center;
 }
+/* While the box morphs: no glass blur on it (a backdrop-filter over a moving,
+   scaling region is re-sampled every frame) and no liquid sheen. Both come
+   back the moment it lands. */
+.task-modal-overlay .modal-content.tm-morphing {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  will-change: transform;
+}
+.task-modal-overlay .modal-content.tm-morphing::before { animation: none !important; }
+
+/* Long task modals (some have hundreds of features and dozens of notes):
+   rows scrolled out of view are skipped — not laid out or painted until
+   they're near the screen. Showing a big task went from a ~100ms+ freeze to
+   only the rows you can see. */
+.task-modal-content .feature-card,
+.task-modal-content .note-item {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 60px;
+}
+.task-modal-content .note-item { contain-intrinsic-size: auto 90px; }
+
+/* Notes/features still loading (the modal opened from the board's light copy
+   of the task): soft placeholder rows instead of "No updates yet". Opacity
+   pulse only — it stays on the compositor while the modal morphs. */
+.tm-loading-rows { display: flex; flex-direction: column; gap: 8px; padding: 2px 0; }
+.tm-loading-rows span {
+  height: 52px;
+  border-radius: var(--radius-md, 10px);
+  background: color-mix(in srgb, var(--color-text-primary, #0f172a) 6%, transparent);
+  animation: tmLoadingPulse 0.9s ease-in-out infinite alternate;
+}
+.tm-loading-rows span:nth-child(2) { animation-delay: 0.15s; }
+.tm-loading-rows span:nth-child(3) { animation-delay: 0.3s; }
+@keyframes tmLoadingPulse { from { opacity: 0.45; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .tm-loading-rows span { animation: none; } }
 
 /* only the hovered column stops clipping and floats above its neighbours */
 .kanban-col { position: relative; }
@@ -682,6 +717,13 @@ header {
 .tf-shell:hover .tf-swap-detail .tf-swap-inner { overflow: hidden; transform: scale(0.7); }
 .tf-swap-focus .tf-swap-inner { transform: scale(0.82); transform-origin: center; }
 .tf-shell:hover .tf-swap-focus .tf-swap-inner { transform: scale(1); }
+/* The task modal's opening copy of a hovered card (utils/cardMorph.js) keeps
+   the hover face the user clicked — it's outside the .tf-shell, so :hover
+   can't reach it. */
+.tm-ghost.tm-hover-face .tf-swap-detail { grid-template-rows: 0fr; }
+.tm-ghost.tm-hover-face .tf-swap-focus { grid-template-rows: 1fr; }
+.tm-ghost.tm-hover-face .tf-swap-detail .tf-swap-inner { overflow: hidden; transform: scale(0.7); }
+.tm-ghost.tm-hover-face .tf-swap-focus .tf-swap-inner { transform: scale(1); }
 
 /* Focused current-milestone pill (shown on hover) */
 .tf-focus-milestone {
@@ -1179,9 +1221,9 @@ header {
 }
 
 /* ── Robotic-hand CURSOR: an open robo hand everywhere in the app, closing
-   into a fist while the mouse button is held (html.robo-grabbing is toggled
-   on pointerdown/up in RoboHand.jsx). !important so it also beats the many
-   inline cursor styles; typing surfaces keep the text caret. ── */
+   into a fist while the mouse button is held (RoboHand.jsx marks just the
+   pressed element .robo-fist on pointerdown/up). !important so it also beats
+   the many inline cursor styles; typing surfaces keep the text caret. ── */
 html.fx-robo-cursor * {
   cursor: url("/cursors/robo-open.svg") 13 4, auto !important;
 }
@@ -1190,7 +1232,9 @@ html.fx-robo-cursor * {
 html.fx-robo-cursor .nav-btn, html.fx-robo-cursor .nav-btn * {
   cursor: url("/cursors/robo-grab.svg") 14 9, pointer !important;
 }
-html.fx-robo-cursor.robo-grabbing * {
+html.fx-robo-cursor .robo-fist,
+html.fx-robo-cursor .nav-btn.robo-fist,
+html.fx-robo-cursor .nav-btn .robo-fist {
   cursor: url("/cursors/robo-fist.svg") 13 9, auto !important;
 }
 html.fx-robo-cursor input:not([type="button"]):not([type="submit"]):not([type="checkbox"]):not([type="radio"]):not([type="range"]),
@@ -1203,6 +1247,11 @@ html.fx-robo-cursor [contenteditable="true"] {
    clip it so the page can never grow a horizontal scrollbar. `clip` (not
    `hidden`) avoids creating a new scroll container. */
 html, body { overflow-x: clip; }
+/* Keep the page scrollbar's space reserved even while an overlay locks the
+   page (below): otherwise the scrollbar vanishes on open, the whole board
+   re-flows ~15px wider behind the modal (cards resize), and snaps back on
+   close. */
+html { scrollbar-gutter: stable; }
 
 /* Lock the background from scrolling while ANY full-screen overlay is open —
    the overlay's own inner panel keeps its scroll (position:fixed, so it's
@@ -7094,6 +7143,21 @@ body.role-programmer .kanban-col.col-scrap {
   100% { transform: translate3d(-3%, -2%, 0) rotate(0deg)  scale(1.10); }
 }
 
+/* While a task modal is open the board sits under a dim + blur: the skins'
+   drifting backdrops hold still (nothing shows through, and it frees the
+   GPU while you read)... */
+html.wf-modal-open[data-skin] body::after,
+html.wf-modal-open[data-skin="aurora"] body { animation-play-state: paused; }
+
+/* ...and the board's own frosted surfaces switch off under it (see unfrost()
+   in utils/cardMorph.js) — re-blurring them every frame of the modal's motion
+   was the main GPU cost on these skins, and nothing shows through the dim. */
+.view-stage.tm-unfrost,
+.view-stage.tm-unfrost * {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
 /* Respect reduced-motion: kill the sheen + spring + drifting backdrop */
 @media (prefers-reduced-motion: reduce) {
   [data-skin="glass"] body::after,
@@ -8218,13 +8282,25 @@ body[data-workspace="executives"] .nav-btn.highlight:hover {
   background: linear-gradient(135deg, var(--color-accent), var(--color-nav-bg)); color: #fff;
   display: flex; align-items: center; justify-content: center;
   transition: transform 0.2s var(--ease-spring, ease);
+  box-shadow: 0 10px 30px -6px rgba(0,0,0,0.45);
+}
+.ai-launcher:hover { transform: translateY(-3px) scale(1.07); }
+/* The launcher's pulse ring: its own element behind the button, animating
+   only transform + opacity, so the compositor plays it. (It used to animate
+   the button's box-shadow — a main-thread repaint every frame, forever.) */
+.ai-launcher-pulse {
+  position: fixed; right: 22px; bottom: 22px; z-index: 3499;
+  width: 56px; height: 56px; border-radius: 50%;
+  background: color-mix(in srgb, var(--color-accent) 55%, transparent);
+  pointer-events: none;
   animation: aiLauncherPulse 3s ease-in-out infinite;
 }
-.ai-launcher:hover { transform: translateY(-3px) scale(1.07); animation-play-state: paused; }
+.ai-launcher:hover + .ai-launcher-pulse { animation-play-state: paused; }
 @keyframes aiLauncherPulse {
-  0%, 100% { box-shadow: 0 10px 30px -6px rgba(0,0,0,0.45), 0 0 0 0 color-mix(in srgb, var(--color-accent) 55%, transparent); }
-  50%      { box-shadow: 0 10px 30px -6px rgba(0,0,0,0.45), 0 0 0 12px color-mix(in srgb, var(--color-accent) 0%, transparent); }
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50%      { transform: scale(1.43); opacity: 0; }
 }
+@media (prefers-reduced-motion: reduce) { .ai-launcher-pulse { animation: none; opacity: 0; } }
 .ai-launcher-orb {
   width: 24px; height: 24px; border-radius: 50%;
   background: conic-gradient(from 180deg, #fff, #a7f3d0, #fde68a, #fff);

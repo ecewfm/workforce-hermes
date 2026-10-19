@@ -1236,6 +1236,7 @@ export default function App() {
           <button className="ai-launcher" title="Caddy — ask Caduceus" onClick={() => setShowAI(true)}>
             <span className="ai-launcher-orb" aria-hidden="true" />
           </button>
+          <span className="ai-launcher-pulse" aria-hidden="true" />
         </>
       )}
       {caddyOn && (

@@ -73,9 +73,19 @@ export default function RoboHand() {
   // Bootstrap the fx classes (robo cursor on/off) from saved prefs.
   useEffect(() => { applyFxClasses(); }, []);
 
+  // The fist is shown by marking ONLY the pressed element (.robo-fist): a
+  // browser shows the cursor of the element under the pointer, so that's all
+  // it takes. (A class on <html> restyled every element on the page twice
+  // per click — a 20–35ms stall on each press and release.)
   useEffect(() => {
-    const grab = () => document.documentElement.classList.add("robo-grabbing");
-    const release = () => document.documentElement.classList.remove("robo-grabbing");
+    let held = null;
+    const release = () => { held?.classList.remove("robo-fist"); held = null; };
+    const grab = (e) => {
+      release();
+      if (!document.documentElement.classList.contains("fx-robo-cursor")) return;
+      held = e.target instanceof Element ? e.target : null;
+      held?.classList.add("robo-fist");
+    };
     document.addEventListener("pointerdown", grab);
     document.addEventListener("pointerup", release);
     document.addEventListener("pointercancel", release);

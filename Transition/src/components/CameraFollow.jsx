@@ -122,6 +122,9 @@ export default function CameraFollow() {
         // keep the world alive behind the dim: a gentle PAN-ONLY drift
         // around the held state — never touching scale.
         setMode("hold");
+        // The modal camera is flying in or out (a Web Animation, see
+        // utils/cardMorph.js) — hands off until it has landed.
+        if (document.documentElement.classList.contains("wf-camera-flight")) return;
         if (!bind()) return;
         if (!holdBase) {
           if (gsap.isTweening(stage)) return; // flight still in motion

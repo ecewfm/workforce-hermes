@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useLayoutEffect } from "react";
 import { gsap } from "gsap";
-import { useQuery, useMutation } from "../data/react";
+import { useQuery, useMutation, prefetchQuery } from "../data/react";
 import { api } from "../data/api";
 import { getProjectDeadlines, deadlineTone, DAY_MS, milestoneAnchor } from "../utils/deadlines";
 import { notifyTaskUpdated, notifyMilestoneCompleted, notifyNoteAdded } from "../utils/notifications";
@@ -70,6 +70,8 @@ export default function KanbanBoard({ userRole, actualRole, userName, openTaskMo
   const [lastKnownTasks, setLastKnownTasks] = useState([]);
   const [fullViewColumn, setFullViewColumn] = useState(null);
   const [storageRefresh, setStorageRefresh] = useState(0); // Trigger re-render when tasks are viewed
+  const warmTimer = useRef(null); // hover → prefetch the full task (see the card's onPointerEnter)
+  useEffect(() => () => clearTimeout(warmTimer.current), []);
 
   // ── GSAP board entrance: cards trickle into each column right after the
   // column itself lands (columns cascade via CSS at 0.06s + 0.05s·i). The old
@@ -456,21 +458,18 @@ export default function KanbanBoard({ userRole, actualRole, userName, openTaskMo
         onDragEnd={(e) => !isFullView && e.currentTarget.classList.remove("dragging")}
         onClick={(e) => {
           setFullViewColumn(null);
-          // Origin rect + node (ghost source) + the task data we already
-          // hold, so the modal paints and morphs on this same click frame.
-          const origin = morphOriginFrom(e.currentTarget);
-          // The camera flight happens AFTER the hover pop retracts, so hand
-          // over the card's REST rect, not the popped one (scale 1.08 around
-          // centre — keep in sync with .tf-shell:hover in index.css).
-          const shell = e.currentTarget.closest?.(".tf-shell");
-          if (origin && shell && shell.matches(":hover")) {
-            const POP = 1.08;
-            const cx = origin.left + origin.width / 2, cy = origin.top + origin.height / 2;
-            origin.width /= POP; origin.height /= POP;
-            origin.left = cx - origin.width / 2; origin.top = cy - origin.height / 2;
-          }
-          openTaskModal(t._id, false, false, origin, t);
+          // The card exactly as it looks right now (hover pop included) plus
+          // the task data we already hold: the modal paints on this same
+          // click and grows out of this very card.
+          openTaskModal(t._id, false, false, morphOriginFrom(e.currentTarget), t);
         }}
+        // Hovering a card warms its full task (notes, features), so the
+        // modal usually has it by the time it lands.
+        onPointerEnter={() => {
+          clearTimeout(warmTimer.current);
+          warmTimer.current = setTimeout(() => prefetchQuery(api.tasks.getTaskById, { taskId: t._id }), 120);
+        }}
+        onPointerLeave={() => clearTimeout(warmTimer.current)}
         onContextMenu={(e) => onContextMenu(e, t)}
         style={{
           boxShadow: isOverdue ? "0 0 15px rgba(239, 68, 68, 0.35)" : undefined,

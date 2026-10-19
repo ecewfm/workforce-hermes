@@ -7,14 +7,24 @@
 // polling until it's back.
 import { supabase } from "./supabase";
 
-const entries = new Map(); // key → { def, args, data, loaded, listeners:Set, timer, inflight, seq }
+const entries = new Map(); // key → { def, args, data, json, loaded, at, listeners:Set, timer, inflight, seq }
 const REFETCH_DEBOUNCE_MS = 120;
 const FALLBACK_POLL_MS = 30_000;
+// An idle cached result younger than this, with realtime up, is still
+// current — any change since would have flagged it stale (invalidateTables).
+const FRESH_MS = 20_000;
 
 export const keyOf = (def, args) => `${def.name}:${JSON.stringify(args ?? {})}`;
 
 function emit(entry) {
   entry.listeners.forEach((l) => l());
+}
+
+const newEntry = (def, args) => ({ def, args, data: undefined, json: undefined, loaded: false, at: 0, listeners: new Set(), timer: null, inflight: false, seq: 0 });
+const isFresh = (entry) => entry.loaded && live && Date.now() - entry.at < FRESH_MS;
+
+function toJson(data) {
+  try { return JSON.stringify(data); } catch { return undefined; }
 }
 
 async function load(entry) {
@@ -23,17 +33,27 @@ async function load(entry) {
   // needs a session. Signing in refetches everything (see auth.js).
   const { data: auth } = await supabase.auth.getSession();
   if (!auth.session) return;
+  entry.inflight = true;
   try {
     const data = await entry.def.run(entry.args ?? {});
     if (seq !== entry.seq) return; // a newer fetch started — drop this one
-    entry.data = data;
+    entry.at = Date.now();
     entry.loaded = true;
+    // Same result as we already hold (a realtime ping about some other row,
+    // a refetch after a write that didn't change this query): keep the old
+    // object, so nothing re-renders for nothing.
+    const json = toJson(data);
+    if (json !== undefined && json === entry.json) return;
+    entry.json = json;
+    entry.data = data;
     emit(entry);
   } catch (err) {
     if (seq !== entry.seq) return;
     console.warn(`[data] ${entry.def.name} failed:`, err?.message || err);
     if (!entry.loaded) { entry.data = undefined; }
     emit(entry);
+  } finally {
+    if (seq === entry.seq) entry.inflight = false;
   }
 }
 
@@ -46,10 +66,10 @@ export function subscribe(def, args, listener) {
   const key = keyOf(def, args);
   let entry = entries.get(key);
   if (!entry) {
-    entry = { def, args, data: undefined, loaded: false, listeners: new Set(), timer: null, seq: 0 };
+    entry = newEntry(def, args);
     entries.set(key, entry);
     load(entry);
-  } else if (entry.listeners.size === 0) {
+  } else if (entry.listeners.size === 0 && !entry.inflight && !isFresh(entry)) {
     scheduleRefetch(entry); // was idle — show the cached value, then refresh it
   }
   entry.listeners.add(listener);
@@ -61,6 +81,20 @@ export function subscribe(def, args, listener) {
 
 export function peek(key) {
   return entries.get(key)?.data;
+}
+
+/** Warm the cache for a query nobody shows yet — hovering a board card loads
+ *  its full task, so the task modal opens with everything already there. */
+export function prefetch(def, args) {
+  const key = keyOf(def, args);
+  let entry = entries.get(key);
+  if (!entry) {
+    entry = newEntry(def, args);
+    entries.set(key, entry);
+  } else if (entry.inflight || entry.listeners.size || isFresh(entry)) {
+    return;
+  }
+  load(entry);
 }
 
 /** Refetch every active query that reads any of these tables. */
@@ -97,6 +131,7 @@ export function applyOptimistic(update, args) {
       const entry = entries.get(keyOf(def, qArgs));
       if (!entry) return;
       entry.data = value;
+      entry.json = undefined; // the server's answer must always land, even if it matches the pre-optimistic data
       emit(entry);
     },
   };

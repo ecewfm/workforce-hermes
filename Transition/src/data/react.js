@@ -5,6 +5,7 @@
 //   const save  = useMutation(api.tasks.updateTaskStatus);            // returns a Promise
 //   useQuery(def, "skip")                                             // don't run
 //   useMutation(def).withOptimisticUpdate((localStore, args) => …)
+//   prefetchQuery(api.tasks.getTaskById, { taskId })                  // warm the cache, no hook
 import { useCallback, useMemo, useSyncExternalStore } from "react";
 import * as store from "./store";
 
@@ -29,6 +30,9 @@ function makeMutation(def, optimistic) {
 export function useMutation(def) {
   return useMemo(() => makeMutation(def), [def]);
 }
+
+/** Load a query into the cache ahead of time (no re-renders) — see store.prefetch. */
+export const prefetchQuery = (def, args) => store.prefetch(def, args);
 
 /** Imperative access (Caddy's tools): fresh reads and mutations. */
 export function useConvex() {
