@@ -189,7 +189,10 @@ const actions = {
     if (session) return ok(session);
 
     // 2. First sign-in since the move: check the old hash, then move it over.
-    if (s.creds?.password_hash && sha256(password) === s.creds.password_hash) {
+    //    Only while no Supabase Auth account exists yet — once someone has
+    //    one, a leftover old hash (e.g. restored by a re-sync) must never win.
+    const hasAuth = !!(await authUserId(E, email, s.creds));
+    if (!hasAuth && email !== MAIN_ADMIN && s.creds?.password_hash && sha256(password) === s.creds.password_hash) {
       await upsertAuthUser(E, s, email, password);
       await log(E, "PASSWORD_MIGRATED", email, email, "Password moved to Supabase Auth on first sign-in.");
       session = await signIn(E, email, password);
@@ -198,7 +201,6 @@ const actions = {
     }
 
     // 3. No password set yet.
-    const hasAuth = !!(await authUserId(E, email, s.creds));
     if (!hasAuth && !s.creds?.password_hash) {
       if (email === MAIN_ADMIN) return { success: false, error: "The Main Admin password hasn't been set yet — run scripts/set-staff-password.mjs." };
       if (password === "admin") return { success: true, stage: "set-password", setupToken: makeSetupToken(E, email) };
