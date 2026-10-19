@@ -1,0 +1,196 @@
+/* ============================================================
+   OVERVIEW EXTRAS (Dashboard.jsx)
+   ------------------------------------------------------------
+   Pieces the Operations / Executives Overview adds on top of the
+   original look: Project Documents cards, the Accounts breakdown
+   and the small account pill on deadline rows.
+   Colors come from the theme variables so every skin and dark
+   mode carry over. Entrance motion is transform/opacity only,
+   uses "backwards" fill (no lingering transforms) and switches
+   off under prefers-reduced-motion.
+   ============================================================ */
+
+@keyframes ovRiseIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes ovGrow {
+  from { transform: scaleX(0); }
+  to   { transform: scaleX(1); }
+}
+@keyframes ovPillIn {
+  from { opacity: 0; transform: scale(0.85); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+/* ---- Account pill (deadline rows, document cards) ---- */
+.ov-account-pill {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.3px;
+  line-height: 1.5;
+  vertical-align: middle;
+  color: var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-accent) 28%, transparent);
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  animation: ovPillIn 0.35s var(--ease-out-quart) 0.15s backwards;
+}
+
+/* ---- Project Documents ---- */
+.ov-doc-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 15px;
+}
+.ov-doc-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  padding: 15px 20px;
+  border-radius: 12px;
+  background: var(--color-bg-subtle);
+  border: 1px solid var(--glass-border);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  animation: ovRiseIn 0.45s var(--ease-out-quart) backwards;
+  animation-delay: calc(0.12s + var(--i, 0) * 0.04s);
+}
+.ov-doc-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); }
+
+.ov-doc-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding-bottom: 8px;
+  border-bottom: 2px solid var(--glass-border);
+}
+.ov-doc-head .ov-account-pill { margin-left: 0; flex-shrink: 0; max-width: 45%; }
+.ov-doc-title {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-weight: 900;
+  font-size: 0.95rem;
+  color: var(--color-brand-text);
+  text-align: left;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ov-doc-title:hover { text-decoration: underline; text-underline-offset: 3px; }
+.ov-doc-title:focus-visible,
+.ov-doc-more:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; border-radius: 4px; }
+
+.ov-doc-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.ov-doc-link {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border-radius: 9px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--color-text-primary);
+  text-decoration: none;
+  background: var(--color-card-bg);
+  border: 1px solid var(--glass-border);
+  transition: transform 0.2s var(--ease-out-quart), border-color 0.15s ease, color 0.15s ease;
+}
+.ov-doc-link svg { flex-shrink: 0; color: var(--color-accent); }
+.ov-doc-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ov-doc-ext { opacity: 0; transform: translate(-3px, 3px); transition: opacity 0.15s ease, transform 0.2s var(--ease-out-quart); }
+.ov-doc-link:hover { color: var(--color-accent); border-color: color-mix(in srgb, var(--color-accent) 45%, transparent); transform: translateX(2px); }
+.ov-doc-link:hover .ov-doc-ext,
+.ov-doc-link:focus-visible .ov-doc-ext { opacity: 1; transform: none; }
+
+.ov-doc-more {
+  align-self: flex-start;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 800;
+  color: var(--color-accent);
+  cursor: pointer;
+}
+.ov-doc-more:hover { text-decoration: underline; text-underline-offset: 3px; }
+
+/* ---- Accounts breakdown (Operations) ---- */
+.ov-account-list { display: flex; flex-direction: column; gap: 10px; }
+.ov-account-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 18px;
+  padding: 12px 18px;
+  border-radius: 16px;
+  background: var(--color-bg-subtle);
+  border: 1px solid var(--glass-border);
+  animation: ovRiseIn 0.45s var(--ease-out-quart) backwards;
+  animation-delay: calc(0.14s + var(--i, 0) * 0.05s);
+}
+.ov-account-row.is-none { border-style: dashed; }
+.ov-account-info { flex: 1; min-width: 200px; }
+.ov-account-name { font-weight: 900; font-size: 0.92rem; color: var(--color-text-primary); margin-bottom: 3px; }
+.ov-account-row.is-none .ov-account-name,
+.ov-account-row.is-empty .ov-account-name { color: var(--color-text-secondary); }
+.ov-account-meta { font-size: 0.7rem; font-weight: 600; color: var(--color-text-secondary); }
+
+.ov-account-progress { display: flex; align-items: center; gap: 10px; flex: 0 1 280px; min-width: 160px; }
+.ov-account-track {
+  flex: 1;
+  height: 6px;
+  border-radius: 99px;
+  background: color-mix(in srgb, var(--color-text-primary) 9%, transparent);
+  overflow: hidden;
+}
+.ov-account-fill {
+  height: 100%;
+  border-radius: 99px;
+  background: linear-gradient(90deg, var(--color-nav-bg), var(--color-accent));
+  transform-origin: left center;
+  animation: ovGrow 0.8s var(--ease-out-expo) backwards;
+  animation-delay: calc(0.25s + var(--i, 0) * 0.05s);
+}
+.ov-account-pct {
+  min-width: 38px;
+  text-align: right;
+  font-size: 0.78rem;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-brand-text);
+}
+
+@media (max-width: 640px) {
+  .ov-account-progress { flex-basis: 100%; }
+}
+
+/* ---- Reduced motion: stillness ---- */
+@media (prefers-reduced-motion: reduce) {
+  .ov-account-pill,
+  .ov-doc-card,
+  .ov-account-row,
+  .ov-account-fill { animation: none !important; }
+  .ov-doc-card,
+  .ov-doc-link,
+  .ov-doc-ext { transition-duration: 0.01ms !important; }
+  .ov-doc-card:hover,
+  .ov-doc-link:hover { transform: none; }
+}

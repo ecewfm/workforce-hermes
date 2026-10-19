@@ -1,4 +1,6 @@
 // Notification utility for desktop notifications
+import { itemWords } from "./workspaceTerms";
+import { loadSettings } from "./settingsManager";
 
 export const initNotifications = () => {
   if (!("Notification" in window)) {
@@ -6,33 +8,27 @@ export const initNotifications = () => {
     return;
   }
 
-  if (Notification.permission === "granted") {
-    console.log("Notifications already permitted");
-    return;
-  }
+  if (Notification.permission === "granted") return;
 
   if (Notification.permission !== "denied") {
-    Notification.requestPermission().then((permission) => {
-      console.log("Notification permission result:", permission);
-      if (permission === "granted") {
-        console.log("Notification permission granted");
-      }
-    });
+    // Older Safari's requestPermission takes a callback and returns nothing.
+    Notification.requestPermission()?.catch?.(() => {});
   } else {
     console.warn("Notification permission was denied");
   }
 };
 
 export const sendNotification = (title, options = {}) => {
-  console.log("🔔 sendNotification called:", { title, hasNotificationAPI: "Notification" in window, permission: "Notification" in window ? Notification.permission : "N/A" });
-  
+  // Settings → "Push / Desktop Notifications" switched off: stay quiet.
+  if (loadSettings().notificationsEnabled === false) return;
+
   if (!("Notification" in window)) {
-    console.warn("❌ Browser does not support Notification API");
+    console.warn("Browser does not support the Notification API");
     return;
   }
 
   if (Notification.permission !== "granted") {
-    console.warn(`❌ Notification permission not granted (status: ${Notification.permission})`);
+    console.warn(`Notification permission not granted (status: ${Notification.permission})`);
     return;
   }
 
@@ -44,7 +40,6 @@ export const sendNotification = (title, options = {}) => {
   };
 
   try {
-    console.log("✅ Creating notification:", title);
     new Notification(title, defaultOptions);
   } catch (err) {
     console.error("Failed to send notification:", err);
@@ -58,32 +53,41 @@ export const notifyTaskUpdated = (taskTitle) => {
   });
 };
 
-export const notifyFeatureAdded = (taskTitle, featureName) => {
-  sendNotification("Feature/Bug Added", {
-    body: `"${featureName}" added to "${taskTitle}"`,
-    tag: "feature-add",
+// Sidebar items are features/bugs (Workforce) or roadblocks (Operations,
+// Executives). Callers pass the item's kind ("feature" | "bug" | "roadblock");
+// without one the wording stays the original generic "Feature/Bug".
+const itemTitle = (kind) => (kind ? itemWords(kind).title : "Feature/Bug");
+const doneWord = (kind) => {
+  const done = kind ? itemWords(kind).done : "COMPLETED"; // "COMPLETED" | "CLEARED"
+  return done.charAt(0) + done.slice(1).toLowerCase();
+};
+
+export const notifyFeatureAdded = (taskTitle, featureName, kind) => {
+  const roadblock = kind === "roadblock";
+  sendNotification(`${itemTitle(kind)} ${roadblock ? "Flagged" : "Added"}`, {
+    body: roadblock ? `"${featureName}" is blocking "${taskTitle}"` : `"${featureName}" added to "${taskTitle}"`,
+    tag: `${kind || "feature"}-add`,
   });
 };
 
-export const notifyFeatureCompleted = (taskTitle, featureName) => {
-  sendNotification("Feature/Bug Completed", {
-    body: `"${featureName}" in "${taskTitle}" is now complete`,
-    tag: "feature-complete",
+export const notifyFeatureCompleted = (taskTitle, featureName, kind) => {
+  const done = doneWord(kind);
+  sendNotification(`${itemTitle(kind)} ${done}`, {
+    body: `"${featureName}" ${kind === "roadblock" ? "on" : "in"} "${taskTitle}" is now ${done.toLowerCase()}`,
+    tag: `${kind || "feature"}-complete`,
   });
 };
 
 export const notifyNoteAdded = (taskTitle, notePreview) => {
-  console.log("📌 notifyNoteAdded called with:", { taskTitle, previewLength: notePreview?.length });
   try {
     const preview = notePreview?.substring(0, 50) || "Update";
     const body = `New note on "${taskTitle}": ${preview}${notePreview?.length > 50 ? "..." : ""}`;
-    console.log("📌 Sending notification:", body);
     sendNotification("Note Added", {
       body,
       tag: "note-add",
     });
   } catch (err) {
-    console.error("❌ Error in notifyNoteAdded:", err);
+    console.error("Error in notifyNoteAdded:", err);
   }
 };
 

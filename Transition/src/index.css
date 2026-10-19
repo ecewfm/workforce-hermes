@@ -489,37 +489,66 @@ header {
   border-color: #cbd5e1;
 }
 
-/* ─── Task-card hover wings (default board card) ─────────────────────────────
-   Rest = the original card design. On hover the card pops (scales up) and three
-   panels slide OUT FROM UNDER it — no fade, pure slide: milestone dots to the
-   LEFT, the latest note to the RIGHT, days-remaining + current milestone +
-   controls drop DOWN below. The opaque .task-card sits on top (z-index 1) and
-   fully hides the wings (z-index 0) at rest. */
+/* ─── Task-card hover: the card STRETCHES (default board card) ────────────────
+   Rest = the original card design. On hover one surface (.tf-surface) grows
+   out from behind the card on every side — no pop, no scale — and the extra
+   info slides out with it: milestone dots left, the latest note right, time
+   left above, the current milestone + move buttons below. The wings carry no
+   background/border of their own, so there are no corners or seams poking out:
+   it reads as the same card, stretched. KanbanBoard measures the top/bottom
+   wings on pointer-enter (--tf-t / --tf-b); side widths are fixed. */
 .tf-shell {
+  --tf-l: 76px;
+  --tf-r: 146px;
+  --tf-stretch: cubic-bezier(0.22, 1.16, 0.36, 1);
   position: relative;
   margin-bottom: 10px;
   z-index: 0;
-  transition: transform 0.32s var(--ease-spring, cubic-bezier(0.34, 1.4, 0.64, 1));
 }
-.tf-shell:hover {
-  transform: scale(1.08);
-  z-index: 60;
-}
+.tf-shell:hover { z-index: 60; }
 .tf-shell > .task-card {
   position: relative;
   z-index: 1;
   margin-bottom: 0;
 }
-/* the shell owns the hover pop, so cancel the card's own lift */
+/* the stretch is the hover effect, so cancel the card's own lift */
 .tf-shell > .task-card:hover { transform: none; }
 
-/* When popped, the card goes fully opaque so it (and its wings) cleanly cover
-   the cards beneath. Glass/liquid skins otherwise leave the card ~50% see-through,
-   so neighbours bleed through and the wing seams look sharp/dirty. */
+/* While stretched the card is an opaque inner panel of the surface: soft
+   border, no shadow, and it clips its own content so nothing spills into the
+   side strips (glass/liquid skins are see-through at rest). */
 .tf-shell:hover > .task-card {
   background: var(--color-card-bg) !important;
+  border-color: var(--glass-border, #e2e8f0) !important;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04) !important;
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
+  overflow: hidden;
+}
+
+.tf-surface {
+  position: absolute;
+  z-index: 0;
+  inset: 0;
+  border-radius: 12px;
+  background: var(--color-card-bg);
+  border: 1px solid var(--glass-border, #e2e8f0);
+  opacity: 0;
+  pointer-events: none;
+  transition: top 0.44s var(--tf-stretch), right 0.44s var(--tf-stretch), bottom 0.44s var(--tf-stretch), left 0.44s var(--tf-stretch),
+              border-radius 0.44s ease, box-shadow 0.44s ease, opacity 0s linear 0.44s;
+}
+.tf-shell:hover .tf-surface {
+  top: calc(-1 * var(--tf-t, 34px));
+  right: calc(-1 * var(--tf-r));
+  bottom: calc(-1 * var(--tf-b, 96px));
+  left: calc(-1 * var(--tf-l));
+  border-radius: 18px;
+  opacity: 1;
+  pointer-events: auto;
+  box-shadow: 0 30px 60px -26px rgba(15, 23, 42, 0.45), 0 2px 6px rgba(15, 23, 42, 0.06);
+  transition: top 0.44s var(--tf-stretch), right 0.44s var(--tf-stretch), bottom 0.44s var(--tf-stretch), left 0.44s var(--tf-stretch),
+              border-radius 0.44s ease, box-shadow 0.44s ease, opacity 0s;
 }
 
 /* Click-to-open is a container transform: the modal box starts ON the card's
@@ -537,6 +566,118 @@ header {
   will-change: transform;
 }
 .task-modal-overlay .modal-content.tm-morphing::before { animation: none !important; }
+
+/* ── Task modal: Operations/Executives pieces (TaskModal.jsx) ─────────────── */
+.tm-tab-badge {
+  position: absolute; top: -6px; right: -8px; z-index: 10;
+  min-width: 16px; padding: 1px 5px; border-radius: 10px; text-align: center;
+  background: radial-gradient(circle, #ef4444 0%, #dc2626 100%); color: #fff;
+  font-size: 0.55rem; font-weight: 900; box-shadow: 0 0 8px 2px rgba(239, 68, 68, 0.4);
+}
+.tm-kind-icon { display: inline-flex; align-items: center; }
+.features-sidebar.kind-roadblock .feature-card:not(.completed):hover { border-color: #fcd34d; }
+
+/* What each milestone means — always visible under its name. */
+.milestone-hint {
+  font-size: 0.72rem; line-height: 1.45; color: var(--color-text-secondary);
+  padding-left: 10px; border-left: 2px solid color-mix(in srgb, var(--color-accent) 35%, transparent);
+  margin-top: 2px;
+}
+.milestone-list-item.completed .milestone-hint { opacity: 0.7; }
+.edit-m-hint { width: 100%; margin-top: 6px; padding: 4px 8px !important; font-size: 0.72rem !important; }
+
+/* Account (Operations) */
+.tm-account-row { display: flex; align-items: center; gap: 8px; margin: -6px 0 12px; color: var(--color-text-secondary); }
+.tm-account-label { font-size: 0.6rem; font-weight: 900; letter-spacing: 0.8px; text-transform: uppercase; }
+.tm-account-pill {
+  font-size: 0.75rem; font-weight: 800; color: var(--color-brand-text, var(--color-text-primary));
+  background: color-mix(in srgb, var(--color-accent) 10%, var(--color-card-bg));
+  border: 1px solid color-mix(in srgb, var(--color-accent) 35%, transparent);
+  border-radius: 999px; padding: 3px 10px;
+}
+.ui-select.tm-account-select { max-width: 240px; }
+
+/* Plan notes: "Watch out for" + "Assumptions" */
+.tm-plan-notes { display: grid; gap: 10px; margin: 4px 5px 6px; }
+.tm-plan-section { border-radius: 10px; padding: 10px 12px; border: 1px solid; }
+.tm-watch { background: color-mix(in srgb, #f59e0b 9%, var(--color-card-bg)); border-color: color-mix(in srgb, #f59e0b 35%, transparent); }
+.tm-assume { background: color-mix(in srgb, #6366f1 7%, var(--color-card-bg)); border-color: color-mix(in srgb, #6366f1 28%, transparent); }
+.tm-plan-head { display: flex; align-items: center; gap: 7px; }
+.tm-plan-section h4 { margin: 0; flex: 1; font-size: 0.66rem; font-weight: 900; letter-spacing: 0.9px; text-transform: uppercase; }
+.tm-watch h4, .tm-watch .tm-plan-icon { color: #b45309; }
+.tm-assume h4, .tm-assume .tm-plan-icon { color: #4f46e5; }
+.tm-plan-icon { display: inline-flex; }
+.tm-plan-section ul { margin: 6px 0 0; padding: 0; list-style: none; display: grid; gap: 4px; }
+.tm-plan-section li { display: flex; gap: 8px; align-items: flex-start; font-size: 0.76rem; line-height: 1.45; color: var(--color-text-primary); }
+.tm-plan-section li::before { content: "•"; color: currentColor; opacity: 0.45; }
+.tm-plan-section li span { flex: 1; }
+.tm-plan-empty { margin: 6px 0 0; font-size: 0.72rem; color: var(--color-text-secondary); font-style: italic; }
+.tm-plan-add {
+  border: none; background: none; cursor: pointer; font-size: 0.62rem; font-weight: 900; letter-spacing: 0.5px;
+  color: var(--color-accent); padding: 2px 6px; border-radius: 6px; transition: background 0.2s, transform 0.2s;
+}
+.tm-plan-add:hover { background: color-mix(in srgb, var(--color-accent) 12%, transparent); transform: translateY(-1px); }
+.tm-plan-x {
+  border: none; background: none; cursor: pointer; color: var(--color-text-secondary); font-size: 0.9rem; line-height: 1;
+  opacity: 0; transition: opacity 0.15s, color 0.15s;
+}
+.tm-plan-section li:hover .tm-plan-x { opacity: 1; }
+.tm-plan-x:hover { color: #ef4444; }
+
+/* Documents (Operations/Executives' system links) */
+.documents-box {
+  flex-shrink: 0; margin-top: 10px; overflow: hidden; border-radius: 10px;
+  background: var(--color-bg-subtle); border: 2px solid #0ea5e9; box-shadow: var(--shadow-sm);
+}
+.documents-header {
+  display: flex; align-items: center; gap: 8px; padding: 6px 12px; background: #0ea5e9; color: #fff;
+  font-size: 0.6rem; font-weight: 900; letter-spacing: 1px;
+}
+.documents-add {
+  margin-left: auto; border: 1px solid rgba(255, 255, 255, 0.6); background: rgba(255, 255, 255, 0.14); color: #fff;
+  border-radius: 6px; padding: 2px 8px; font-size: 0.56rem; font-weight: 900; letter-spacing: 0.6px; cursor: pointer;
+  transition: background 0.2s, transform 0.2s;
+}
+.documents-add:hover { background: rgba(255, 255, 255, 0.28); transform: translateY(-1px); }
+.documents-list { max-height: 148px; overflow-y: auto; padding: 6px 8px; display: grid; gap: 4px; }
+.documents-empty { font-size: 0.72rem; color: var(--color-text-secondary); font-style: italic; padding: 4px 4px 6px; }
+.document-row {
+  display: flex; align-items: center; gap: 8px; padding: 5px 6px; border-radius: 8px;
+  transition: background 0.18s, transform 0.18s;
+}
+.document-row:hover { background: color-mix(in srgb, #0ea5e9 9%, transparent); transform: translateX(2px); }
+.document-kind { flex-shrink: 0; font-size: 0.5rem; font-weight: 900; letter-spacing: 0.6px; padding: 2px 6px; border-radius: 5px; }
+.document-name {
+  flex: 1; min-width: 0; font-size: 0.78rem; font-weight: 700; color: var(--color-accent); text-decoration: none;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.document-name:hover { text-decoration: underline; }
+.document-remove {
+  border: none; background: none; cursor: pointer; color: var(--color-text-secondary); font-size: 0.95rem; line-height: 1;
+  opacity: 0; transition: opacity 0.15s, color 0.15s;
+}
+.document-row:hover .document-remove { opacity: 1; }
+.document-remove:hover { color: #ef4444; }
+[data-theme="dark"] .tm-watch h4, [data-theme="dark"] .tm-watch .tm-plan-icon { color: #fbbf24; }
+[data-theme="dark"] .tm-assume h4, [data-theme="dark"] .tm-assume .tm-plan-icon { color: #a5b4fc; }
+
+/* New Task (TaskEntry.jsx): account picker, documents, plan notes */
+.entry-new-account { display: flex; gap: 8px; align-items: center; }
+.entry-new-account .form-input { flex: 1; }
+.entry-new-account .btn-primary, .entry-new-account .btn-secondary { width: auto; padding: 8px 14px; margin: 0; }
+.entry-docs { display: grid; gap: 8px; }
+.entry-doc-row { display: grid; grid-template-columns: 1fr 1.4fr auto; gap: 8px; align-items: center; animation: riseIn 0.3s var(--ease-out-quart, ease-out) backwards; }
+.entry-docs .btn-add-milestone { justify-self: start; margin-top: 0; }
+.entry-plan-notes { display: grid; gap: 10px; margin: 6px 0 18px; }
+.entry-plan-block { border-radius: 10px; padding: 10px 12px; border: 1px solid; }
+.entry-plan-block.watch { background: color-mix(in srgb, #f59e0b 9%, var(--color-card-bg)); border-color: color-mix(in srgb, #f59e0b 35%, transparent); }
+.entry-plan-block.assume { background: color-mix(in srgb, #6366f1 7%, var(--color-card-bg)); border-color: color-mix(in srgb, #6366f1 28%, transparent); }
+.entry-plan-title { font-size: 0.66rem; font-weight: 900; letter-spacing: 0.9px; text-transform: uppercase; }
+.entry-plan-block.watch .entry-plan-title { color: #b45309; }
+.entry-plan-block.assume .entry-plan-title { color: #4f46e5; }
+.entry-plan-block ul { margin: 6px 0 0; padding-left: 18px; font-size: 0.76rem; line-height: 1.45; color: var(--color-text-primary); }
+.entry-plan-foot { font-size: 0.66rem; color: var(--color-text-secondary); font-style: italic; }
+@media (prefers-reduced-motion: reduce) { .entry-doc-row { animation: none; } }
 
 /* Long task modals (some have hundreds of features and dozens of notes):
    rows scrolled out of view are skipped — not laid out or painted until
@@ -570,67 +711,40 @@ header {
 
 .tf-wing {
   position: absolute;
-  z-index: 0;
+  z-index: 2;
   display: flex;
   flex-direction: column;
   gap: 3px;
-  padding: 7px 8px;
-  background: var(--color-card-bg);
-  border: 1px solid #e2e8f0;
-  box-shadow: none;
-  /* Hidden at rest via visibility (NOT by hiding behind the card) so translucent
-     glass/liquid skins don't let the wings bleed through the see-through card.
-     visibility is binary — no fade — and is delayed out so the slide-back plays. */
+  padding: 7px 9px;
+  box-sizing: border-box;
+  /* Hidden at rest; visibility (binary) is delayed out so the slide-back plays. */
   visibility: hidden;
-  transition: transform 0.38s var(--ease-out-back, cubic-bezier(0.34, 1.35, 0.6, 1)), visibility 0s linear 0.38s;
+  opacity: 0;
+  transition: transform 0.44s var(--tf-stretch, ease), opacity 0.16s ease, visibility 0s linear 0.44s;
 }
-/* shadow is set (not transitioned) on hover — it appears instantly, masked by
-   the slide, so we avoid an expensive per-frame box-shadow repaint */
 .tf-shell:hover .tf-wing {
   visibility: visible;
-  box-shadow: 0 14px 26px -14px rgba(0, 0, 0, 0.3);
-  transition: transform 0.38s var(--ease-out-back, cubic-bezier(0.34, 1.35, 0.6, 1)), visibility 0s;
+  opacity: 1;
+  transition: transform 0.44s var(--tf-stretch, ease), opacity 0.3s ease 0.06s, visibility 0s;
 }
 
-.tf-wing-left {
-  top: 0; bottom: 0; left: 0;
-  width: 74px;
-  border-radius: 12px 0 0 12px;
-  transform: translateX(0);
-}
-.tf-shell:hover .tf-wing-left { transform: translateX(calc(-100% + 10px)); }
+.tf-wing-left { top: 0; bottom: 0; left: 0; width: var(--tf-l); padding: 10px 10px 10px 12px; align-items: flex-start; }
+.tf-shell:hover .tf-wing-left { transform: translateX(-100%); }
 
-.tf-wing-right {
-  top: 0; bottom: 0; right: 0;
-  width: 122px;
-  border-radius: 0 12px 12px 0;
-  transform: translateX(0);
-}
-.tf-shell:hover .tf-wing-right { transform: translateX(calc(100% - 10px)); }
+.tf-wing-right { top: 0; bottom: 0; right: 0; width: var(--tf-r); padding: 10px 12px 10px 14px; border-radius: 12px; }
+.tf-shell:hover .tf-wing-right { transform: translateX(100%); }
 
-.tf-wing-bottom {
-  left: 0; right: 0; bottom: 0;
-  gap: 8px;
-  border-radius: 0 0 12px 12px;
-  transform: translateY(0);
-}
-.tf-shell:hover .tf-wing-bottom { transform: translateY(calc(100% - 10px)); }
+.tf-wing-bottom { left: 0; right: 0; bottom: 0; gap: 8px; padding: 10px 4px 12px; }
+.tf-shell:hover .tf-wing-bottom { transform: translateY(100%); }
 
 .tf-wing-top {
   left: 0; right: 0; top: 0;
   flex-direction: row; align-items: center; justify-content: space-between;
-  gap: 8px;
-  border-radius: 12px 12px 0 0;
-  transform: translateY(0);
+  gap: 8px; padding: 10px 4px 8px;
 }
-.tf-shell:hover .tf-wing-top { transform: translateY(calc(-100% + 10px)); }
-
-/* Hovering an individual wing pops it out a little further + scales up a touch */
-.tf-shell:hover .tf-wing:hover { box-shadow: 0 20px 42px -12px rgba(0, 0, 0, 0.42); z-index: 3; }
-.tf-shell:hover .tf-wing-left:hover { transform: translateX(calc(-100% + 2px)) scale(1.05); }
-.tf-shell:hover .tf-wing-right:hover { transform: translateX(calc(100% - 2px)) scale(1.05); }
-.tf-shell:hover .tf-wing-top:hover { transform: translateY(calc(-100% + 2px)) scale(1.05); }
-.tf-shell:hover .tf-wing-bottom:hover { transform: translateY(calc(100% - 2px)) scale(1.05); }
+.tf-wing-top .tf-wing-cap { white-space: nowrap; }
+.tf-wing-left .tf-wing-dots { gap: 4px; }
+.tf-shell:hover .tf-wing-top { transform: translateY(-100%); }
 
 .tf-wing-cap {
   font-size: 0.46rem;
@@ -685,7 +799,8 @@ header {
 
 /* Note wing: hovering it blurs the note + reveals an Add-note prompt; a click
    opens the expanded notes modal. */
-.tf-wing-right { cursor: pointer; }
+.tf-wing-right { cursor: pointer; transition: transform 0.44s var(--tf-stretch, ease), opacity 0.16s ease, visibility 0s linear 0.44s, background-color 0.2s ease; }
+.tf-shell:hover .tf-wing-right:hover { background: color-mix(in srgb, var(--color-accent) 7%, transparent); }
 .tf-note-body { flex: 1; min-height: 0; transition: filter 0.2s ease, opacity 0.2s ease; }
 .tf-wing-right:hover .tf-note-body { filter: blur(3px); opacity: 0.4; }
 .tf-note-add {
@@ -696,7 +811,7 @@ header {
 }
 .tf-wing-right:hover .tf-note-add { opacity: 1; }
 
-[data-theme="dark"] .tf-wing { border-color: #334155; }
+[data-theme="dark"] .tf-surface { border-color: #334155; }
 
 /* Hover swap: the detailed body scales down + collapses while the focused
    current-milestone pill scales up in its place. Pure scale + height, no fade. */
@@ -1256,7 +1371,7 @@ html { scrollbar-gutter: stable; }
 /* Lock the background from scrolling while ANY full-screen overlay is open —
    the overlay's own inner panel keeps its scroll (position:fixed, so it's
    unaffected). `clip` freezes the page at its current position (no jump). */
-html:has(.modal-overlay),
+html:has(.modal-overlay:not([data-rehearsal])),
 html:has(.custom-modal-overlay),
 html:has(.settings-overlay),
 html:has(.handbook-overlay),
@@ -5615,29 +5730,39 @@ body.role-programmer .kanban-col.col-scrap {
 }
 
 /* --- Note Hover & Reply Reform --- */
+/* Only colours transition (paint). The note used to animate padding-right
+   to make room for Reply, which re-wrapped its text and re-laid out the
+   whole notes list on every frame of the hover. */
 .note-item {
-  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1) !important;
+  transition: background-color 0.3s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.3s cubic-bezier(0.16, 1, 0.3, 1) !important;
 }
 
 .note-item:hover {
-  padding-right: 85px !important;
   background: var(--color-bg-subtle) !important;
   border-color: var(--color-accent) !important;
 }
 
+/* Reply floats in over the note's right edge on a soft fade of the hover
+   colour (opacity + transform only — the text never moves). */
 .note-hover-actions {
   position: absolute;
-  right: 15px;
-  top: 50%;
-  transform: translateY(-50%) translateX(15px);
+  top: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  padding: 0 12px 0 48px;
+  background: linear-gradient(90deg, transparent, var(--color-bg-subtle) 42px);
+  border-radius: 0 var(--radius-md, 10px) var(--radius-md, 10px) 0;
+  transform: translateX(14px);
   opacity: 0;
-  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: opacity 0.22s ease, transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
   pointer-events: none;
 }
 
 .note-item:hover .note-hover-actions {
   opacity: 1;
-  transform: translateY(-50%) translateX(0);
+  transform: none;
   pointer-events: auto;
 }
 
@@ -5918,22 +6043,32 @@ body.role-programmer .kanban-col.col-scrap {
 }
 
 /* ---- Aurora (gradient + glow) ---- */
+/* The aurora wash is a fixed layer twice the window's size that DRIFTS — a
+   transform, so the compositor slides an already-painted layer. (It used to
+   animate background-position on a fixed body background: a full-screen
+   repaint on the main thread every frame, forever.) Same look: shifting a
+   200%-sized background from 0% to 100% == sliding the 2× layer one window
+   width left. It takes over body::before (the grid pattern was ~invisible
+   on this skin anyway). */
 @keyframes auroraShift {
-  0% { background-position: 0% 50%; }
-  50% { background-position: 100% 50%; }
-  100% { background-position: 0% 50%; }
+  0%, 100% { transform: translate3d(0, 0, 0); }
+  50% { transform: translate3d(-50%, 0, 0); }
 }
-[data-skin="aurora"] body {
-  background:
+[data-skin="aurora"] body { background: var(--color-bg-primary); }
+[data-skin="aurora"] body::before {
+  top: -50vh;
+  left: 0;
+  width: 200vw;
+  height: 200vh;
+  opacity: 1;
+  background-image:
     radial-gradient(60% 80% at 15% 10%, color-mix(in srgb, var(--color-accent) 22%, transparent), transparent 60%),
     radial-gradient(55% 70% at 90% 25%, color-mix(in srgb, var(--color-nav-bg) 26%, transparent), transparent 60%),
-    radial-gradient(70% 70% at 60% 100%, color-mix(in srgb, var(--color-accent-lighter) 20%, transparent), transparent 60%),
-    var(--color-bg-primary);
-  background-size: 200% 200%;
-  background-attachment: fixed;
+    radial-gradient(70% 70% at 60% 100%, color-mix(in srgb, var(--color-accent-lighter) 20%, transparent), transparent 60%);
+  background-size: 100% 100%;
+  will-change: transform;
   animation: auroraShift 22s ease-in-out infinite;
 }
-[data-skin="aurora"] body::before { opacity: 0.04; }
 
 [data-skin="aurora"] .modal-overlay,
 [data-skin="aurora"] .task-modal-backdrop,
@@ -7147,7 +7282,7 @@ body.role-programmer .kanban-col.col-scrap {
    drifting backdrops hold still (nothing shows through, and it frees the
    GPU while you read)... */
 html.wf-modal-open[data-skin] body::after,
-html.wf-modal-open[data-skin="aurora"] body { animation-play-state: paused; }
+html.wf-modal-open[data-skin="aurora"] body::before { animation-play-state: paused; }
 
 /* ...and the board's own frosted surfaces switch off under it (see unfrost()
    in utils/cardMorph.js) — re-blurring them every frame of the modal's motion
@@ -7173,7 +7308,7 @@ html.wf-modal-open[data-skin="aurora"] body { animation-play-state: paused; }
   [data-skin="liquid"] .custom-modal-content,
   [data-skin="liquid"] .handbook-panel,
   [data-skin="liquid"] .settings-panel,
-  [data-skin="aurora"] body { animation: none !important; }
+  [data-skin="aurora"] body::before { animation: none !important; }
 }
 
 /* ============================================================
@@ -7276,6 +7411,106 @@ header { animation: heroEnter var(--dur-slow) var(--ease-out-expo) backwards; }
 .kanban-totals-bar .total-card:nth-child(5) { animation-delay: 0.15s; }
 .kanban-totals-bar .total-card:nth-child(6) { animation-delay: 0.18s; }
 .kanban-totals-bar .total-card:nth-child(n+7) { animation-delay: 0.21s; }
+
+/* Board totals ("count buttons"): tilt toward the pointer, a light sheen that
+   follows it, an accent bar that grows on hover, a squish on press, a bump
+   when the number changes (KanbanBoard.jsx) and numbers that roll. Transform /
+   opacity only. */
+.kanban-totals-bar { perspective: 700px; }
+.kanban-totals-bar .total-card {
+  position: relative;
+  overflow: hidden;
+  --tc-rx: 0deg; --tc-ry: 0deg; --tc-gx: 50%;
+  transform: rotateX(var(--tc-rx)) rotateY(var(--tc-ry));
+  transition: transform 0.35s var(--ease-spring, cubic-bezier(0.34, 1.56, 0.64, 1)), box-shadow 0.25s ease, background 0.25s ease;
+}
+.kanban-totals-bar .total-card:hover {
+  transform: translateY(-4px) rotateX(var(--tc-rx)) rotateY(var(--tc-ry));
+  box-shadow: 0 14px 28px -12px color-mix(in srgb, var(--tc-accent, #10b981) 55%, transparent) !important;
+}
+.kanban-totals-bar .total-card:active {
+  transform: translateY(-1px) scale(0.96) rotateX(var(--tc-rx)) rotateY(var(--tc-ry));
+  transition-duration: 0.12s;
+}
+.kanban-totals-bar .total-card::before {
+  content: ""; position: absolute; inset: 0; pointer-events: none; opacity: 0;
+  background: radial-gradient(120px 80px at var(--tc-gx) 0%, color-mix(in srgb, var(--tc-accent, #10b981) 22%, transparent), transparent 70%);
+  transition: opacity 0.25s ease;
+}
+.kanban-totals-bar .total-card:hover::before { opacity: 1; }
+.kanban-totals-bar .total-card::after {
+  content: ""; position: absolute; left: 18%; right: 18%; bottom: 0; height: 3px; border-radius: 3px 3px 0 0;
+  background: var(--tc-accent, #10b981); transform: scaleX(0); transform-origin: center;
+  transition: transform 0.35s var(--ease-spring, cubic-bezier(0.34, 1.56, 0.64, 1));
+}
+.kanban-totals-bar .total-card:hover::after { transform: scaleX(1); }
+.kanban-totals-bar .total-card .total-value { position: relative; display: inline-block; transition: transform 0.35s var(--ease-spring, cubic-bezier(0.34, 1.56, 0.64, 1)); }
+.kanban-totals-bar .total-card:hover .total-value { transform: scale(1.12); }
+.count-up { font-variant-numeric: tabular-nums; }
+
+/* Account filter bar (Operations) */
+.account-bar {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px;
+  padding: 4px 120px 0; margin-bottom: 4px;
+}
+.account-bar-label {
+  display: inline-flex; align-items: center; gap: 6px; margin-right: 4px;
+  font-size: 0.62rem; font-weight: 900; letter-spacing: 1px; text-transform: uppercase; color: var(--color-text-secondary);
+}
+.account-chip {
+  display: inline-flex; align-items: center; gap: 7px; cursor: pointer;
+  padding: 5px 12px; border-radius: 999px; font-size: 0.72rem; font-weight: 800;
+  color: var(--color-text-primary); background: var(--color-card-bg);
+  border: 1px solid var(--glass-border, #e2e8f0); box-shadow: var(--shadow-sm);
+  transition: transform 0.25s var(--ease-spring, cubic-bezier(0.34, 1.56, 0.64, 1)), background 0.2s, color 0.2s, border-color 0.2s, box-shadow 0.2s;
+  animation: riseIn 0.4s var(--ease-out-quart, ease-out) backwards;
+}
+.account-chip:hover { transform: translateY(-2px); border-color: var(--color-accent); }
+.account-chip:active { transform: scale(0.95); }
+.account-chip.active {
+  color: #fff; border-color: transparent;
+  background: linear-gradient(135deg, var(--color-accent), var(--color-nav-bg));
+  box-shadow: 0 8px 18px -8px color-mix(in srgb, var(--color-accent) 70%, transparent);
+}
+.account-chip-count {
+  min-width: 18px; padding: 1px 6px; border-radius: 999px; text-align: center;
+  font-size: 0.62rem; font-variant-numeric: tabular-nums;
+  background: color-mix(in srgb, var(--color-accent) 14%, transparent); color: var(--color-accent);
+}
+.account-chip.active .account-chip-count { background: rgba(255, 255, 255, 0.22); color: #fff; }
+.account-chip-new { border-style: dashed; color: var(--color-accent); background: transparent; box-shadow: none; }
+.account-new-form { display: inline-flex; gap: 6px; animation: riseIn 0.3s var(--ease-out-quart, ease-out) backwards; }
+.account-new-form input {
+  padding: 5px 12px; border-radius: 999px; font-size: 0.72rem; font-weight: 700; outline: none;
+  border: 1px solid var(--color-accent); background: var(--color-card-bg); color: var(--color-text-primary);
+}
+.account-new-form button {
+  padding: 5px 12px; border-radius: 999px; border: none; cursor: pointer; font-size: 0.7rem; font-weight: 900;
+  color: #fff; background: var(--color-accent);
+}
+.card-account-pill {
+  display: inline-block; max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  padding: 1px 7px; border-radius: 999px; font-size: 0.58rem; font-weight: 900; letter-spacing: 0.3px;
+  color: #0369a1; background: #e0f2fe;
+}
+[data-theme="dark"] .card-account-pill { color: #7dd3fc; background: rgba(14, 165, 233, 0.16); }
+
+/* Project Documents (Ops/Exec "Project Links" view, App.jsx) */
+.project-docs-card { animation: riseIn 0.45s var(--ease-out-quart, ease-out) backwards; }
+.project-docs-account { font-size: 0.6rem; font-weight: 900; color: #0369a1; background: #e0f2fe; padding: 2px 8px; border-radius: 999px; }
+.project-docs-list { display: grid; gap: 4px; margin-top: 8px; }
+.project-docs-link {
+  display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 8px; text-decoration: none;
+  font-size: 0.76rem; font-weight: 700; color: var(--color-accent); background: var(--color-bg-subtle);
+  transition: transform 0.2s, background 0.2s;
+}
+.project-docs-link span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.project-docs-link:hover { transform: translateX(3px); background: color-mix(in srgb, #0ea5e9 12%, var(--color-bg-subtle)); }
+
+@media (prefers-reduced-motion: reduce) {
+  .kanban-totals-bar .total-card, .kanban-totals-bar .total-card:hover { transform: none; }
+  .account-chip, .account-new-form, .project-docs-card { animation: none; }
+}
 
 .kanban-container .kanban-col { animation: riseIn var(--dur-slow) var(--ease-out-quart) backwards; }
 .kanban-container .kanban-col:nth-child(1) { animation-delay: 0.06s; }
@@ -8348,3 +8583,261 @@ body[data-workspace="executives"] .nav-btn.highlight:hover {
 .ai-history-item-time { font-size: 0.62rem; color: var(--color-text-secondary); }
 .ai-history-del { position: absolute; top: 8px; right: 10px; font-size: 1rem; line-height: 1; color: var(--color-text-secondary); opacity: 0.5; }
 .ai-history-del:hover { opacity: 1; color: #ef4444; }
+/* ============================================================
+   HEADER — search spotlight, profile, buttons that feel alive
+   ============================================================ */
+.header-search { position: relative; display: flex; align-items: center; }
+.header-search-btn {
+  width: 34px; height: 34px; border-radius: 50%; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  border: 1px solid #e2e8f0; background: #f8fafc; color: #64748b;
+  transition: transform 0.35s var(--ease-spring, cubic-bezier(0.34, 1.56, 0.64, 1)), background 0.2s, color 0.2s, border-color 0.2s, box-shadow 0.25s;
+}
+.header-search-btn svg { transition: transform 0.4s var(--ease-spring, cubic-bezier(0.34, 1.56, 0.64, 1)); }
+.header-search-btn:hover { background: var(--color-accent); border-color: var(--color-accent); color: #fff; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3); transform: translateY(-2px); }
+.header-search-btn:hover svg { transform: rotate(-14deg) scale(1.12); }
+.header-search-btn:active { transform: scale(0.9); }
+.header-search-btn.open { background: var(--color-accent); border-color: var(--color-accent); color: #fff; }
+.header-search-btn.open svg { transform: scale(0.9); }
+[data-theme="dark"] .header-search-btn { background: #1e293b; border-color: #334155; color: #94a3b8; }
+
+.header-search-panel {
+  position: absolute; top: calc(100% + 10px); left: -8px; z-index: 2100; width: 360px;
+  max-width: calc(100vw - 24px);
+  transform-origin: 25px -10px;
+  background: var(--color-card-bg); border: 1px solid var(--glass-border, #e2e8f0); border-radius: 16px;
+  box-shadow: 0 24px 48px -16px rgba(15, 23, 42, 0.35), 0 2px 6px rgba(15, 23, 42, 0.06);
+  overflow: hidden;
+}
+.hs-input-row { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-bottom: 1px solid var(--glass-border, #e2e8f0); color: var(--color-accent); }
+.hs-input-row input { flex: 1; min-width: 0; border: none; outline: none; background: transparent; font-size: 0.88rem; font-weight: 600; color: var(--color-text-primary); }
+.hs-clear { border: none; background: var(--color-bg-subtle); color: var(--color-text-secondary); width: 22px; height: 22px; border-radius: 50%; cursor: pointer; font-size: 0.9rem; line-height: 1; }
+.hs-kbd { font-size: 0.6rem; font-weight: 800; color: var(--color-text-secondary); border: 1px solid var(--glass-border, #e2e8f0); border-bottom-width: 2px; border-radius: 6px; padding: 1px 6px; }
+.hs-results { max-height: 340px; overflow-y: auto; padding: 6px; }
+.hs-item {
+  display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 10px; cursor: pointer;
+  transition: background 0.15s, transform 0.2s var(--ease-spring, cubic-bezier(0.34, 1.56, 0.64, 1));
+}
+.hs-item.active { background: color-mix(in srgb, var(--color-accent) 11%, transparent); transform: translateX(3px); }
+.hs-item:active { transform: scale(0.98); }
+.hs-avatar { width: 26px; height: 26px; border-radius: 50%; object-fit: cover; flex-shrink: 0; }
+.hs-avatar-fallback { display: inline-flex; align-items: center; justify-content: center; background: var(--color-accent); color: #fff; font-size: 0.7rem; font-weight: 900; }
+.hs-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; margin: 0 8px; background: var(--color-accent); box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-accent) 18%, transparent); }
+.hs-dot.prio { background: #f59e0b; box-shadow: 0 0 0 4px rgba(245, 158, 11, 0.2); }
+.hs-text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.hs-title { font-size: 0.82rem; font-weight: 800; color: var(--color-text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hs-sub { font-size: 0.68rem; color: var(--color-text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hs-kind { font-size: 0.55rem; font-weight: 900; letter-spacing: 0.6px; text-transform: uppercase; color: var(--color-text-secondary); opacity: 0; transition: opacity 0.15s; }
+.hs-item.active .hs-kind { opacity: 1; }
+.hs-mark { background: color-mix(in srgb, var(--color-accent) 24%, transparent); color: inherit; border-radius: 3px; padding: 0 1px; }
+.hs-empty, .hs-hint { padding: 16px 14px; font-size: 0.74rem; color: var(--color-text-secondary); text-align: center; }
+.hs-empty-icon { display: block; font-size: 1.4rem; margin-bottom: 6px; animation: hsWobble 1.6s ease-in-out infinite; }
+@keyframes hsWobble { 0%, 100% { transform: rotate(0); } 25% { transform: rotate(-12deg); } 75% { transform: rotate(12deg); } }
+
+/* Profile: the avatar breathes on hover; the card grows out of where you
+   clicked (App.jsx closeProfile/profileRef) */
+.header-avatar-container { transition: transform 0.35s var(--ease-spring, cubic-bezier(0.34, 1.56, 0.64, 1)); }
+.header-avatar-container::after {
+  content: ""; position: absolute; inset: -4px; border-radius: 50%; pointer-events: none;
+  border: 2px solid var(--color-accent); opacity: 0; transform: scale(0.85);
+  transition: opacity 0.25s, transform 0.35s var(--ease-spring, cubic-bezier(0.34, 1.56, 0.64, 1));
+}
+.header-avatar-container:hover { transform: translateY(-2px) scale(1.06); }
+.header-avatar-container:hover::after { opacity: 1; transform: scale(1); animation: avatarRing 1.6s ease-out 0.35s infinite; }
+.header-avatar-container:active { transform: scale(0.94); }
+@keyframes avatarRing { 0% { opacity: 0.9; transform: scale(1); } 100% { opacity: 0; transform: scale(1.35); } }
+.role-badge { transition: transform 0.3s var(--ease-spring, cubic-bezier(0.34, 1.56, 0.64, 1)), box-shadow 0.2s; }
+.role-badge:hover { transform: translateY(-1px) scale(1.05); }
+.profile-popover-close { transition: transform 0.35s var(--ease-spring, cubic-bezier(0.34, 1.56, 0.64, 1)), background 0.2s; }
+.profile-popover-close:hover { transform: rotate(90deg) scale(1.1); }
+
+/* Header buttons: each icon does its own little thing on hover */
+.btn-project-consolidation svg { transition: transform 0.45s var(--ease-spring, cubic-bezier(0.34, 1.56, 0.64, 1)); }
+.btn-project-consolidation:hover { transform: translateY(-2px); }
+.btn-project-consolidation:hover svg { transform: rotate(-12deg) scale(1.18); }
+.btn-project-consolidation:active { transform: scale(0.95); }
+.btn-project-consolidation[title^="Open the"]:hover svg { animation: bookFlip 0.7s var(--ease-spring, cubic-bezier(0.34, 1.56, 0.64, 1)); }
+@keyframes bookFlip { 0% { transform: perspective(60px) rotateY(0); } 45% { transform: perspective(60px) rotateY(-55deg) scale(1.15); } 100% { transform: perspective(60px) rotateY(0) scale(1.1); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .header-search-btn, .header-search-btn svg, .header-avatar-container, .role-badge,
+  .btn-project-consolidation, .btn-project-consolidation svg { transition: none; }
+  .header-avatar-container:hover::after, .btn-project-consolidation:hover svg, .hs-empty-icon { animation: none; }
+}
+
+/* ============================================================
+   COLUMN GATHER — click a board total: its cards lift off the board and
+   gather to the front over a blurred board (ColumnGather.jsx)
+   ============================================================ */
+.gather-overlay {
+  position: fixed; inset: 0; z-index: 1500;
+  display: flex; flex-direction: column; align-items: center;
+  padding: 26px 40px 40px; overflow-y: auto; overscroll-behavior: contain;
+}
+.gather-backdrop {
+  position: fixed; inset: 0; pointer-events: none;
+  background: color-mix(in srgb, var(--color-bg-primary, #f8fafc) 35%, rgba(15, 23, 42, 0.35));
+  backdrop-filter: blur(14px) saturate(120%);
+  -webkit-backdrop-filter: blur(14px) saturate(120%);
+}
+[data-theme="dark"] .gather-backdrop { background: rgba(2, 6, 23, 0.55); }
+.gather-head {
+  position: relative; z-index: 1; display: inline-flex; align-items: center; gap: 12px;
+  padding: 10px 12px 10px 18px; margin-bottom: 22px; border-radius: 999px;
+  background: var(--color-card-bg); border: 1px solid var(--glass-border, #e2e8f0);
+  box-shadow: 0 16px 36px -16px rgba(15, 23, 42, 0.45);
+}
+.gather-dot { width: 12px; height: 12px; border-radius: 50%; background: var(--gather-accent, var(--color-accent)); box-shadow: 0 0 0 5px color-mix(in srgb, var(--gather-accent, #10b981) 22%, transparent); }
+.gather-title { font-size: 0.95rem; font-weight: 900; letter-spacing: 0.4px; text-transform: uppercase; color: var(--color-text-primary); }
+.gather-count { font-size: 0.75rem; font-weight: 800; color: var(--color-text-secondary); }
+.gather-close {
+  width: 30px; height: 30px; border-radius: 50%; border: none; cursor: pointer; font-size: 1.1rem; line-height: 1;
+  background: var(--color-bg-subtle); color: var(--color-text-secondary);
+  transition: transform 0.35s var(--ease-spring, cubic-bezier(0.34, 1.56, 0.64, 1)), background 0.2s, color 0.2s;
+}
+.gather-close:hover { transform: rotate(90deg) scale(1.1); background: var(--color-accent); color: #fff; }
+.gather-grid {
+  position: relative; z-index: 1; width: 100%; max-width: 1500px;
+  display: grid; grid-template-columns: repeat(auto-fill, var(--gather-card-w, 260px));
+  justify-content: center; align-items: start; gap: 18px;
+}
+.gather-slot { will-change: transform; }
+.gather-slot > .task-card,
+.gather-slot > .programmer-card {
+  margin: 0; cursor: pointer;
+  box-shadow: 0 18px 38px -18px rgba(15, 23, 42, 0.45), 0 2px 6px rgba(15, 23, 42, 0.06);
+  transition: transform 0.3s var(--ease-spring, cubic-bezier(0.34, 1.56, 0.64, 1)), box-shadow 0.25s;
+}
+.gather-slot > .task-card:hover,
+.gather-slot > .programmer-card:hover { transform: translateY(-5px) scale(1.03); box-shadow: 0 26px 46px -18px rgba(15, 23, 42, 0.5); }
+.gather-slot > .task-card:active { transform: scale(0.98); }
+.gather-empty { grid-column: 1 / -1; text-align: center; padding: 40px; color: var(--color-text-secondary); font-weight: 700; }
+html:has(.gather-overlay) { overflow: clip; }
+
+/* Workspace switch: the chosen card swells over the screen, the workspace
+   changes underneath, then this curtain (same colour as the card) fades. */
+.ws-curtain {
+  position: fixed; inset: 0; z-index: 6000; pointer-events: none;
+  background: var(--color-card-bg, #fff);
+  animation: wsCurtainOut 0.65s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+@keyframes wsCurtainOut { from { opacity: 1; } to { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .ws-curtain { display: none; } }
+
+/* Header on laptop widths: the profile cluster (avatar, bell, search, gear)
+   keeps its room, and the title box tightens instead of spilling over. */
+header .header-box .btn-project-consolidation { white-space: nowrap; }
+@media (max-width: 1440px) {
+  header .header-box { padding: 10px 22px !important; gap: 18px !important; }
+}
+@media (max-width: 1400px) {
+  header .header-box img[alt="WFM Logo"] { display: none; }
+}
+@media (max-width: 1180px) {
+  header .header-box img[alt="ECE Logo"] { display: none; }
+}
+
+/* The WORKFORCE HERMES title opens the workspace picker — it reacts like a button. */
+.header-text-content.can-switch { position: relative; transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1); }
+.header-text-content.can-switch h1 { transition: color 0.2s ease, letter-spacing 0.35s cubic-bezier(0.34, 1.56, 0.64, 1); }
+.header-text-content.can-switch::after {
+  content: ""; position: absolute; left: 50%; right: 50%; bottom: -7px; height: 3px; border-radius: 3px;
+  background: linear-gradient(90deg, var(--color-accent), var(--color-nav-bg));
+  transition: left 0.35s cubic-bezier(0.34, 1.56, 0.64, 1), right 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.header-text-content.can-switch:hover { transform: translateY(-1px); }
+.header-text-content.can-switch:hover h1 { color: var(--color-accent); letter-spacing: -0.6px !important; }
+.header-text-content.can-switch:hover::after { left: 22%; right: 22%; }
+@media (prefers-reduced-motion: reduce) {
+  .header-text-content.can-switch, .header-text-content.can-switch h1, .header-text-content.can-switch::after { transition: none; }
+}
+
+/* ── Task modal "⋯" menu: System links · API access · Admin login (Workforce, Admin-level) ── */
+.tm-more { position: relative; display: flex; align-items: center; }
+.tm-more-btn {
+  width: 38px; height: 38px; border-radius: 12px; cursor: pointer; flex-shrink: 0;
+  display: inline-flex; align-items: center; justify-content: center; gap: 3px;
+  background: var(--color-bg-subtle); border: 1px solid var(--glass-border, #e2e8f0);
+  transition: background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.25s ease, transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1), gap 0.25s cubic-bezier(0.34, 1.56, 0.64, 1), scale 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.tm-more-btn span {
+  width: 4px; height: 4px; border-radius: 50%; background: var(--color-text-secondary);
+  transition: background-color 0.2s ease, transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.tm-more-btn:hover { gap: 4px; border-color: color-mix(in srgb, var(--color-accent) 45%, transparent); background: color-mix(in srgb, var(--color-accent) 10%, var(--color-card-bg, #fff)); }
+.tm-more-btn:hover span { background: var(--color-accent); }
+.tm-more-btn:hover span:nth-child(1) { transform: translateY(-2px); }
+.tm-more-btn:hover span:nth-child(3) { transform: translateY(2px); }
+.tm-more-btn:active { scale: 0.9; }
+.tm-more-btn.open { background: var(--color-accent); border-color: var(--color-accent); transform: rotate(90deg); box-shadow: 0 8px 18px -8px color-mix(in srgb, var(--color-accent) 80%, transparent); }
+.tm-more-btn.open span { background: #fff; transform: none; }
+
+.tm-more-pop {
+  position: absolute; right: 0; top: calc(100% + 10px); z-index: 80; box-sizing: border-box; width: min(420px, 80vw);
+  display: grid; gap: 10px; padding: 14px; text-align: left;
+  background: var(--color-card-bg, #fff); border: 1px solid var(--glass-border, #e2e8f0); border-radius: 18px;
+  box-shadow: 0 28px 60px -22px rgba(15, 23, 42, 0.45), 0 2px 8px rgba(15, 23, 42, 0.08);
+  transform-origin: calc(100% - 19px) -10px;
+  animation: tmMoreIn 0.34s cubic-bezier(0.34, 1.4, 0.64, 1) both;
+}
+.tm-more-pop::before {
+  content: ""; position: absolute; top: -7px; right: 13px; width: 12px; height: 12px; rotate: 45deg;
+  background: var(--color-card-bg, #fff); border-left: 1px solid var(--glass-border, #e2e8f0); border-top: 1px solid var(--glass-border, #e2e8f0);
+}
+@keyframes tmMoreIn { from { opacity: 0; transform: scale(0.82) translateY(-6px); } to { opacity: 1; transform: none; } }
+.tm-more-head {
+  display: flex; align-items: center; gap: 8px; padding: 0 2px;
+  font-size: 0.62rem; font-weight: 900; letter-spacing: 1px; text-transform: uppercase; color: var(--color-text-secondary);
+}
+.tm-more-head span {
+  margin-left: auto; font-size: 0.55rem; letter-spacing: 0.6px; padding: 2px 8px; border-radius: 999px;
+  color: var(--color-accent); background: color-mix(in srgb, var(--color-accent) 12%, transparent);
+}
+.tm-more-pop .tm-acc {
+  margin: 0; padding: 11px 12px; border-radius: 13px; overflow: visible;
+  background: var(--color-bg-subtle) !important; border: 1px solid var(--glass-border, #e2e8f0) !important; box-shadow: none !important;
+  animation: tmAccIn 0.4s cubic-bezier(0.2, 0, 0, 1) backwards;
+}
+.tm-more-pop .tm-acc:nth-of-type(1) { animation-delay: 0.05s; }
+.tm-more-pop .tm-acc:nth-of-type(2) { animation-delay: 0.1s; }
+.tm-more-pop .tm-acc:nth-of-type(3) { animation-delay: 0.15s; }
+@keyframes tmAccIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+.tm-acc-title { display: flex; align-items: center; gap: 8px; margin-bottom: 9px; font-size: 0.74rem; font-weight: 800; color: var(--color-text-primary); }
+.tm-acc-icon { width: 24px; height: 24px; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.tm-acc-icon.links { color: #2563eb; background: color-mix(in srgb, #3b82f6 16%, transparent); }
+.tm-acc-icon.api { color: #7c3aed; background: color-mix(in srgb, #8b5cf6 16%, transparent); }
+.tm-acc-icon.creds { color: var(--color-accent); background: color-mix(in srgb, var(--color-accent) 16%, transparent); }
+.tm-acc-tag { margin-left: auto; font-size: 0.55rem; font-weight: 900; letter-spacing: 0.6px; text-transform: uppercase; padding: 2px 8px; border-radius: 999px; color: #b91c1c; background: #fee2e2; }
+.tm-acc-grid { display: grid; grid-template-columns: 76px minmax(0, 1fr); gap: 6px 10px; align-items: center; }
+.tm-acc-key { font-size: 0.58rem; font-weight: 900; letter-spacing: 0.6px; text-transform: uppercase; color: var(--color-text-secondary); }
+.tm-acc-link { font-size: 0.76rem; font-weight: 700; color: var(--color-accent); text-decoration: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tm-acc-link:hover { text-decoration: underline; }
+.tm-acc-empty { font-size: 0.72rem; font-style: italic; color: #94a3b8; }
+.tm-acc-api { display: flex; gap: 6px; align-items: center; }
+.tm-acc-api input {
+  flex: 1; min-width: 0; padding: 7px 9px; border-radius: 9px; font-family: ui-monospace, monospace; font-size: 0.66rem;
+  color: var(--color-text-primary); background: var(--color-card-bg, #fff); border: 1px solid var(--glass-border, #e2e8f0); outline: none;
+}
+.tm-acc-api input:focus { border-color: #8b5cf6; box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.15); }
+.tm-copy-btn {
+  flex-shrink: 0; padding: 7px 13px; border: none; border-radius: 9px; cursor: pointer;
+  font: inherit; font-size: 0.62rem; font-weight: 900; letter-spacing: 0.4px; color: #fff; background: #8b5cf6;
+}
+.tm-copy-btn.copied { background: #22c55e; }
+.tm-acc-hint { margin-top: 7px; font-size: 0.6rem; line-height: 1.55; color: var(--color-text-secondary); }
+.tm-acc-hint code { font-size: 0.58rem; padding: 0 4px; border-radius: 4px; background: color-mix(in srgb, #8b5cf6 10%, transparent); color: #7c3aed; }
+.tm-acc-secret { font-family: ui-monospace, monospace; font-size: 0.78rem; font-weight: 700; color: var(--color-text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tm-acc-secret.shown { animation: tmSecretIn 0.5s cubic-bezier(0.2, 0, 0, 1); }
+@keyframes tmSecretIn { from { opacity: 0; filter: blur(6px); letter-spacing: 2px; } to { opacity: 1; filter: none; } }
+.tm-reveal-btn {
+  margin-top: 10px; width: 100%; display: flex; align-items: center; justify-content: center; gap: 7px;
+  padding: 8px; border-radius: 10px; cursor: pointer; font: inherit; font-size: 0.66rem; font-weight: 900; letter-spacing: 0.3px;
+  color: var(--color-accent); background: var(--color-card-bg, #fff); border: 1.5px dashed color-mix(in srgb, var(--color-accent) 60%, transparent);
+  transition: background-color 0.18s ease, color 0.18s ease, border-color 0.18s ease, transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), scale 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.tm-reveal-btn:hover { background: var(--color-accent); color: #fff; border-style: solid; transform: translateY(-1px); }
+.tm-reveal-btn:active { scale: 0.96; }
+@media (prefers-reduced-motion: reduce) {
+  .tm-more-pop, .tm-more-pop .tm-acc, .tm-acc-secret.shown { animation: none; }
+  .tm-more-btn, .tm-more-btn span, .tm-reveal-btn { transition: none; }
+}

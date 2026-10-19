@@ -2,6 +2,7 @@ import { useState, useRef } from "react";
 import { useQuery, useMutation } from "../data/react";
 import { api } from "../data/api";
 import { useWorkspace } from "../utils/workspaceContext";
+import { sanitizeHtml } from "../utils/sanitizeHtml";
 
 /**
  * AnnouncementComposer — visible only to Admin+ users.
@@ -23,7 +24,8 @@ export default function AnnouncementComposer({ userName, showModal }) {
   }
 
   function handlePost() {
-    const body = editorRef.current?.innerHTML?.trim();
+    // Pasted content can carry scripts / handlers — store only clean HTML.
+    const body = sanitizeHtml(editorRef.current?.innerHTML || "").trim();
     if (!title.trim() || !body || body === "<br>" || body === "<div><br></div>") {
       showModal({ title: "Error", message: "Please enter both a title and body for the announcement.", type: "alert" });
       return;
@@ -158,7 +160,7 @@ export default function AnnouncementComposer({ userName, showModal }) {
                     <div
                       className="announcement-history-body"
                       style={{ color: "var(--color-text-secondary)" }}
-                      dangerouslySetInnerHTML={{ __html: a.body }}
+                      dangerouslySetInnerHTML={{ __html: sanitizeHtml(a.body) }}
                     />
                   </div>
                 ))}
@@ -186,7 +188,7 @@ export default function AnnouncementComposer({ userName, showModal }) {
                 <div
                   className="announcement-popup-body"
                   style={{ color: "var(--color-text-secondary)", minHeight: "200px" }}
-                  dangerouslySetInnerHTML={{ __html: selectedAnnouncement.body }}
+                  dangerouslySetInnerHTML={{ __html: sanitizeHtml(selectedAnnouncement.body) }}
                 />
 
                 <div className="announcement-popup-footer">

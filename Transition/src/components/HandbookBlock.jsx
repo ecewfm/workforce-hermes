@@ -1,6 +1,9 @@
 import { useState } from "react";
+import Select from "./ui/Select";
 import { Icon } from "./handbookIcons";
 import HandbookChart from "./HandbookChart";
+import { accessExampleFor } from "./handbookBlocks";
+import { useWorkspace } from "../utils/workspaceContext";
 
 const WIDTH_OPTS = [
   { w: 1, label: "¼" },
@@ -56,6 +59,8 @@ export default function HandbookBlock({
   return (
     <div
       className={`hb-block w-${block.w} ${isBanner ? "hb-banner" : ""} ${type === "callout" ? "hb-callout" : ""} ${isDragOver ? "drag-over" : ""}`}
+      data-block-id={block.id}
+      data-block-type={type}
       onDragOver={editing ? (e) => e.preventDefault() : undefined}
       onDragEnter={editing ? onDragEnterBlock : undefined}
       onDrop={editing ? (e) => { e.preventDefault(); onDropBlock(); } : undefined}
@@ -113,9 +118,8 @@ function BlockContent({ type, props, editing, onUpdate }) {
       return editing ? (
         <div>
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            <select className="hb-edit-input" style={{ width: 70 }} value={props.icon || "book"} onChange={(e) => onUpdate({ icon: e.target.value })}>
-              {HEADING_ICONS.map((ic) => <option key={ic} value={ic}>{ic}</option>)}
-            </select>
+            <Select size="sm" className="hb-icon-select" value={props.icon || "book"} onChange={(v) => onUpdate({ icon: v })}
+              options={HEADING_ICONS.map((ic) => ({ value: ic, label: ic }))} ariaLabel="Heading icon" />
             <input className="hb-edit-input" style={{ fontWeight: 800 }} value={props.text} placeholder="Heading text" onChange={(e) => onUpdate({ text: e.target.value })} />
           </div>
           <ColorRow value={props.color} onChange={(c) => onUpdate({ color: c })} />
@@ -183,7 +187,7 @@ function BlockContent({ type, props, editing, onUpdate }) {
         render={(items) => (
           <ul className="hb-timeline">
             {items.map((it, i) => (
-              <li key={i} className="hb-timeline-item">
+              <li key={i} className="hb-timeline-item" style={{ "--i": i }}>
                 <div className="hb-timeline-title">{it.title}</div>
                 <div className="hb-timeline-desc">{it.desc}</div>
               </li>
@@ -202,7 +206,7 @@ function BlockContent({ type, props, editing, onUpdate }) {
         render={(items) => (
           <div className="hb-steps">
             {items.map((it, i) => (
-              <div key={i} className="hb-step">
+              <div key={i} className="hb-step" style={{ "--i": i }}>
                 <div className="hb-step-num">{i + 1}</div>
                 <div>
                   <div className="hb-step-title">{it.title}</div>
@@ -224,7 +228,7 @@ function BlockContent({ type, props, editing, onUpdate }) {
         render={(columns) => (
           <div className="hb-cardgrid">
             {columns.map((c, i) => (
-              <div key={i} className="hb-subcard">
+              <div key={i} className="hb-subcard" style={{ "--i": i }}>
                 <div className="sc-icon"><Icon name={c.icon || "layers"} size={20} /></div>
                 <div className="sc-title">{c.title}</div>
                 <div className="sc-body">{c.body}</div>
@@ -244,7 +248,7 @@ function BlockContent({ type, props, editing, onUpdate }) {
         render={(items) => (
           <div className="hb-kpis">
             {items.map((k, i) => (
-              <div key={i} className="hb-kpi">
+              <div key={i} className="hb-kpi" style={{ "--i": i }}>
                 <div className="hb-kpi-value">{k.value}</div>
                 <div className="hb-kpi-label">{k.label}</div>
               </div>
@@ -310,6 +314,7 @@ export function SecretValue({ value }) {
 /* Access column: an optional heading with any number of credential cards
    stacked inside one block — designed to sit as a ¼-width sidebar. */
 function AccessBlock({ props, editing, onUpdate }) {
+  const workspace = useWorkspace();
   // Normalize the earlier single-card shape ({title, items}) into cards[].
   const cards = props.cards || (props.items ? [{ title: props.title || "Access", items: props.items }] : []);
 
@@ -319,7 +324,7 @@ function AccessBlock({ props, editing, onUpdate }) {
         {props.heading ? <div className="hb-access-col-heading"><Icon name="lock" size={13} />{props.heading}</div> : null}
         <div className="hb-access-cards">
           {cards.map((card, ci) => (
-            <div key={ci} className="hb-access-card">
+            <div key={ci} className="hb-access-card" style={{ "--i": ci }}>
               <div className="hb-access-title"><Icon name="lock" size={12} />{card.title}</div>
               {(card.items || []).map((it, i) => (
                 <div key={i} className="hb-access-row">
@@ -360,7 +365,7 @@ function AccessBlock({ props, editing, onUpdate }) {
               <button className="hb-tool-btn" title="Down" disabled={ci === cards.length - 1} onClick={() => moveCard(ci, 1)}><Icon name="down" size={12} /></button>
               <button className="hb-tool-btn danger" title="Remove card" onClick={() => patchCards(cards.filter((_, i) => i !== ci))}><Icon name="trash" size={12} /></button>
             </div>
-            <input className="hb-edit-input" style={{ marginBottom: 6, fontWeight: 800 }} value={card.title || ""} placeholder="Card title (e.g. Supabase Access)" onChange={(e) => patchCard(ci, { title: e.target.value })} />
+            <input className="hb-edit-input" style={{ marginBottom: 6, fontWeight: 800 }} value={card.title || ""} placeholder={`Card title (e.g. ${accessExampleFor(workspace)})`} onChange={(e) => patchCard(ci, { title: e.target.value })} />
             {(card.items || []).map((it, ii) => (
               <div key={ii} style={{ display: "flex", gap: 6, marginBottom: 6 }}>
                 <input className="hb-edit-input" style={{ flex: 1 }} value={it.label || ""} placeholder="Label" onChange={(e) => patchItem(ci, ii, "label", e.target.value)} />
@@ -441,8 +446,8 @@ function ChecklistBlock({ props, editing, onUpdate }) {
         {props.title ? <div className="hb-heading" style={{ fontSize: "0.95rem", marginBottom: 12 }}><Icon name="check" size={18} />{props.title}</div> : null}
         <div className="hb-checklist">
           {items.map((it, i) => (
-            <div key={i} className={`hb-check-item ${it.done ? "done" : ""}`}>
-              <span className="hb-check-box">{it.done ? <Icon name="check" size={12} /> : null}</span>
+            <div key={i} className={`hb-check-item ${it.done ? "done" : ""}`} style={{ "--i": i }}>
+              <span className="hb-check-box">{it.done ? <Icon name="check" size={12} className="hbm-draw" /> : null}</span>
               <span className="hb-check-text">{it.text}</span>
             </div>
           ))}
@@ -461,9 +466,10 @@ function ChecklistBlock({ props, editing, onUpdate }) {
       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
         {items.map((it, i) => (
           <div key={i} style={{ display: "flex", gap: 6, alignItems: "center" }}>
-            <button className={`hb-tool-btn ${it.done ? "" : ""}`} title="Toggle done" onClick={() => patch(i, "done", !it.done)}
+            <button className={`hb-tool-btn hbm-tick ${it.done ? "is-on" : ""}`} title="Toggle done" onClick={() => patch(i, "done", !it.done)}
               style={{ background: it.done ? "var(--color-accent)" : "var(--color-bg-subtle)", color: it.done ? "#fff" : "var(--color-text-secondary)", flexShrink: 0 }}>
-              <Icon name="check" size={12} />
+              {/* Re-keyed so ticking mounts a fresh check that draws itself in. */}
+              <Icon key={it.done ? "on" : "off"} name="check" size={12} className={it.done ? "hbm-draw hbm-draw-now" : undefined} />
             </button>
             <input className="hb-edit-input" value={it.text} placeholder="Item text" onChange={(e) => patch(i, "text", e.target.value)} />
             <button className="hb-tool-btn danger" onClick={() => remove(i)}><Icon name="trash" size={12} /></button>
@@ -490,16 +496,16 @@ function ChartEditor({ props, editing, onUpdate }) {
       <div className="hb-mini-label">Chart title</div>
       <input className="hb-edit-input" value={props.title || ""} placeholder="Chart title" onChange={(e) => onUpdate({ title: e.target.value })} />
       <div className="hb-mini-label">Chart type</div>
-      <select className="hb-edit-input" value={props.kind} onChange={(e) => onUpdate({ kind: e.target.value })}>
-        <option value="bar">Bar (vertical)</option>
-        <option value="hbar">Bar (horizontal)</option>
-        <option value="line">Line</option>
-        <option value="area">Area</option>
-        <option value="pie">Pie</option>
-        <option value="donut">Donut</option>
-        <option value="progress">Progress bars</option>
-        <option value="radial">Radial rings</option>
-      </select>
+      <Select value={props.kind} onChange={(v) => onUpdate({ kind: v })} ariaLabel="Chart type" options={[
+        { value: "bar", label: "Bar (vertical)" },
+        { value: "hbar", label: "Bar (horizontal)" },
+        { value: "line", label: "Line" },
+        { value: "area", label: "Area" },
+        { value: "pie", label: "Pie" },
+        { value: "donut", label: "Donut" },
+        { value: "progress", label: "Progress bars" },
+        { value: "radial", label: "Radial rings" },
+      ]} />
       <div className="hb-mini-label">Data points</div>
       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
         {data.map((d, i) => (

@@ -30,7 +30,7 @@ export const FALLBACK_MILESTONES = [
 // staffing change, audit, event…). 8 steps, 56 days (~8 weeks) — a medium-sized
 // initiative; the AI planner tailors this per task, this is the no-AI default.
 // `hint` explains what each generic step means so it's easy to apply to any
-// project (shown in New Task; not stored on the task).
+// project. It's saved on the task's milestone and shown in the task modal.
 export const OPERATIONS_FALLBACK_MILESTONES = [
   { name: "Scope & Goals", days: 5, hint: "Agree the problem, the goal, how success will be measured, and who's involved." },
   { name: "Plan & Design", days: 7, hint: "Map the approach: the steps or process, owners, resources, timeline and budget." },
@@ -42,9 +42,23 @@ export const OPERATIONS_FALLBACK_MILESTONES = [
   { name: "Monitor & Hand Over", days: 14, hint: "Track results against the goal, fix gaps, document it, and hand it to the day-to-day owner." },
 ];
 
+// Executives — analysis → recommendation → decision → oversight. 7 steps,
+// 53 days. Same idea as Operations: generic enough for any executive
+// initiative; the AI planner tailors it per task.
+export const EXECUTIVES_FALLBACK_MILESTONES = [
+  { name: "Situation & Data Review", days: 7, hint: "Gather the numbers and context: what's happening, why it matters, and what it costs today." },
+  { name: "Options & Recommendation", days: 7, hint: "Lay out the realistic options with cost, risk and impact, and choose a recommendation." },
+  { name: "Stakeholder Alignment", days: 5, hint: "Walk the key leaders through the recommendation and surface their concerns early." },
+  { name: "Decision & Approval", days: 3, hint: "Get a clear go / no-go from the decision-makers, with budget and an owner." },
+  { name: "Launch & Delegate", days: 5, hint: "Hand the work to the owning team with goals, deadlines and a reporting rhythm." },
+  { name: "Oversight & Check-ins", days: 21, hint: "Review progress on a set rhythm and unblock what the team can't solve alone." },
+  { name: "Results Review & Close-out", days: 5, hint: "Compare results with the goal, decide next steps, and share what was learned." },
+];
+
 const FALLBACKS_BY_WORKSPACE = {
   workforce: FALLBACK_MILESTONES,
   operations: OPERATIONS_FALLBACK_MILESTONES,
+  executives: EXECUTIVES_FALLBACK_MILESTONES,
 };
 
 /** The built-in default template for a workspace (fresh copies, safe to mutate). */

@@ -1,15 +1,20 @@
 import { useState, useRef, useEffect, useMemo } from "react";
+import DatePicker from "./ui/DatePicker";
+import Select from "./ui/Select";
+import MultiSelect from "./ui/MultiSelect";
 import { useQuery, useMutation } from "../data/react";
 import { api } from "../data/api";
 import { loadSettings, saveSettings, applySettings, DEFAULT_SETTINGS, SKINS } from "../utils/settingsManager";
 import { fallbackMilestonesFor } from "../utils/defaults";
-import { isAdminPlusOrAbove, isManager, ASSIGNABLE_ROLES } from "../utils/roles";
+import { isAdminPlusOrAbove, isAdminLevel, isManager, ASSIGNABLE_ROLES } from "../utils/roles";
 import { useWorkspace } from "../utils/workspaceContext";
-import { DEPARTMENTS, workspaceLabel, MAIN_ADMIN_EMAIL } from "../utils/departments";
+import { DEPARTMENTS, WORKSPACE_META, workspaceLabel, MAIN_ADMIN_EMAIL } from "../utils/departments";
 import { hashPassword, markWorkspaceUnlocked } from "../utils/workspacePassword";
-import { DEFAULT_COLUMNS, COLUMN_COLOR_PRESETS, resolveColumns, taskInColumn, makeColumnId } from "../utils/columns";
+import { COLUMN_COLOR_PRESETS, ARCHIVED_STATUS, defaultColumnsFor, resolveColumns, isArchivedStatus, taskInColumn, makeColumnId } from "../utils/columns";
 import { getGeminiModels, isCaddyEnabled, setCaddyEnabled } from "../utils/aiConfig";
 import { getFxPrefs, setFxPref } from "../utils/fxPrefs";
+import { termsFor, usesAccounts, roleLabel } from "../utils/workspaceTerms";
+import "../styles/settings-extra.css";
 
 const ACCENT_COLORS = [
   { name: "Emerald", value: "#10b981" },
@@ -20,7 +25,14 @@ const ACCENT_COLORS = [
 ];
 
 const FONT_SIZES = ["Standard", "Large", "Extra Large"];
-const DEFAULT_VIEWS = ["Dashboard", "Projects", "Activity Feed", "Notebook"];
+// Stored values are what App.jsx maps to a screen (keep them as-is); the
+// labels match the nav button each one actually opens.
+const DEFAULT_VIEWS = [
+  { value: "Dashboard", label: "Overview" },
+  { value: "Projects", label: "Dashboard (project board)" },
+  { value: "Activity Feed", label: "New Task" },
+  { value: "Notebook", label: "Notebook" },
+];
 
 const BASE_SECTIONS = [
   { id: "appearance", label: "Appearance & UI", icon: "palette" },
@@ -47,6 +59,8 @@ function SectionIcon({ icon, size = 18 }) {
       return (<svg viewBox="0 0 24 24" {...s}><polyline points="21 8 21 21 3 21 3 8" /><rect x="1" y="3" width="22" height="5" /><line x1="10" y1="12" x2="14" y2="12" /></svg>);
     case "target":
       return (<svg viewBox="0 0 24 24" {...s}><circle cx="12" cy="12" r="10" /><circle cx="12" cy="12" r="6" /><circle cx="12" cy="12" r="2" /></svg>);
+    case "briefcase":
+      return (<svg viewBox="0 0 24 24" {...s}><rect x="2" y="7" width="20" height="14" rx="2" ry="2" /><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" /></svg>);
     default: return null;
   }
 }
@@ -60,16 +74,30 @@ export default function Settings({ userName, userEmail, onClose, showModal, onLo
   // Admin/Admin+ can view it but not change it.
   const isMainAdmin = (userEmail || "").toLowerCase() === MAIN_ADMIN_EMAIL;
   const canEditDepartments = isManager(actualRole) || isMainAdmin;
+  const workspace = useWorkspace();
+  // Workspace vocabulary (Workforce keeps its original software wording)
+  const terms = termsFor(workspace);
+  const hasAccounts = usesAccounts(workspace);
+  // What a board card is called here (Workforce's board holds "tasks")
+  const cardWord = terms.tech ? "task" : "project";
+  // App.jsx always opens Programmers / Users on the board, so the
+  // Default View setting only applies to admin-level people.
+  const showDefaultView = isAdminLevel(actualRole) || isMainAdmin;
+  // Permanent delete from the archive is Admin-level only (enforced server-side)
+  const canDeleteArchived = isAdminLevel(actualRole) || isMainAdmin;
   const SECTIONS = useMemo(() => {
+    // Client Accounts (Operations): everyone can see the list, Admin+ manage it
+    const accountsSection = hasAccounts ? [{ id: "accounts", label: "Client Accounts", icon: "briefcase" }] : [];
     return isAdminPlus
       ? [
           ...BASE_SECTIONS.filter(s => s.id !== "archive"),
           { id: "workspace", label: "Workspace Defaults", icon: "target" },
+          ...accountsSection,
           { id: "staff", label: "Staff Management", icon: "shield" },
           { id: "archive", label: "Archived Projects", icon: "archive" },
         ]
-      : BASE_SECTIONS;
-  }, [isAdminPlus]);
+      : [...BASE_SECTIONS.filter(s => s.id !== "archive"), ...accountsSection, ...BASE_SECTIONS.filter(s => s.id === "archive")];
+  }, [isAdminPlus, hasAccounts]);
 
   const contentRef = useRef(null);
   const savedRef = useRef(null); // snapshot of settings before edits
@@ -124,8 +152,6 @@ export default function Settings({ userName, userEmail, onClose, showModal, onLo
 
   // --- General Preferences state ---
   const [defaultView, setDefaultView] = useState(saved.defaultView);
-  const [openOnStartup, setOpenOnStartup] = useState(saved.openOnStartup);
-  const [startMinimized, setStartMinimized] = useState(saved.startMinimized);
 
   // --- Account state: load from the DATABASE for the logged-in user ---
   const currentUserProfile = useQuery(api.staff.getStaffByEmail, userEmail ? { email: userEmail } : "skip");
@@ -158,6 +184,7 @@ export default function Settings({ userName, userEmail, onClose, showModal, onLo
   const updateProfile = useMutation(api.staff.updateProfile);
   const resetPasswordMut = useMutation(api.staff.resetPassword);
   const updateStaffRole = useMutation(api.staff.updateStaffRole);
+  const approveStaffMut = useMutation(api.staff.approveStaff);
   const deleteStaffMut = useMutation(api.staff.deleteStaff);
   const addStaffMut = useMutation(api.staff.addStaff);
   const setSecurityQuestionMut = useMutation(api.staff.setSecurityQuestion);
@@ -171,12 +198,11 @@ export default function Settings({ userName, userEmail, onClose, showModal, onLo
   const [savingWsPw, setSavingWsPw] = useState(false);
 
   const allStaff = useQuery(api.staff.getStaff);
-  const workspace = useWorkspace();
 
-  // Archive: fetch all tasks to filter scrapyard ones (active workspace only)
+  // Archive: fetch all tasks to filter archived ones (active workspace only)
   const allTasks = useQuery(api.tasks.getTasksLight, { workspace });
   const updateTaskStatus = useMutation(api.tasks.updateTaskStatus);
-  const archivedTasks = (allTasks || []).filter(t => (t.status || "").toLowerCase() === "scrapyard");
+  const archivedTasks = (allTasks || []).filter(t => isArchivedStatus(t.status));
   const deleteTask = useMutation(api.tasks.deleteTask);
 
   const handleUpdateSecurityQuestion = async () => {
@@ -186,6 +212,8 @@ export default function Settings({ userName, userEmail, onClose, showModal, onLo
     }
     try {
       await setSecurityQuestionMut({ email, question: securityQuestion.trim(), answer: securityAnswer.trim() });
+      // The card now shows the saved question; don't leave the answer on screen
+      setSecurityQuestion(""); setSecurityAnswer("");
       showModal({ title: "Success", message: "Security question updated successfully.", type: "success" });
     } catch (err) {
       showModal({ title: "Error", message: err.message || "Failed to update security question.", type: "alert" });
@@ -200,8 +228,13 @@ export default function Settings({ userName, userEmail, onClose, showModal, onLo
   const [savingTemplate, setSavingTemplate] = useState(false);
   const [prodDeadlineInput, setProdDeadlineInput] = useState("");
 
+  // The board as it's currently saved (not the editor's draft) — used to find
+  // where a restored archived project goes and what the archive column is called.
+  const boardColumns = useMemo(() => resolveColumns(appConfig?.columns, workspace), [appConfig, workspace]);
+  const restoreColumn = boardColumns.find((c) => !isArchivedStatus(c.id)) || { id: "todo", label: "To Do" };
+
   // --- Board Columns editor state (per-workspace) ---
-  const [columnRows, setColumnRows] = useState(() => DEFAULT_COLUMNS.map((c) => ({ ...c })));
+  const [columnRows, setColumnRows] = useState(() => defaultColumnsFor(workspace));
   const columnsDirty = useRef(false);
   const [savingColumns, setSavingColumns] = useState(false);
   // Task count per column id (for blocking removal of non-empty columns)
@@ -213,6 +246,16 @@ export default function Settings({ userName, userEmail, onClose, showModal, onLo
     return counts;
   }, [allTasks, columnRows]);
 
+  // Kanban columns (and the milestone template) are configured PER WORKSPACE.
+  // If the active workspace changes while Settings is open, drop any unsaved
+  // edits so the editors re-hydrate from the new workspace's own config.
+  // (Declared before the hydrate effect so it runs first on a switch.)
+  useEffect(() => {
+    columnsDirty.current = false;
+    templateDirty.current = false;
+    setProdDeadlineInput("");
+  }, [workspace]);
+
   // Hydrate the editor from the shared config once it loads (unless mid-edit)
   useEffect(() => {
     if (appConfig === undefined) return;
@@ -221,22 +264,14 @@ export default function Settings({ userName, userEmail, onClose, showModal, onLo
       setTemplateRows(src.map(({ name, days }) => ({ name, days })));
     }
     if (!columnsDirty.current) {
-      setColumnRows(resolveColumns(appConfig?.columns).map((c) => ({ ...c })));
+      setColumnRows(resolveColumns(appConfig?.columns, workspace).map((c) => ({ ...c })));
     }
     if (appConfig?.productionDeadline) {
       // Format in LOCAL time — toISOString would shift the date for US timezones
       const d = new Date(appConfig.productionDeadline);
       setProdDeadlineInput(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`);
     }
-  }, [appConfig]);
-
-  // Kanban columns (and the milestone template) are configured PER WORKSPACE.
-  // If the active workspace changes while Settings is open, drop any unsaved
-  // edits so the editors re-hydrate from the new workspace's own config.
-  useEffect(() => {
-    columnsDirty.current = false;
-    templateDirty.current = false;
-  }, [workspace]);
+  }, [appConfig, workspace]);
 
   const templateTotalDays = templateRows.reduce((sum, m) => sum + (Number(m.days) || 0), 0);
 
@@ -262,7 +297,7 @@ export default function Settings({ userName, userEmail, onClose, showModal, onLo
       await saveAppConfigMut({ workspace, defaultMilestones: cleaned, updatedBy: userName });
       templateDirty.current = false;
       setTemplateRows(cleaned.map((m) => ({ ...m })));
-      showModal({ title: "Template Saved", message: "New projects will now start with this milestone template.", type: "success" });
+      showModal({ title: "Template Saved", message: `New ${terms.label} projects will now start from this milestone template when the AI planner isn't used.`, type: "success" });
     } catch (err) {
       showModal({ title: "Error", message: err.message || "Failed to save the milestone template.", type: "alert" });
     } finally {
@@ -279,9 +314,12 @@ export default function Settings({ userName, userEmail, onClose, showModal, onLo
       // End of the selected day, local time
       const ts = new Date(`${prodDeadlineInput}T23:59:59`).getTime();
       await saveAppConfigMut({ workspace, productionDeadline: ts, updatedBy: userName });
-      showModal({ title: "Deadline Set", message: "The full-production deadline is now visible on the Dashboard.", type: "success" });
+      // It shows on the Overview (the nav's "Dashboard" is the project board)
+      showModal(terms.tech
+        ? { title: "Deadline Set", message: "The full-production deadline is now shown at the top of the Overview.", type: "success" }
+        : { title: "Target Date Set", message: "The key target date is now shown at the top of the Overview.", type: "success" });
     } catch (err) {
-      showModal({ title: "Error", message: err.message || "Failed to save the deadline.", type: "alert" });
+      showModal({ title: "Error", message: err.message || (terms.tech ? "Failed to save the deadline." : "Failed to save the target date."), type: "alert" });
     }
   }
 
@@ -323,7 +361,7 @@ export default function Settings({ userName, userEmail, onClose, showModal, onLo
     if (count > 0) {
       showModal({
         title: "Column Not Empty",
-        message: `"${col.label}" still has ${count} task${count === 1 ? "" : "s"}. Move ${count === 1 ? "it" : "them"} to another column first, then remove this one.`,
+        message: `"${col.label}" still has ${count} ${cardWord}${count === 1 ? "" : "s"}. Move ${count === 1 ? "it" : "them"} to another column first, then remove this one.`,
         type: "alert",
       });
       return;
@@ -353,7 +391,7 @@ export default function Settings({ userName, userEmail, onClose, showModal, onLo
     try {
       await saveAppConfigMut({ workspace, columns: cleaned, updatedBy: userName });
       columnsDirty.current = false;
-      showModal({ title: "Board Saved", message: "This workspace's Kanban columns have been updated.", type: "success" });
+      showModal({ title: "Board Saved", message: terms.tech ? "This workspace's Kanban columns have been updated." : `The ${terms.label} board columns have been updated.`, type: "success" });
     } catch (err) {
       showModal({ title: "Error", message: err.message || "Failed to save the board columns.", type: "alert" });
     } finally {
@@ -361,19 +399,87 @@ export default function Settings({ userName, userEmail, onClose, showModal, onLo
     }
   }
 
-  // Staff management state
+  // --- Client Accounts (Operations — everyone sees them, Admin+/Manager manage) ---
+  const accounts = useQuery(api.accounts.getAccounts, hasAccounts ? { workspace } : "skip");
+  const staffAccounts = useQuery(api.accounts.getStaffAccounts, hasAccounts ? { workspace } : "skip");
+  const setStaffAccountsMut = useMutation(api.accounts.setStaffAccounts);
+  const accountsByEmail = useMemo(() => {
+    const m = {};
+    (staffAccounts || []).forEach((r) => { (m[r.email] = m[r.email] || []).push(r.accountId); });
+    return m;
+  }, [staffAccounts]);
+  const addAccountMut = useMutation(api.accounts.addAccount);
+  const renameAccountMut = useMutation(api.accounts.renameAccount);
+  const deleteAccountMut = useMutation(api.accounts.deleteAccount);
+  const [newAccountName, setNewAccountName] = useState("");
+  const [addingAccount, setAddingAccount] = useState(false);
+  const [editingAccount, setEditingAccount] = useState(null); // { id, name } while renaming inline
+
+  async function handleAddAccount() {
+    const name = newAccountName.trim();
+    if (!name || addingAccount) return;
+    setAddingAccount(true);
+    try {
+      await addAccountMut({ workspace, name });
+      setNewAccountName("");
+    } catch (err) {
+      showModal({ title: "Couldn't Add Account", message: err.message || "Failed to add the account.", type: "alert" });
+    } finally {
+      setAddingAccount(false);
+    }
+  }
+
+  async function handleRenameAccount() {
+    if (!editingAccount) return;
+    const name = editingAccount.name.trim();
+    const current = (accounts || []).find((a) => a._id === editingAccount.id);
+    if (!name || name === current?.name) { setEditingAccount(null); return; }
+    try {
+      await renameAccountMut({ accountId: editingAccount.id, name });
+      setEditingAccount(null);
+    } catch (err) {
+      showModal({ title: "Couldn't Rename Account", message: err.message || "Failed to rename the account.", type: "alert" });
+    }
+  }
+
+  function handleDeleteAccount(acct) {
+    const n = Number(acct.projects) || 0;
+    showModal({
+      title: "Delete Account",
+      message: `Delete the account "${acct.name}"?${n > 0 ? ` It has ${n} project${n === 1 ? "" : "s"}.` : ""} Projects in it keep working and become "No account".`,
+      type: "confirm",
+      onConfirm: async () => {
+        try {
+          await deleteAccountMut({ accountId: acct._id });
+        } catch (err) {
+          showModal({ title: "Couldn't Delete Account", message: err.message || "Failed to delete the account.", type: "alert" });
+        }
+      },
+    });
+  }
+
+  // Staff management state — a new person defaults to the department of the
+  // workspace you're managing from (Operations staff get added from Operations).
+  const defaultNewStaffDept = WORKSPACE_META[workspace]?.department || "Workforce";
   const [newStaffName, setNewStaffName] = useState("");
   const [newStaffEmail, setNewStaffEmail] = useState("");
   const [newStaffRole, setNewStaffRole] = useState("Programmer");
-  const [newStaffDepartments, setNewStaffDepartments] = useState(["Workforce"]);
+  const [newStaffDepartments, setNewStaffDepartments] = useState([defaultNewStaffDept]);
+  useEffect(() => {
+    setNewStaffDepartments([defaultNewStaffDept]);
+    setEditingAccount(null);
+  }, [workspace, defaultNewStaffDept]);
+
+  // A tab can disappear on a workspace switch (Client Accounts is Operations-only)
+  useEffect(() => {
+    if (!SECTIONS.some((s) => s.id === activeSection)) setActiveSection(SECTIONS[0].id);
+  }, [SECTIONS, activeSection]);
 
   const activeStaff = (allStaff || []).filter(s => s.role !== "Pending");
   const pendingRequests = (allStaff || []).filter(s => s.role === "Pending");
 
   // --- Notifications state ---
   const [notificationsEnabled, setNotificationsEnabled] = useState(saved.notificationsEnabled);
-  const [notifyErrors, setNotifyErrors] = useState(saved.notifyErrors);
-  const [notifyUpdates, setNotifyUpdates] = useState(saved.notifyUpdates);
 
   const avatarInputRef = useRef(null);
   const markChanged = () => setHasChanges(true);
@@ -396,7 +502,7 @@ export default function Settings({ userName, userEmail, onClose, showModal, onLo
   function buildSettingsObject() {
     // Only visual/UI preferences go to localStorage — profile data is per-user in the database.
     // skinChosen marks an explicit theme choice so the liquid-glass default migration won't override it.
-    return { theme, skin, skinChosen: true, accentColor, fontSize, defaultView, openOnStartup, startMinimized, notificationsEnabled, notifyErrors, notifyUpdates };
+    return { theme, skin, skinChosen: true, accentColor, fontSize, defaultView, notificationsEnabled };
   }
 
   async function handleSave() {
@@ -447,14 +553,19 @@ export default function Settings({ userName, userEmail, onClose, showModal, onLo
     }
   }
 
-  function handleDeleteAccount() {
-    showModal({
-      title: "Delete Account",
-      message: "Are you absolutely sure you want to delete your account? This action is permanent and cannot be undone. All your data will be irreversibly lost.",
-      type: "confirm",
-      onConfirm: () => showModal({ title: "Account Deleted", message: "Your account has been scheduled for deletion.", type: "success" }),
-    });
-  }
+  // Esc closes Settings (same as the × — asks first if there are unsaved
+  // changes), unless a dialog or dropdown on top of it is open.
+  const cancelRef = useRef(handleCancel);
+  cancelRef.current = handleCancel;
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key !== "Escape" || e.defaultPrevented) return;
+      if (document.querySelector(".custom-modal-overlay, .ui-popover, .profile-popover-overlay")) return;
+      cancelRef.current();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   async function handleChangePassword() {
     if (!currentPassword) { showModal({ title: "Error", message: "Please enter your current password.", type: "alert" }); return; }
@@ -503,7 +614,7 @@ export default function Settings({ userName, userEmail, onClose, showModal, onLo
             {/* ─── APPEARANCE ─── */}
             <section id="settings-section-appearance" className="settings-section" style={{ display: activeSection === "appearance" ? undefined : "none" }}>
               <div className="settings-section-header"><SectionIcon icon="palette" size={20} /><h3>Appearance & UI</h3></div>
-              <p className="settings-section-desc">Customize the look and feel of your workspace.</p>
+              <p className="settings-section-desc">Customize how Hermes looks on this device — it applies in every workspace.</p>
 
               <div className="settings-card">
                 <label className="settings-field-label">Mode</label>
@@ -582,49 +693,44 @@ export default function Settings({ userName, userEmail, onClose, showModal, onLo
 
               <div className="settings-card">
                 <label className="settings-field-label">Text / Font Size</label>
-                <select className="settings-select" value={fontSize} onChange={(e) => { setFontSize(e.target.value); markChanged(); }}>
-                  {FONT_SIZES.map((fs) => (<option key={fs} value={fs}>{fs}</option>))}
-                </select>
+                <Select className="settings-select-ui" value={fontSize} onChange={(v) => { setFontSize(v); previewAppearance({ fontSize: v }); markChanged(); }}
+                  options={FONT_SIZES.map((fs) => ({ value: fs, label: fs }))} ariaLabel="Font size" />
               </div>
             </section>
 
             {/* ─── GENERAL PREFERENCES ─── */}
             <section id="settings-section-general" className="settings-section" style={{ display: activeSection === "general" ? undefined : "none" }}>
               <div className="settings-section-header"><SectionIcon icon="sliders" size={20} /><h3>General Preferences</h3></div>
-              <p className="settings-section-desc">Configure default behaviors and startup options.</p>
+              <p className="settings-section-desc">
+                {showDefaultView ? "Configure your start page, the assistant and motion effects." : "Configure the assistant and motion effects."}
+              </p>
 
-              <div className="settings-card">
-                <label className="settings-field-label">Default View</label>
-                <p className="settings-field-hint">Choose the page that loads when you open the app.</p>
-                <select className="settings-select" value={defaultView} onChange={(e) => { setDefaultView(e.target.value); markChanged(); }}>
-                  {DEFAULT_VIEWS.map((v) => (<option key={v} value={v}>{v}</option>))}
-                </select>
-              </div>
-
-              <div className="settings-card">
-                <label className="settings-field-label">Startup Behavior</label>
-                <div className="settings-toggle-row-group">
-                  <div className="settings-toggle-row">
-                    <div className="toggle-info"><span className="toggle-label">Open on system startup</span><span className="toggle-desc">Launch the app automatically when your system starts.</span></div>
-                    <label className="toggle-switch"><input type="checkbox" checked={openOnStartup} onChange={(e) => { setOpenOnStartup(e.target.checked); markChanged(); }} /><span className="toggle-slider" /></label>
-                  </div>
-                  <div className="settings-toggle-row">
-                    <div className="toggle-info"><span className="toggle-label">Start in background / minimized</span><span className="toggle-desc">App starts minimized to the system tray.</span></div>
-                    <label className="toggle-switch"><input type="checkbox" checked={startMinimized} onChange={(e) => { setStartMinimized(e.target.checked); markChanged(); }} /><span className="toggle-slider" /></label>
-                  </div>
+              {showDefaultView && (
+                <div className="settings-card">
+                  <label className="settings-field-label">Default View</label>
+                  <p className="settings-field-hint">Choose the page that opens when you sign in.</p>
+                  <Select className="settings-select-ui" value={defaultView} onChange={(v) => { setDefaultView(v); markChanged(); }}
+                    options={DEFAULT_VIEWS} ariaLabel="Default view" />
                 </div>
-              </div>
+              )}
 
               <div className="settings-card">
                 <label className="settings-field-label">AI Assistant (Caddy)</label>
-                <p className="settings-field-hint">
-                  <strong>Caddy</strong> (the Caduceus assistant). The Gemini API key is configured
-                  securely on the server — it's never exposed in the app. Models (fallback order): <strong>{getGeminiModels().join(" → ")}</strong>.
-                </p>
+                {terms.tech ? (
+                  <p className="settings-field-hint">
+                    <strong>Caddy</strong> (the Caduceus assistant). The Gemini API key is configured
+                    securely on the server — it's never exposed in the app. Models (fallback order): <strong>{getGeminiModels().join(" → ")}</strong>.
+                  </p>
+                ) : (
+                  <p className="settings-field-hint">
+                    <strong>Caddy</strong> (the Caduceus assistant) is the built-in helper — ask it where
+                    things are in Hermes or for a hand with your projects.
+                  </p>
+                )}
                 <div className="settings-toggle-row">
                   <div className="toggle-info">
                     <span className="toggle-label">Enable Caddy assistant</span>
-                    <span className="toggle-desc">Show the floating ✦ launcher, its pop-up tips, and the chat panel.</span>
+                    <span className="toggle-desc">Show the floating ✦ launcher, its pop-up tips and the chat panel, and start New Task with the “Plan with AI” step.</span>
                   </div>
                   <label className="toggle-switch">
                     <input
@@ -678,7 +784,7 @@ export default function Settings({ userName, userEmail, onClose, showModal, onLo
             {/* ─── ACCOUNT & PROFILE ─── */}
             <section id="settings-section-account" className="settings-section" style={{ display: activeSection === "account" ? undefined : "none" }}>
               <div className="settings-section-header"><SectionIcon icon="user" size={20} /><h3>Account & Profile</h3></div>
-              <p className="settings-section-desc">Manage your personal information, email, and security.</p>
+              <p className="settings-section-desc">Manage your personal information, password and security question.</p>
 
               <div className="settings-card">
                 <label className="settings-field-label">Profile Details</label>
@@ -723,9 +829,9 @@ export default function Settings({ userName, userEmail, onClose, showModal, onLo
 
               <div className="settings-card">
                 <label className="settings-field-label">Email Address</label>
+                <p className="settings-field-hint">This is the email you sign in with, and it can't be changed in the app. If it's wrong, ask a Manager to add you under the right email (Staff Management) and remove the old account.</p>
                 <div className="email-update-row">
-                  <input type="email" className="settings-input" value={email} onChange={(e) => { setEmail(e.target.value); markChanged(); }} />
-                  <button className="settings-btn-outline" onClick={() => showModal({ title: "Email Updated", message: `Your email has been updated to ${email}.`, type: "success" })}>Update Email</button>
+                  <input type="email" className="settings-input settings-input--locked" value={email} readOnly aria-readonly="true" title="Sign-in email changes are done by an admin" />
                 </div>
               </div>
 
@@ -744,7 +850,12 @@ export default function Settings({ userName, userEmail, onClose, showModal, onLo
 
               <div className="settings-card">
                 <label className="settings-field-label">Security Question</label>
-                <p className="settings-field-hint">Set a security question for password recovery.</p>
+                <p className="settings-field-hint">
+                  Used by “Forgot Password?” on the sign-in screen.
+                  {currentUserProfile?.securityQuestion
+                    ? <> Your current question: <strong>“{currentUserProfile.securityQuestion}”</strong> — enter a new question and answer below to replace it.</>
+                    : currentUserProfile !== undefined && " You haven't set one yet."}
+                </p>
                 <div className="password-fields">
                   <div className="settings-field">
                     <label className="settings-input-label">Your Secret Question</label>
@@ -758,12 +869,13 @@ export default function Settings({ userName, userEmail, onClose, showModal, onLo
                 </div>
               </div>
 
-              <div className="settings-card danger-zone">
-                <label className="settings-field-label danger"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" /><line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" /></svg>Danger Zone</label>
-                <p className="danger-text">Permanently delete your account or sign out of the current session.</p>
+              <div className="settings-card">
+                <label className="settings-field-label">Session</label>
+                <p className="settings-field-hint">
+                  Sign out of Hermes on this device. Need your account removed? An Admin+ or Manager can do that in Settings → Staff Management.
+                </p>
                 <div style={{ display: "flex", gap: "10px" }}>
-                  <button className="settings-btn-danger" onClick={handleDeleteAccount}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></svg>Delete Account</button>
-                  <button 
+                  <button
                     className="settings-btn-outline" 
                     onClick={onLogout}
                     style={{ borderColor: "var(--color-logout)", color: "var(--color-logout)" }}
@@ -782,24 +894,14 @@ export default function Settings({ userName, userEmail, onClose, showModal, onLo
 
               <div className="settings-card notification-master">
                 <div className="settings-toggle-row">
-                  <div className="toggle-info"><span className="toggle-label master">Push / Desktop Notifications</span><span className="toggle-desc">Enable or disable all notifications globally.</span></div>
+                  <div className="toggle-info">
+                    <span className="toggle-label master">Push / Desktop Notifications</span>
+                    <span className="toggle-desc">
+                      Browser pop-ups on this device for mentions, project updates, milestones, notes and {terms.tech ? "new features and bugs" : "roadblocks flagged or cleared"}.
+                      Turning this off only silences the pop-ups — the bell in the header still lists everything.
+                    </span>
+                  </div>
                   <label className="toggle-switch large"><input type="checkbox" checked={notificationsEnabled} onChange={(e) => { setNotificationsEnabled(e.target.checked); markChanged(); }} /><span className="toggle-slider" /></label>
-                </div>
-              </div>
-
-              <div className={`settings-card ${!notificationsEnabled ? "disabled-card" : ""}`}>
-                <label className="settings-field-label">Specific Triggers</label>
-                <p className="settings-field-hint">Fine-tune which events send you a notification.</p>
-                <div className="notification-checklist">
-                  {[
-                    { label: "Notify me on errors", desc: "Get alerted for critical system errors.", checked: notifyErrors, setter: setNotifyErrors, icon: "🔴" },
-                    { label: "Notify me on updates", desc: "Stay informed about project and task updates.", checked: notifyUpdates, setter: setNotifyUpdates, icon: "🔵" },
-                  ].map((item) => (
-                    <label key={item.label} className={`notification-check-item ${item.checked ? "checked" : ""} ${!notificationsEnabled ? "disabled" : ""}`}>
-                      <div className="notification-check-left"><span className="notification-check-icon">{item.icon}</span><div><span className="notification-check-label">{item.label}</span><span className="notification-check-desc">{item.desc}</span></div></div>
-                      <input type="checkbox" checked={item.checked} disabled={!notificationsEnabled} onChange={(e) => { item.setter(e.target.checked); markChanged(); }} className="notification-checkbox" />
-                    </label>
-                  ))}
                 </div>
               </div>
             </section>
@@ -808,13 +910,18 @@ export default function Settings({ userName, userEmail, onClose, showModal, onLo
             {isAdminPlus && (
               <section id="settings-section-workspace" className="settings-section" style={{ display: activeSection === "workspace" ? undefined : "none" }}>
                 <div className="settings-section-header"><SectionIcon icon="target" size={20} /><h3>Workspace Defaults</h3></div>
-                <p className="settings-section-desc">Org-wide standards shared by the whole team — the milestone template for new projects and the production deadline.</p>
+                <p className="settings-section-desc">
+                  Standards shared by everyone in {terms.label} — the milestone template for new projects,
+                  the {terms.tech ? "production deadline" : "key target date"}, the board columns and the workspace password.
+                  Other workspaces keep their own.
+                </p>
 
                 {/* Default milestone template */}
                 <div className="settings-card">
                   <label className="settings-field-label">Default Milestone Template</label>
                   <p className="settings-field-hint">
-                    These rows pre-fill the milestones (and their day counts) whenever anyone creates a new project. Saving applies for everyone.
+                    New projects start from these milestones (and their day counts) when someone picks “Skip AI” on New Task or
+                    Caddy is off, and the AI planner uses them as its reference for naming and typical timing. Saving applies to everyone in {terms.label}.
                   </p>
                   <div className="template-rows">
                     {templateRows.map((m, idx) => (
@@ -877,27 +984,25 @@ export default function Settings({ userName, userEmail, onClose, showModal, onLo
                   </div>
                 </div>
 
-                {/* Full production deadline */}
+                {/* Full production deadline (Workforce) / key target date (other workspaces) */}
                 <div className="settings-card">
-                  <label className="settings-field-label">Full Production Deadline</label>
+                  <label className="settings-field-label">{terms.tech ? "Full Production Deadline" : "Key Target Date"}</label>
                   <p className="settings-field-hint">
-                    The target date for Workforce Hermes to be deployed in full production. Shown to everyone on the Overview dashboard.
+                    {terms.tech
+                      ? "The target date for Workforce Hermes to be deployed in full production."
+                      : `The date the ${terms.label} team is working toward.`}
+                    {" "}Shown at the top of the Overview.
                   </p>
                   <div className="email-update-row">
-                    <input
-                      type="date"
-                      className="settings-input"
-                      value={prodDeadlineInput}
-                      onChange={(e) => setProdDeadlineInput(e.target.value)}
-                    />
-                    <button className="settings-btn-primary" onClick={handleSaveProdDeadline}>Set Deadline</button>
+                    <DatePicker className="settings-date-picker" value={prodDeadlineInput} onChange={setProdDeadlineInput} placeholder="Pick a date" />
+                    <button className="settings-btn-primary" onClick={handleSaveProdDeadline}>{terms.tech ? "Set Deadline" : "Set Date"}</button>
                     {appConfig?.productionDeadline && (
                       <button
                         className="settings-btn-outline"
                         onClick={() => {
                           showModal({
-                            title: "Clear Deadline",
-                            message: "Remove the production deadline from the Dashboard?",
+                            title: terms.tech ? "Clear Deadline" : "Clear Target Date",
+                            message: terms.tech ? "Remove the production deadline from the Overview?" : "Remove the key target date from the Overview?",
                             type: "confirm",
                             onConfirm: async () => {
                               await saveAppConfigMut({ workspace, productionDeadline: null, updatedBy: userName });
@@ -916,9 +1021,10 @@ export default function Settings({ userName, userEmail, onClose, showModal, onLo
                 <div className="settings-card">
                   <label className="settings-field-label">Board Columns</label>
                   <p className="settings-field-hint">
-                    Customize this workspace's Kanban columns — rename, recolor, reorder, set an
-                    optional max (WIP) limit, add new columns, or remove empty ones. A column that
-                    still has tasks can't be removed until it's emptied.
+                    {terms.tech
+                      ? "Customize this workspace's Kanban columns — rename, recolor, reorder, set an optional max (WIP) limit, add new columns, or remove empty ones."
+                      : `Customize the ${terms.label} board's columns — rename, recolor, reorder, set an optional max number of projects per column, add new columns, or remove empty ones.`}
+                    {" "}A column that still has {cardWord}s can't be removed until it's emptied.
                   </p>
                   <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                     {columnRows.map((c, idx) => {
@@ -931,8 +1037,8 @@ export default function Settings({ userName, userEmail, onClose, showModal, onLo
                           </div>
                           <input type="color" value={c.color} onChange={(e) => updateColumnRow(idx, "color", e.target.value)} title="Column color" style={{ width: 32, height: 32, border: "none", background: "none", cursor: "pointer", padding: 0, flexShrink: 0 }} />
                           <input type="text" className="settings-input" value={c.label} placeholder="Column name" onChange={(e) => updateColumnRow(idx, "label", e.target.value)} style={{ flex: 1, minWidth: 0 }} />
-                          <input type="number" min="0" className="settings-input" value={c.limit ?? ""} placeholder="∞" title="Max tasks (WIP limit) — blank = no limit" onChange={(e) => updateColumnRow(idx, "limit", e.target.value)} style={{ width: 62, flexShrink: 0 }} />
-                          <span title="Tasks currently in this column" style={{ fontSize: "0.62rem", fontWeight: 800, color: count > 0 ? "var(--color-accent)" : "#94a3b8", minWidth: 46, textAlign: "center", flexShrink: 0 }}>{count} task{count === 1 ? "" : "s"}</span>
+                          <input type="number" min="0" className="settings-input" value={c.limit ?? ""} placeholder="∞" title={terms.tech ? "Max tasks (WIP limit) — blank = no limit" : "Max projects in this column — blank = no limit"} onChange={(e) => updateColumnRow(idx, "limit", e.target.value)} style={{ width: 62, flexShrink: 0 }} />
+                          <span title={terms.tech ? "Tasks currently in this column" : "Projects currently in this column"} style={{ fontSize: "0.62rem", fontWeight: 800, color: count > 0 ? "var(--color-accent)" : "#94a3b8", minWidth: 46, textAlign: "center", flexShrink: 0 }}>{count} {cardWord}{count === 1 ? "" : "s"}</span>
                           <button className="template-row-remove" title={count > 0 ? "Empty this column first" : "Remove column"} onClick={() => removeColumnRow(idx)} style={{ opacity: count > 0 ? 0.4 : 1, flexShrink: 0 }}>×</button>
                         </div>
                       );
@@ -949,11 +1055,26 @@ export default function Settings({ userName, userEmail, onClose, showModal, onLo
                     <button
                       className="settings-btn-ghost"
                       onClick={() => {
+                        const defaults = defaultColumnsFor(workspace);
+                        // Same rule as removing one column: a column that still holds
+                        // cards can't disappear (they'd be pushed into the first column).
+                        const stranded = columnRows
+                          .filter((c) => !defaults.some((d) => d.id === c.id))
+                          .map((c) => ({ c, n: (allTasks || []).filter((t) => taskInColumn(t.status, c.id) && !defaults.some((d) => taskInColumn(t.status, d.id))).length }))
+                          .filter((x) => x.n > 0);
+                        if (stranded.length) {
+                          showModal({
+                            title: "Columns Not Empty",
+                            message: `These columns aren't in the standard board and still have ${cardWord}s: ${stranded.map((x) => `"${x.c.label}" (${x.n})`).join(", ")}. Move them to another column first, then restore the defaults.`,
+                            type: "alert",
+                          });
+                          return;
+                        }
                         showModal({
                           title: "Restore Default Columns",
-                          message: "Reset this workspace's board to the standard 7 columns (To Do → Scrapped Yard)? Existing tasks keep their statuses.",
+                          message: `Reset this workspace's board to its standard ${defaults.length} columns (${defaults.map((c) => c.label).join(" → ")})? Existing ${cardWord}s keep their statuses. Click "Save Board Columns" afterwards to apply it.`,
                           type: "confirm",
-                          onConfirm: () => { columnsDirty.current = true; setColumnRows(DEFAULT_COLUMNS.map((c) => ({ ...c }))); },
+                          onConfirm: () => { columnsDirty.current = true; setColumnRows(defaultColumnsFor(workspace)); },
                         });
                       }}
                     >
@@ -1036,6 +1157,105 @@ export default function Settings({ userName, userEmail, onClose, showModal, onLo
               </section>
             )}
 
+            {/* ─── CLIENT ACCOUNTS (Operations — everyone sees, Admin+/Manager manage) ─── */}
+            {hasAccounts && (
+              <section id="settings-section-accounts" className="settings-section" style={{ display: activeSection === "accounts" ? undefined : "none" }}>
+                <div className="settings-section-header"><SectionIcon icon="briefcase" size={20} /><h3>Client Accounts</h3></div>
+                <p className="settings-section-desc">
+                  Every {terms.label} project can belong to a client account — pick it when you create or edit a project.
+                </p>
+
+                <div className="settings-card acct-card">
+                  <label className="settings-field-label" style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                    Accounts
+                    {accounts?.length > 0 && <span className="acct-total">{accounts.length}</span>}
+                  </label>
+                  <p className="settings-field-hint">
+                    {isAdminPlus
+                      ? "Add, rename or delete the accounts projects are filed under. Deleting an account never deletes its projects — they just become \"No account\"."
+                      : "Only Admin+ can create accounts. Ask an Admin+ or Manager if the one you need is missing."}
+                  </p>
+
+                  {isAdminPlus && (
+                    <form className="acct-add-row" onSubmit={(e) => { e.preventDefault(); handleAddAccount(); }}>
+                      <input
+                        type="text"
+                        className="settings-input"
+                        value={newAccountName}
+                        maxLength={80}
+                        placeholder="New account name, e.g. Acme Health"
+                        aria-label="New account name"
+                        onChange={(e) => setNewAccountName(e.target.value)}
+                      />
+                      <button type="submit" className="settings-btn-primary" disabled={addingAccount || !newAccountName.trim()}>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
+                        {addingAccount ? "Adding…" : "Add Account"}
+                      </button>
+                    </form>
+                  )}
+
+                  {accounts === undefined ? (
+                    <div className="acct-empty">Loading accounts…</div>
+                  ) : accounts.length === 0 ? (
+                    <div className="acct-empty">No accounts yet.{isAdminPlus ? " Add the first one above." : ""}</div>
+                  ) : (
+                    <div className="staff-management-list acct-list">
+                      {accounts.map((a, i) => {
+                        const editing = editingAccount?.id === a._id;
+                        const n = Number(a.projects) || 0;
+                        return (
+                          <div key={a._id} className="staff-mgmt-row acct-row" style={{ "--i": i }}>
+                            <span className="acct-avatar" aria-hidden="true">{(a.name || "?").trim().charAt(0).toUpperCase()}</span>
+                            <div className="staff-mgmt-info" style={{ flex: 1, minWidth: 0 }}>
+                              {editing ? (
+                                <input
+                                  type="text"
+                                  className="settings-input acct-rename-input"
+                                  value={editingAccount.name}
+                                  maxLength={80}
+                                  autoFocus
+                                  aria-label={`New name for ${a.name}`}
+                                  onChange={(e) => setEditingAccount({ id: a._id, name: e.target.value })}
+                                  onKeyDown={(e) => {
+                                    if (e.key === "Enter") handleRenameAccount();
+                                    if (e.key === "Escape") setEditingAccount(null);
+                                  }}
+                                />
+                              ) : (
+                                <span className="staff-mgmt-name">{a.name}</span>
+                              )}
+                              <span className="staff-mgmt-email">{n} project{n === 1 ? "" : "s"}</span>
+                            </div>
+                            {isAdminPlus && (
+                              <div className="staff-mgmt-actions">
+                                {editing ? (
+                                  <>
+                                    <button className="staff-action-btn approve" onClick={handleRenameAccount}>Save</button>
+                                    <button className="staff-action-btn acct-cancel" onClick={() => setEditingAccount(null)}>Cancel</button>
+                                  </>
+                                ) : (
+                                  <>
+                                    <button className="staff-action-btn reset-pw" title="Rename this account" onClick={() => setEditingAccount({ id: a._id, name: a.name })}>
+                                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 20h9" /><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" /></svg>
+                                      Rename
+                                    </button>
+                                    <button className="staff-action-btn revoke" title="Delete this account" onClick={() => handleDeleteAccount(a)}>
+                                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></svg>
+                                      Delete
+                                    </button>
+                                  </>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </section>
+            )}
+
             {/* ─── STAFF MANAGEMENT (Admin+ only) ─── */}
             {isAdminPlus && (
               <section id="settings-section-staff" className="settings-section" style={{ display: activeSection === "staff" ? undefined : "none" }}>
@@ -1089,8 +1309,9 @@ export default function Settings({ userName, userEmail, onClose, showModal, onLo
                               className="staff-action-btn approve"
                               onClick={async () => {
                                 try {
-                                  await updateStaffRole({ staffEmail: s.email, newRole: "Programmer", actorEmail: userEmail });
-                                  showModal({ title: "Approved", message: `${s.name} has been approved as Programmer.`, type: "success" });
+                                  // Approved INTO this workspace (the request itself doesn't say which).
+                                  await approveStaffMut({ email: s.email, workspace });
+                                  showModal({ title: "Approved", message: `${s.name} can now sign in to ${terms.label} as ${roleLabel("Programmer", workspace)}.${hasAccounts ? " Pick their client account(s) below if they should only see those." : ""}`, type: "success" });
                                 } catch (err) {
                                   showModal({ title: "Error", message: err.message, type: "alert" });
                                 }
@@ -1128,6 +1349,11 @@ export default function Settings({ userName, userEmail, onClose, showModal, onLo
                 <div className="settings-card">
                   <label className="settings-field-label">Active Team Members</label>
                   <p className="settings-field-hint">Manage roles, reset passwords, or revoke access for current team members.</p>
+                  {hasAccounts && (
+                    <p className="settings-field-hint staff-acc-hint">
+                      <b>Client accounts:</b> tie someone to one or more accounts and they'll only see those accounts' projects (plus any project they're assigned to). "All accounts" = no restriction. Admin+ and Managers always see every account.
+                    </p>
+                  )}
                   <div className="staff-management-list">
                     {activeStaff.map((s) => (
                       <div key={s.email} className="staff-mgmt-row">
@@ -1144,34 +1370,59 @@ export default function Settings({ userName, userEmail, onClose, showModal, onLo
                               <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><rect x="3" y="11" width="18" height="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></svg>
                               Pass: <span style={{ color: s.password ? "var(--color-accent)" : "#94a3b8" }}>{s.password || "None"}</span>
                             </span>
-                            <span style={{ fontSize: "0.6rem", color: "#94a3b8", display: "flex", alignItems: "center", gap: 3 }}>
-                              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></svg>
-                              Sec: <span style={{ color: s.securityAnswer ? "var(--color-accent)" : "#94a3b8" }}>{s.securityAnswer || "None"}</span>
-                            </span>
                           </div>
                         </div>
                         <div className="staff-mgmt-role">
                           {(() => {
                             const isSelf = s.email.toLowerCase() === (userEmail || "").toLowerCase();
                             return (
-                              <select
-                                className="staff-role-select"
+                              <Select
+                                size="sm"
+                                className="staff-role-select-ui"
                                 value={s.role}
                                 disabled={isSelf}
-                                title={isSelf ? "You can't change your own role" : ""}
-                                style={isSelf ? { opacity: 0.55, cursor: "not-allowed" } : undefined}
-                                onChange={async (e) => {
-                                  const newRole = e.target.value;
+                                ariaLabel={isSelf ? "You can't change your own role" : `Role for ${s.name}`}
+                                options={ASSIGNABLE_ROLES.map((r) => ({ value: r, label: roleLabel(r, workspace) }))}
+                                onChange={async (newRole) => {
                                   try {
                                     await updateStaffRole({ staffEmail: s.email, newRole, actorEmail: userEmail });
-                                    showModal({ title: "Role Updated", message: `${s.name}'s role has been changed to ${newRole}.`, type: "success" });
+                                    showModal({ title: "Role Updated", message: `${s.name}'s role has been changed to ${roleLabel(newRole, workspace)}.`, type: "success" });
                                   } catch (err) {
                                     showModal({ title: "Action Blocked", message: err.message || "Could not change role.", type: "alert" });
                                   }
                                 }}
-                              >
-                                {ASSIGNABLE_ROLES.map((r) => (<option key={r} value={r}>{r}</option>))}
-                              </select>
+                              />
+                            );
+                          })()}
+                          {hasAccounts && (() => {
+                            const dept = WORKSPACE_META[workspace]?.department;
+                            const here = !dept || (Array.isArray(s.departments) && s.departments.includes(dept));
+                            if (!here) return null;
+                            if (s.role === "Admin+" || s.role === "Manager") {
+                              return <span className="staff-acc-all" title="Admin+ and Managers always see every account">All accounts</span>;
+                            }
+                            const mine = accountsByEmail[s.email] || [];
+                            if (!isAdminPlus) {
+                              const names = (accounts || []).filter((a) => mine.includes(a._id)).map((a) => a.name);
+                              return <span className="staff-acc-all">{names.length ? names.join(", ") : "All accounts"}</span>;
+                            }
+                            return (
+                              <MultiSelect
+                                size="sm"
+                                className="staff-acc-select"
+                                values={mine}
+                                options={(accounts || []).map((a) => ({ value: a._id, label: a.name }))}
+                                allLabel="All accounts"
+                                emptyText="No client accounts yet — add one under Client Accounts."
+                                ariaLabel={`Client accounts for ${s.name}`}
+                                onChange={async (ids) => {
+                                  try {
+                                    await setStaffAccountsMut({ email: s.email, workspace, accountIds: ids });
+                                  } catch (err) {
+                                    showModal({ title: "Couldn't change accounts", message: err.message || "Please try again.", type: "alert" });
+                                  }
+                                }}
+                              />
                             );
                           })()}
                         </div>
@@ -1241,9 +1492,8 @@ export default function Settings({ userName, userEmail, onClose, showModal, onLo
                     </div>
                     <div className="settings-field">
                       <label className="settings-input-label">Role</label>
-                      <select className="settings-select" value={newStaffRole} onChange={(e) => setNewStaffRole(e.target.value)}>
-                        {ASSIGNABLE_ROLES.map((r) => (<option key={r} value={r}>{r}</option>))}
-                      </select>
+                      <Select className="settings-select-ui" value={newStaffRole} onChange={setNewStaffRole}
+                        options={ASSIGNABLE_ROLES.map((r) => ({ value: r, label: roleLabel(r, workspace) }))} ariaLabel="Role" />
                     </div>
                     <div className="settings-field">
                       <label className="settings-input-label">Department(s) — which workspaces they can access</label>
@@ -1285,7 +1535,7 @@ export default function Settings({ userName, userEmail, onClose, showModal, onLo
                           setNewStaffName("");
                           setNewStaffEmail("");
                           setNewStaffRole("Programmer");
-                          setNewStaffDepartments(["Workforce"]);
+                          setNewStaffDepartments([defaultNewStaffDept]);
                         } catch (err) {
                           showModal({ title: "Error", message: err.message, type: "alert" });
                         }
@@ -1366,12 +1616,15 @@ export default function Settings({ userName, userEmail, onClose, showModal, onLo
             {/* ─── ARCHIVED PROJECTS ─── */}
             <section id="settings-section-archive" className="settings-section" style={{ display: activeSection === "archive" ? undefined : "none" }}>
               <div className="settings-section-header"><SectionIcon icon="archive" size={20} /><h3>Archived Projects</h3></div>
-              <p className="settings-section-desc">Scrapped projects are stored here. Restore them or delete permanently.</p>
+              <p className="settings-section-desc">
+                {terms.tech ? "Scrapped" : "Archived"} projects are stored here.
+                {canDeleteArchived ? " Restore them or delete permanently." : " Restore one to put it back on the board — only Admins can delete permanently."}
+              </p>
 
               <div className="settings-card">
                 <label className="settings-field-label" style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-secondary)" strokeWidth="2.5"><polyline points="21 8 21 21 3 21 3 8" /><rect x="1" y="3" width="22" height="5" /><line x1="10" y1="12" x2="14" y2="12" /></svg>
-                  Scrapped / Archived
+                  {terms.tech ? "Scrapped / Archived" : (boardColumns.find((c) => c.id === ARCHIVED_STATUS)?.label || "Archived")}
                   {archivedTasks.length > 0 && (
                     <span style={{ background: "#94a3b8", color: "white", borderRadius: "20px", padding: "2px 10px", fontSize: "0.7rem", fontWeight: 800, marginLeft: "4px" }}>{archivedTasks.length}</span>
                   )}
@@ -1392,16 +1645,18 @@ export default function Settings({ userName, userEmail, onClose, showModal, onLo
                         <div className="staff-mgmt-actions" style={{ gap: 6 }}>
                           <button
                             className="staff-action-btn approve"
-                            title="Restore to To Do"
+                            title={`Restore to ${restoreColumn.label}`}
                             onClick={() => {
+                              // Restores into the board's first (non-archive) column
+                              const target = restoreColumn;
                               showModal({
                                 title: "Restore Project",
-                                message: `Restore "${t.title}" back to the To Do column?`,
+                                message: `Restore "${t.title}" back to the ${target.label} column?`,
                                 type: "confirm",
                                 onConfirm: async () => {
                                   try {
-                                    await updateTaskStatus({ taskId: t._id, newStatus: "todo" });
-                                    showModal({ title: "Restored", message: `"${t.title}" has been moved back to To Do.`, type: "success" });
+                                    await updateTaskStatus({ taskId: t._id, newStatus: target.id });
+                                    showModal({ title: "Restored", message: `"${t.title}" has been moved back to ${target.label}.`, type: "success" });
                                   } catch (err) {
                                     showModal({ title: "Error", message: err.message, type: "alert" });
                                   }
@@ -1412,28 +1667,30 @@ export default function Settings({ userName, userEmail, onClose, showModal, onLo
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="1 4 1 10 7 10" /><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" /></svg>
                             Restore
                           </button>
-                          <button
-                            className="staff-action-btn revoke"
-                            title="Permanently delete"
-                            onClick={() => {
-                              showModal({
-                                title: "Delete Permanently",
-                                message: `Are you sure you want to permanently delete "${t.title}"? This cannot be undone.`,
-                                type: "confirm",
-                                onConfirm: async () => {
-                                  try {
-                                    await deleteTask({ taskId: t._id, actorEmail: userEmail, actorName: userName, source: "archive" });
-                                    showModal({ title: "Deleted", message: `"${t.title}" has been permanently deleted.`, type: "success" });
-                                  } catch (err) {
-                                    showModal({ title: "Error", message: err.message, type: "alert" });
-                                  }
-                                },
-                              });
-                            }}
-                          >
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></svg>
-                            Delete
-                          </button>
+                          {canDeleteArchived && (
+                            <button
+                              className="staff-action-btn revoke"
+                              title="Permanently delete"
+                              onClick={() => {
+                                showModal({
+                                  title: "Delete Permanently",
+                                  message: `Are you sure you want to permanently delete "${t.title}"? This cannot be undone.`,
+                                  type: "confirm",
+                                  onConfirm: async () => {
+                                    try {
+                                      await deleteTask({ taskId: t._id, actorEmail: userEmail, actorName: userName, source: "archive" });
+                                      showModal({ title: "Deleted", message: `"${t.title}" has been permanently deleted.`, type: "success" });
+                                    } catch (err) {
+                                      showModal({ title: "Error", message: err.message, type: "alert" });
+                                    }
+                                  },
+                                });
+                              }}
+                            >
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></svg>
+                              Delete
+                            </button>
+                          )}
                         </div>
                       </div>
                     ))}

@@ -8,6 +8,7 @@
 //   verify-answer { email, answer }                 → { success, setupToken }
 //   set-question  { question, answer }   + Bearer   → { success }
 //   change-password { currentPassword, newPassword } + Bearer → { success, session }
+//   verify-password { password }         + Bearer   → { ok: true } | 401   (re-authentication; changes nothing)
 //   admin-reset   { targetEmail }        + Bearer   → { success }   (Admin+ / Manager)
 //
 // Everyone keeps their CURRENT password. On first sign-in here the password is
@@ -133,6 +134,14 @@ async function userFromBearer(E, req) {
   const r = await sb(E, "/auth/v1/user", { key: E.anon, token });
   if (!r.ok || r.data?.app_metadata?.hermes !== true) throw httpError(401, "Please sign in again.");
   return cleanEmail(r.data.email);
+}
+
+// End a session we only opened to check a password, so re-authentication
+// leaves no extra refresh token behind.
+async function endSession(E, session) {
+  if (session?.access_token) {
+    await sb(E, "/auth/v1/logout?scope=local", { method: "POST", key: E.anon, token: session.access_token }).catch(() => {});
+  }
 }
 
 // Short-lived signed token: "you may set a password for <email>".
@@ -273,6 +282,27 @@ const actions = {
     await upsertAuthUser(E, s, email, String(newPassword));
     await log(E, "PASSWORD_CHANGED", email, email, "User changed their password in Settings.");
     return { success: true, session: await signIn(E, email, String(newPassword)) };
+  },
+
+  // Re-authentication ("enter your password to continue", e.g. before showing
+  // stored project credentials). Checks the signed-in user's OWN password the
+  // same way sign-in does; wrong guesses count toward the same 15-minute
+  // lockout as failed logins. Changes nothing.
+  async "verify-password"(E, { password }, req) {
+    const email = await userFromBearer(E, req);
+    const s = await getStaff(E, email);
+    if (!s || !approved(s.role)) throw httpError(401, "Please sign in again.");
+    password = String(password || "");
+    if (!password) throw httpError(400, "Enter your password.");
+    if (await tooManyFailures(E, email)) throw httpError(429, "Too many attempts. Wait 15 minutes and try again.");
+    const session = await signIn(E, email, password);
+    if (!session) {
+      await log(E, "LOGIN_FAILED", email, email, "Wrong password on re-authentication.");
+      throw httpError(401, "That password isn't right.");
+    }
+    await endSession(E, session);
+    await log(E, "PASSWORD_REVERIFIED", email, email, "User re-entered their password.");
+    return { ok: true };
   },
 
   async "admin-reset"(E, { targetEmail }, req) {

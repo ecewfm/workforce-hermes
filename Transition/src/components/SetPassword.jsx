@@ -1,4 +1,5 @@
 import { useState } from "react";
+import Select from "./ui/Select";
 import { useMutation } from "../data/react";
 import { api } from "../data/api";
 
@@ -89,7 +90,7 @@ export default function SetPassword({ email, onSet, onComplete, mode = "onboardi
         <img src="https://i.imgur.com/BRd5lrB.png" alt="ECE Logo" className="header-logo" />
         <div className="header-text-content">
           <h1>WORKFORCE HERMES</h1>
-          <p>Workforce Programming Project Database</p>
+          <p>ECE Project Database · Workforce · Operations · Executives</p>
         </div>
         <img src="https://i.imgur.com/ycmU6oP.png" alt="WFM Logo" className="header-logo" />
       </div>
@@ -165,17 +166,15 @@ export default function SetPassword({ email, onSet, onComplete, mode = "onboardi
 
             <form onSubmit={handleSecuritySubmit} style={{ width: "100%" }}>
               <div className="form-group" style={{ marginBottom: "15px" }}>
-                <select
+                <Select
                   className="security-question-select"
                   value={selectedQuestion}
-                  onChange={(e) => { setSelectedQuestion(e.target.value); setError(""); }}
+                  onChange={(v) => { setSelectedQuestion(v); setError(""); }}
+                  placeholder="Select a security question..."
+                  options={SECURITY_QUESTIONS.map((q) => ({ value: q, label: q }))}
+                  ariaLabel="Security question"
                   required
-                >
-                  <option value="" disabled>Select a security question...</option>
-                  {SECURITY_QUESTIONS.map((q, i) => (
-                    <option key={i} value={q}>{q}</option>
-                  ))}
-                </select>
+                />
               </div>
               <div className="form-group" style={{ marginBottom: "20px" }}>
                 <input

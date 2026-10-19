@@ -1,15 +1,20 @@
-import { useEffect, useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { WORKSPACE_META } from "../utils/departments";
 
 /**
  * A responsive grid of selectable workspace cards. Shared by the post-login
  * WorkspaceSelect gate and the in-app picker (opened from the header title).
  *
- * Transition (in-app picker): when `transitioningTo` is set, the OTHER cards
- * blur/fade away and the ACTUAL selected card (a real FLIP transform, not a
- * clone) flies to the viewport center, shows "Loading workspace…", then — when
- * `transitionPhase === "out"` — shrinks to zero. App.jsx drives the phases.
+ * Transition: when `transitioningTo` is set, the OTHER cards drop away and
+ * the ACTUAL selected card (not a clone) lifts and flies to the centre of the
+ * screen, showing "Loading workspace…". When `transitionPhase === "out"` its
+ * content fades and the card swells until it covers the screen — the parent
+ * switches workspace under that cover, then fades a matching curtain away
+ * (App.jsx "ws-curtain"). Web Animations on transform/opacity; the parents
+ * drive the phases.
  */
+const reducedMotion = () => !!window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
+const SPRING = "cubic-bezier(0.34, 1.25, 0.64, 1)";
 export function WorkspaceCards({
   workspaces = [],
   activeWorkspace = null,
@@ -24,23 +29,48 @@ export function WorkspaceCards({
     : { min: 180, gap: 16, pad: "24px 18px", icon: 42, iconRadius: 12, svg: 22, title: "1.05rem", blurb: "0.78rem", mb: 14 };
 
   const cardRefs = useRef({});
-  // The translate needed to move the selected card from its grid spot to the
-  // viewport center. Measured AFTER paint (useEffect) so the card renders at its
-  // original spot first, then transitions to center (a real FLIP move, no jump).
-  const [centerShift, setCenterShift] = useState(null);
+  const shift = useRef(null);
 
-  useEffect(() => {
-    if (!transitioningTo) {
-      setCenterShift(null);
-      return;
+  useLayoutEffect(() => {
+    const sel = transitioningTo && cardRefs.current[transitioningTo];
+    if (!sel || reducedMotion()) return;
+    if (transitionPhase === "loading") {
+      // Others drop away, one after another.
+      workspaces.filter((k) => k !== transitioningTo).forEach((k, i) => {
+        cardRefs.current[k]?.animate(
+          [{ opacity: 1, transform: "none" }, { opacity: 0, transform: `translateY(36px) scale(0.86) rotate(${i % 2 ? 3 : -3}deg)` }],
+          { duration: 420, delay: i * 70, easing: "cubic-bezier(0.4, 0, 1, 1)", fill: "forwards" },
+        );
+      });
+      // The chosen one lifts and flies to the centre of the screen.
+      const r = sel.getBoundingClientRect();
+      const dx = window.innerWidth / 2 - (r.left + r.width / 2);
+      const dy = window.innerHeight / 2 - (r.top + r.height / 2);
+      shift.current = { dx, dy, w: r.width, h: r.height };
+      sel.animate(
+        [
+          { transform: "none" },
+          { transform: `translate(${dx * 0.35}px, ${dy * 0.35 - 18}px) scale(1.04) rotate(-1.5deg)`, offset: 0.35 },
+          { transform: `translate(${dx}px, ${dy}px) scale(1.08)` },
+        ],
+        { duration: 720, easing: SPRING, fill: "forwards" },
+      );
+      sel.querySelector(".workspace-card-icon")?.animate(
+        [{ transform: "rotate(0deg) scale(1)" }, { transform: "rotate(-200deg) scale(1.15)", offset: 0.6 }, { transform: "rotate(-180deg) scale(1)" }],
+        { duration: 900, easing: "cubic-bezier(0.2, 0, 0, 1)", fill: "forwards" },
+      );
+    } else if (transitionPhase === "out" && shift.current) {
+      // Content fades, then the card swells to cover the screen.
+      const { dx, dy, w, h } = shift.current;
+      const cover = Math.max(window.innerWidth / w, window.innerHeight / h) * 1.25;
+      [...sel.children].forEach((c) => c.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 160, easing: "ease-in", fill: "forwards" }));
+      sel.animate(
+        [{ transform: `translate(${dx}px, ${dy}px) scale(1.08)` }, { transform: `translate(${dx}px, ${dy}px) scale(${cover})` }],
+        { duration: 440, delay: 90, easing: "cubic-bezier(0.7, 0, 0.84, 0)", fill: "forwards" },
+      );
     }
-    const el = cardRefs.current[transitioningTo];
-    if (!el) return;
-    const r = el.getBoundingClientRect();
-    const dx = window.innerWidth / 2 - (r.left + r.width / 2);
-    const dy = window.innerHeight / 2 - (r.top + r.height / 2);
-    setCenterShift({ dx, dy });
-  }, [transitioningTo]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [transitioningTo, transitionPhase]);
 
   return (
     <div
@@ -56,20 +86,11 @@ export function WorkspaceCards({
         const isTransitioning = transitioningTo === key;
         const isOther = transitioningTo && !isTransitioning;
 
-        // Per-card transition styling.
+        // During a transition the motion itself is Web Animations (above).
         let dynamic = {};
-        if (isOther) {
-          dynamic = { opacity: 0, filter: "blur(12px)", transform: "scale(0.88)", pointerEvents: "none" };
-        } else if (isTransitioning) {
-          const shift = centerShift ? `translate(${centerShift.dx}px, ${centerShift.dy}px)` : "";
-          dynamic = {
-            transform: transitionPhase === "out" ? `${shift} scale(0)` : `${shift} scale(1.06)`,
-            opacity: transitionPhase === "out" ? 0 : 1,
-            zIndex: 10,
-            position: "relative",
-            boxShadow: "0 30px 70px rgba(0,0,0,0.4)",
-            pointerEvents: "none",
-          };
+        if (isOther) dynamic = { pointerEvents: "none" };
+        else if (isTransitioning) {
+          dynamic = { zIndex: 10, position: "relative", boxShadow: "0 30px 70px rgba(0,0,0,0.4)", pointerEvents: "none" };
         }
 
         return (
@@ -87,9 +108,7 @@ export function WorkspaceCards({
               cursor: "pointer",
               textAlign: "left",
               transformOrigin: "center center",
-              transition: transitioningTo
-                ? "transform 0.6s cubic-bezier(0.65, 0, 0.35, 1), opacity 0.5s ease, filter 0.5s ease, box-shadow 0.5s ease"
-                : "transform 0.15s, box-shadow 0.15s, border-color 0.15s",
+              transition: transitioningTo ? "box-shadow 0.5s ease" : "transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1), scale 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.2s, border-color 0.15s",
               boxShadow: large ? "0 12px 32px rgba(0,0,0,0.18)" : "0 4px 12px rgba(0,0,0,0.04)",
               ...dynamic,
             }}
@@ -159,8 +178,8 @@ export default function WorkspaceSelect({ workspaces = [], userName = "", onSele
     if (transitioningTo) return;
     setTransitioningTo(key);
     setTransitionPhase("loading");
-    setTimeout(() => setTransitionPhase("out"), 1300);
-    setTimeout(() => onSelect && onSelect(key), 1850);
+    setTimeout(() => setTransitionPhase("out"), 1050);
+    setTimeout(() => onSelect && onSelect(key), 1560);
   }
 
   return (
@@ -169,22 +188,21 @@ export default function WorkspaceSelect({ workspaces = [], userName = "", onSele
         <img src="https://i.imgur.com/BRd5lrB.png" alt="ECE Logo" className="header-logo" />
         <div className="header-text-content">
           <h1>WORKFORCE HERMES</h1>
-          <p>Workforce Programming Project Database</p>
+          <p>ECE Project Database · Workforce · Operations · Executives</p>
         </div>
         <img src="https://i.imgur.com/ycmU6oP.png" alt="WFM Logo" className="header-logo" />
       </div>
 
       {/* No wrapper card — the title and cards float directly on the background. */}
       <div style={{ maxWidth: 720, width: "100%", textAlign: "center" }}>
-        {!transitioningTo && (
-          <>
-            <h2 style={{ color: "var(--color-text-primary)", marginBottom: 6 }}>Choose a workspace</h2>
-            <p style={{ color: "var(--color-text-secondary)", lineHeight: 1.6, marginBottom: 28 }}>
-              {userName ? `Welcome back, ${userName}. ` : ""}
-              Select where you'd like to go — you can switch anytime from the header.
-            </p>
-          </>
-        )}
+        {/* Stays in the layout (just fades) so the cards don't jump when you pick one. */}
+        <div style={{ opacity: transitioningTo ? 0 : 1, transform: transitioningTo ? "translateY(-10px)" : "none", transition: "opacity 0.3s ease, transform 0.3s ease" }}>
+          <h2 style={{ color: "var(--color-text-primary)", marginBottom: 6 }}>Choose a workspace</h2>
+          <p style={{ color: "var(--color-text-secondary)", lineHeight: 1.6, marginBottom: 28 }}>
+            {userName ? `Welcome back, ${userName}. ` : ""}
+            Select where you'd like to go — you can switch anytime from the header.
+          </p>
+        </div>
 
         <WorkspaceCards
           workspaces={workspaces}

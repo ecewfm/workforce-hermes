@@ -1,0 +1,147 @@
+/* ============================================================
+   Settings — extras (Client Accounts, read-only email)
+   ------------------------------------------------------------
+   Loaded from Settings.jsx, which is bundled BEFORE index.css, so
+   every rule is scoped under .settings-panel to win specificity
+   ties against the base Settings styles.
+   ============================================================ */
+
+/* ─── Read-only sign-in email ─── */
+.settings-panel .settings-input.settings-input--locked {
+  background: transparent;
+  color: var(--color-text-secondary);
+  border-style: dashed;
+  cursor: default;
+}
+.settings-panel .settings-input.settings-input--locked:focus {
+  border-color: #cbd5e1;
+  box-shadow: none;
+}
+[data-theme="dark"] .settings-panel .settings-input.settings-input--locked {
+  background: transparent;
+  border-color: #475569;
+  color: var(--color-text-secondary);
+}
+
+/* ─── Client Accounts ─── */
+.settings-panel .acct-total {
+  background: var(--color-accent);
+  color: white;
+  border-radius: 20px;
+  padding: 2px 10px;
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0;
+  margin-left: 4px;
+}
+
+.settings-panel .acct-add-row {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-bottom: 14px;
+}
+.settings-panel .acct-add-row .settings-input {
+  flex: 1;
+  min-width: 200px;
+}
+.settings-panel .acct-add-row .settings-btn-primary:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+.settings-panel .acct-empty {
+  text-align: center;
+  color: var(--color-text-secondary);
+  font-style: italic;
+  padding: 24px;
+  border-radius: var(--radius-md);
+  border: 1px dashed var(--glass-border);
+  font-size: 0.85rem;
+}
+
+/* Rows rise in one after another, then lean a touch on hover (the shared
+   .staff-mgmt-row hover nudge) while the initial chip lifts. */
+@keyframes acctRowIn {
+  from { opacity: 0; transform: translateY(8px); filter: blur(2px); }
+  to   { opacity: 1; transform: translateY(0);   filter: blur(0); }
+}
+.settings-panel .acct-row {
+  animation: acctRowIn 0.32s var(--ease-out-quart, cubic-bezier(0.165, 0.84, 0.44, 1)) backwards;
+  animation-delay: calc(min(var(--i, 0), 10) * 35ms);
+}
+
+.settings-panel .acct-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.85rem;
+  font-weight: 900;
+  color: var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent) 12%, transparent);
+  border: 2px solid color-mix(in srgb, var(--color-accent) 25%, transparent);
+  transition: transform 0.3s var(--ease-spring, cubic-bezier(0.34, 1.56, 0.64, 1)), border-color 0.15s ease;
+}
+.settings-panel .acct-row:hover .acct-avatar {
+  transform: scale(1.08) rotate(-4deg);
+  border-color: var(--color-accent);
+}
+
+.settings-panel .acct-rename-input {
+  padding: 6px 10px;
+  font-size: 0.82rem;
+  margin-bottom: 2px;
+  animation: acctRowIn 0.2s var(--ease-out-quart, cubic-bezier(0.165, 0.84, 0.44, 1));
+}
+
+.settings-panel .staff-action-btn.acct-cancel {
+  background: #f1f5f9;
+  color: #475569;
+  border-color: #e2e8f0;
+}
+.settings-panel .staff-action-btn.acct-cancel:hover {
+  background: #e2e8f0;
+  color: #0f172a;
+  border-color: #cbd5e1;
+  transform: translateY(-1px);
+}
+[data-theme="dark"] .settings-panel .staff-action-btn.acct-cancel {
+  background: rgba(148, 163, 184, 0.12);
+  color: #cbd5e1;
+  border-color: var(--glass-border);
+}
+[data-theme="dark"] .settings-panel .staff-action-btn.acct-cancel:hover {
+  background: rgba(148, 163, 184, 0.22);
+  color: #f8fafc;
+}
+
+@media (max-width: 640px) {
+  .settings-panel .acct-row { flex-wrap: wrap; }
+  .settings-panel .acct-row .staff-mgmt-actions { width: 100%; justify-content: flex-end; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .settings-panel .acct-row,
+  .settings-panel .acct-rename-input {
+    animation: none !important;
+  }
+  .settings-panel .acct-avatar { transition: none; }
+  .settings-panel .acct-row:hover .acct-avatar { transform: none; }
+}
+
+/* ── Client accounts per person (Operations) ── */
+.staff-mgmt-role { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+.ui-select.staff-acc-select { max-width: 210px; }
+.staff-acc-all {
+  display: inline-flex; align-items: center; max-width: 210px; padding: 3px 10px; border-radius: 999px;
+  font-size: 0.66rem; font-weight: 800; color: var(--color-text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  background: var(--color-bg-subtle); border: 1px dashed var(--glass-border, #e2e8f0);
+}
+.staff-acc-hint { margin-top: 6px; padding: 9px 12px; border-radius: 10px; background: color-mix(in srgb, var(--color-accent) 7%, transparent); }

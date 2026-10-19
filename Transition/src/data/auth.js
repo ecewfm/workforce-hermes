@@ -68,6 +68,10 @@ export const authApi = {
     return r;
   },
   resetPassword: ({ targetEmail }) => call("admin-reset", { targetEmail }, true),
+  // Re-check the signed-in user's own password (e.g. before revealing stored
+  // credentials). Resolves { ok: true }; throws "That password isn't right."
+  // (or a sign-in / too-many-attempts message) otherwise. Changes nothing.
+  verifyPassword: (password) => call("verify-password", { password }, true),
 };
 
 export async function signOut() {

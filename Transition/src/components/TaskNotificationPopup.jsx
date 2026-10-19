@@ -1,23 +1,28 @@
+import { useEffect } from "react";
 import { useQuery } from "../data/react";
 import { api } from "../data/api";
 import { useWorkspace } from "../utils/workspaceContext";
+import { isTechWorkspace, itemWords } from "../utils/workspaceTerms";
 import { morphOriginFrom } from "../utils/modalOrigin";
+import "../styles/notifications-motion.css";
 
 /**
- * TaskNotificationPopup — shows on login for Programmers.
- * Lists tasks that have new notes, features, bugs, or milestones since last viewed.
+ * TaskNotificationPopup — shows on login for Programmers (Users outside
+ * Workforce). Lists tasks that have new notes, sidebar items (features & bugs
+ * in Workforce, roadblocks elsewhere), or milestones since last viewed.
  */
 export default function TaskNotificationPopup({ userName, onDismiss, onOpenTask }) {
   const workspace = useWorkspace();
   const tasks = useQuery(api.tasks.getTasksLight, { workspace });
-  const userEmail = (localStorage.getItem("wf_email") || "").toLowerCase();
-
-  if (!tasks) return null;
+  const tech = isTechWorkspace(workspace);
+  // lastFeatureTimestamp covers every sidebar item, so one badge names them.
+  const itemW = itemWords(tech ? "feature" : "roadblock");
+  const bugW = itemWords("bug");
 
   // Find tasks assigned to this user with unseen updates
   const userNameLower = (userName || "").toLowerCase();
 
-  const tasksWithUpdates = tasks
+  const tasksWithUpdates = (tasks || [])
     .filter((t) => {
       const assignees = (t.assignee || "").toLowerCase();
       return assignees.includes(userNameLower);
@@ -41,12 +46,14 @@ export default function TaskNotificationPopup({ userName, onDismiss, onOpenTask 
     })
     .filter((x) => x.total > 0);
 
-  // If nothing new, don't show anything
-  if (tasksWithUpdates.length === 0) {
-    // Auto-dismiss since there's nothing to show
-    if (onDismiss) onDismiss();
-    return null;
-  }
+  // Nothing new: dismiss (after render — never set the parent's state mid-render)
+  const nothingNew = !!tasks && tasksWithUpdates.length === 0;
+  useEffect(() => {
+    if (nothingNew && onDismiss) onDismiss();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nothingNew]);
+
+  if (!tasks || nothingNew) return null;
 
   return (
     <div className="announcement-overlay" onClick={onDismiss}>
@@ -69,10 +76,11 @@ export default function TaskNotificationPopup({ userName, onDismiss, onOpenTask 
 
         {/* List */}
         <div className="task-notif-list">
-          {tasksWithUpdates.map(({ task, newNotes, newFeatures, newBugs, newMilestones }) => (
+          {tasksWithUpdates.map(({ task, newNotes, newFeatures, newBugs, newMilestones }, i) => (
             <div
               key={task._id}
               className="task-notif-item"
+              style={{ "--i": Math.min(i, 12) }}
               onClick={(e) => {
                 onOpenTask(task._id, morphOriginFrom(e.currentTarget));
                 onDismiss();
@@ -86,7 +94,7 @@ export default function TaskNotificationPopup({ userName, onDismiss, onOpenTask 
                   </svg>
                 </div>
                 <div>
-                  <h4 style={{ margin: 0, fontWeight: 800, fontSize: "0.82rem", color: "#0f172a" }}>{task.title}</h4>
+                  <h4 style={{ margin: 0, fontWeight: 800, fontSize: "0.82rem", color: "var(--color-text-primary)" }}>{task.title}</h4>
                   <div className="task-notif-badges">
                     {newNotes > 0 && (
                       <span className="task-notif-badge notif-notes">
@@ -97,13 +105,13 @@ export default function TaskNotificationPopup({ userName, onDismiss, onOpenTask 
                     {newFeatures > 0 && (
                       <span className="task-notif-badge notif-features">
                         <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
-                        {newFeatures} feature{newFeatures !== 1 ? "s" : ""}
+                        {newFeatures} {newFeatures !== 1 ? itemW.many : itemW.one}
                       </span>
                     )}
-                    {newBugs > 0 && (
+                    {tech && newBugs > 0 && (
                       <span className="task-notif-badge notif-bugs">
                         <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><circle cx="12" cy="12" r="4"/></svg>
-                        {newBugs} bug{newBugs !== 1 ? "s" : ""}
+                        {newBugs} {newBugs !== 1 ? bugW.many : bugW.one}
                       </span>
                     )}
                     {newMilestones > 0 && (

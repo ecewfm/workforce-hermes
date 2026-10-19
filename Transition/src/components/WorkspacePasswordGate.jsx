@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { workspaceLabel } from "../utils/departments";
+import { termsFor } from "../utils/workspaceTerms";
 
 /**
  * Full-screen gate shown when the active workspace has an entry password that
@@ -38,7 +39,7 @@ export default function WorkspacePasswordGate({ workspace, onSubmit, onBack }) {
         <img src="https://i.imgur.com/BRd5lrB.png" alt="ECE Logo" className="header-logo" />
         <div className="header-text-content">
           <h1>WORKFORCE HERMES</h1>
-          <p>Workforce Programming Project Database</p>
+          <p>{termsFor(workspace).appSubtitle}</p>
         </div>
         <img src="https://i.imgur.com/ycmU6oP.png" alt="WFM Logo" className="header-logo" />
       </div>

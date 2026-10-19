@@ -1,0 +1,346 @@
+/* ============================================================
+   HANDBOOK — section nav, live-update banner, and motion
+   ------------------------------------------------------------
+   Imported by components/Handbook.jsx. The JS half lives in
+   components/handbookMotion.js (open/close, block reveals,
+   section highlight, FLIP) and HandbookChart.jsx (charts grow).
+   Motion is compositor-only — transform + opacity (plus stroke
+   dashes on tiny SVG chart marks) — and every animation here
+   sits inside (prefers-reduced-motion: no-preference), so
+   reduced-motion users get the finished page, instantly.
+   Selectors are scoped under .handbook-overlay and are at least
+   as specific as the index.css handbook rules they override.
+   ============================================================ */
+
+/* Spring curves (damped springs sampled into linear(); fallbacks first).
+   Same numbers as EASE in handbookMotion.js. */
+.handbook-overlay.hbm-root {
+  --hbm-soft: cubic-bezier(0.22, 1.1, 0.36, 1);
+  --hbm-spring: cubic-bezier(0.34, 1.32, 0.64, 1);
+  --hbm-pop: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --hbm-out: cubic-bezier(0.19, 1, 0.22, 1);
+}
+@supports (transition-timing-function: linear(0, 1)) {
+  .handbook-overlay.hbm-root {
+    --hbm-soft: linear(0, 0.112, 0.237, 0.363, 0.483, 0.591, 0.685, 0.765, 0.83, 0.883, 0.924, 0.955, 0.978, 0.994, 1.005, 1.012, 1.015, 1.017, 1.017, 1.016, 1.014, 1.012, 1.01, 1.008, 1.007, 1.005, 1.004, 1.003, 1.002, 1.001, 1);
+    --hbm-spring: linear(0, 0.148, 0.309, 0.467, 0.611, 0.734, 0.834, 0.912, 0.969, 1.009, 1.034, 1.047, 1.052, 1.052, 1.047, 1.041, 1.033, 1.026, 1.019, 1.013, 1.009, 1.005, 1.002, 1, 0.999, 0.998, 0.998, 0.998, 0.998, 0.998, 1);
+    --hbm-pop: linear(0, 0.192, 0.407, 0.613, 0.79, 0.928, 1.025, 1.086, 1.115, 1.122, 1.112, 1.093, 1.071, 1.048, 1.028, 1.012, 1, 0.993, 0.988, 0.987, 0.988, 0.989, 0.992, 0.994, 0.996, 0.998, 1, 1.001, 1.001, 1.001, 1);
+  }
+}
+
+/* The overlay + panel entrance is driven by Web Animations (handbookMotion
+   playOpen) — switch off the generic keyframes from index.css, including the
+   Liquid skin's pop, which would fight it. */
+.handbook-overlay.hbm-root { animation: none; }
+.handbook-overlay.hbm-root .handbook-panel { animation: none; }
+
+/* ── Section nav (jump to a heading) ─────────────────────────────────────── */
+.hb-toc {
+  position: relative;
+  flex-shrink: 0;
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  padding: 2px 2px 9px;
+  margin: -4px 0 12px;
+}
+.hb-toc::-webkit-scrollbar { display: none; }
+.hb-toc-chip {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--glass-border);
+  background: color-mix(in srgb, var(--color-card-bg) 78%, transparent);
+  color: var(--color-text-secondary);
+  font-size: 0.64rem;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color 0.2s ease, border-color 0.2s ease, background 0.2s ease;
+}
+.hb-toc-chip svg { color: var(--color-accent); flex-shrink: 0; }
+.hb-toc-chip:hover { color: var(--color-text-primary); border-color: color-mix(in srgb, var(--color-accent) 45%, var(--glass-border)); }
+.hb-toc-chip.active {
+  color: var(--color-accent);
+  border-color: color-mix(in srgb, var(--color-accent) 55%, var(--glass-border));
+  background: color-mix(in srgb, var(--color-accent) 10%, var(--color-card-bg));
+}
+.hb-toc-chip:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+/* The active-chip underline: a 1px bar moved + stretched with transform only. */
+.hb-toc-ink {
+  position: absolute;
+  left: 0;
+  bottom: 2px;
+  width: 1px;
+  height: 3px;
+  border-radius: 3px;
+  background: var(--color-accent);
+  transform-origin: 0 50%;
+  pointer-events: none;
+}
+[data-skin="cubic"] .hb-toc-chip {
+  border: 2px solid var(--color-text-primary);
+  border-radius: 6px;
+  background: var(--color-card-bg);
+  box-shadow: 2px 2px 0 0 var(--color-text-primary);
+}
+[data-skin="minimal"] .hb-toc-chip { border-radius: 8px; background: var(--color-card-bg); }
+
+/* ── "Updated by … just now" toast (someone saved while you edit) ────────── */
+.hb-stale-banner {
+  position: absolute;
+  bottom: 22px;
+  left: 50%;
+  z-index: 40;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: calc(100% - 32px);
+  padding: 8px 8px 8px 14px;
+  border-radius: 14px;
+  border: 1px solid color-mix(in srgb, var(--color-accent) 45%, var(--glass-border));
+  background: var(--color-card-bg);
+  color: var(--color-text-primary);
+  box-shadow: var(--shadow-lg);
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+.hb-stale-banner > svg { color: var(--color-accent); flex-shrink: 0; }
+.hb-stale-banner .hb-btn {
+  padding: 6px 12px;
+  color: var(--color-accent);
+  border-color: color-mix(in srgb, var(--color-accent) 45%, var(--glass-border));
+}
+.hb-stale-banner .hb-stale-msg { min-width: 0; }
+[data-skin="cubic"] .hb-stale-banner {
+  border: 2.5px solid var(--color-text-primary);
+  border-radius: 6px;
+  box-shadow: 4px 4px 0 0 var(--color-text-primary);
+}
+
+/* ── Section highlight ring (animated by flashBlock via ::after) ─────────── */
+.handbook-overlay .hb-block::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0;
+  box-shadow:
+    inset 0 0 0 2px var(--color-accent),
+    inset 0 0 26px color-mix(in srgb, var(--color-accent) 22%, transparent);
+}
+.handbook-overlay .hb-block.hb-banner::after {
+  box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.85), inset 0 0 26px rgba(255, 255, 255, 0.25);
+}
+
+/* The checkmark is a pathLength=1 path, so it can be drawn. */
+.handbook-overlay .hbm-draw path { stroke-dasharray: 1; stroke-dashoffset: 0; }
+
+/* Chart marks grow from their baseline / center. */
+.hb-chart .hbm-bar { transform-box: fill-box; transform-origin: 50% 100%; }
+.hb-chart .hbm-hbar { transform-box: fill-box; transform-origin: 0% 50%; }
+.hb-chart .hbm-slice { transform-box: view-box; transform-origin: 90px 90px; }
+.hb-chart .hbm-dot { transform-box: fill-box; transform-origin: center; }
+.hb-chart .hbm-prog { transform-origin: left center; }
+
+/* ============================================================
+   MOTION
+   ============================================================ */
+@media (prefers-reduced-motion: no-preference) {
+
+  /* ── Opening: the top bar's contents follow the panel in ── */
+  .hbm-opening .handbook-topbar h2 { animation: hbmSlideIn 0.5s var(--hbm-spring) 0.12s backwards; }
+  .hbm-opening .handbook-topbar h2 > svg { animation: hbmBookOpen 0.75s var(--hbm-pop) 0.16s backwards; }
+  .handbook-topbar-actions > * { animation: hbmPopIn 0.42s var(--hbm-pop) backwards; }
+  .hbm-opening .handbook-topbar-actions > *:nth-child(1) { animation-delay: 0.2s; }
+  .hbm-opening .handbook-topbar-actions > *:nth-child(2) { animation-delay: 0.25s; }
+  .hbm-opening .handbook-topbar-actions > *:nth-child(3) { animation-delay: 0.3s; }
+
+  /* ── Columns: main fades up, sidebars slide in from the right ── */
+  .handbook-overlay .hb-col-main { animation: hbmFadeUp 0.45s var(--hbm-out) backwards; }
+  .handbook-overlay .hb-col-side { animation: hbmFromRight 0.55s var(--hbm-spring) 0.06s backwards; }
+  .handbook-overlay .hb-col-side + .hb-col-side { animation-delay: 0.13s; }
+  .hbm-opening .hb-col-main { animation-delay: 0.1s; }
+  .hbm-opening .hb-col-side { animation-delay: 0.18s; }
+  .hbm-opening .hb-col-side + .hb-col-side { animation-delay: 0.25s; }
+
+  /* ── Section nav: chips cascade in; the underline glides ── */
+  .hb-toc-chip {
+    animation: hbmPopIn 0.42s var(--hbm-pop) backwards;
+    animation-delay: calc(var(--hbm-base, 0ms) + min(var(--i, 0), 8) * 40ms);
+    transition: transform 0.4s var(--hbm-spring), color 0.2s ease, border-color 0.2s ease, background 0.2s ease;
+  }
+  .hbm-opening .hb-toc { --hbm-base: 180ms; }
+  .hb-toc-ink { animation: hbmFadeIn 0.35s ease calc(var(--hbm-base, 0ms) + 140ms) backwards; }
+  .hb-toc-chip:hover { transform: translateY(-2px); }
+  .hb-toc-chip:active { transform: scale(0.94); transition-duration: 0.12s; }
+  .hb-toc-ink { transition: transform 0.5s var(--hbm-spring); }
+
+  /* ── Palette (edit mode) slides in; its items cascade ── */
+  .handbook-overlay .handbook-palette { animation: hbmFromLeft 0.45s var(--hbm-spring) backwards; }
+  .handbook-palette .hb-palette-item,
+  .handbook-palette .hb-template-card {
+    animation: hbmFadeUp 0.38s var(--hbm-out) backwards;
+    animation-delay: calc(60ms + min(var(--i, 0), 14) * 22ms);
+  }
+  .handbook-palette .hb-palette-item { transition: transform 0.35s var(--hbm-spring), border-color 0.15s ease; }
+  .handbook-palette .hb-palette-item:active { transform: scale(0.96); transition-duration: 0.1s; }
+  .handbook-palette .hb-palette-item svg { transition: transform 0.4s var(--hbm-pop); }
+  .handbook-palette .hb-palette-item:hover svg { transform: scale(1.18) rotate(-6deg); }
+
+  /* ── Edit chrome ── */
+  .handbook-overlay .hb-block-toolbar { animation: hbmFadeIn 0.25s ease backwards; }
+  .handbook-overlay .hb-tool-btn { transition: transform 0.3s var(--hbm-pop), background 0.15s ease, color 0.15s ease; }
+  .handbook-overlay .hb-tool-btn:not(:disabled):active { transform: scale(0.86); transition-duration: 0.08s; }
+  .handbook-overlay .hbm-tick.is-on { animation: hbmPress 0.42s var(--hbm-pop); }
+  .handbook-overlay .hbm-draw-now path { animation: hbmDraw 0.36s cubic-bezier(0.65, 0, 0.35, 1) 0.05s backwards; }
+
+  /* ── Live-update toast springs up ── */
+  .hb-stale-banner { animation: hbmToastIn 0.5s var(--hbm-spring) backwards; }
+
+  /* ── Empty state breathes ── */
+  .hb-empty-state { animation: hbmFadeUp 0.5s var(--hbm-out) 0.12s backwards; }
+  .hb-empty-state > svg { animation: hbmFloat 3.6s ease-in-out 0.6s infinite; }
+
+  /* ── Blocks: hidden until the revealer lifts them in (handbookMotion) ── */
+  .handbook-canvas.hbm-armed .hb-block:not([data-hbm-in]) { opacity: 0; }
+
+  /* ── …then their insides cascade, after the block's own delay (--hbm-d) ── */
+  .hb-block.hb-banner[data-hbm-in] h1 { animation: hbmSlideIn 0.55s var(--hbm-spring) calc(var(--hbm-d, 0ms) + 90ms) backwards; }
+  .hb-block.hb-banner[data-hbm-in] h1 > svg { animation: hbmSpinPop 0.7s var(--hbm-pop) calc(var(--hbm-d, 0ms) + 150ms) backwards; }
+  .hb-block.hb-banner[data-hbm-in] p { animation: hbmFadeUp 0.5s var(--hbm-out) calc(var(--hbm-d, 0ms) + 180ms) backwards; }
+  .hb-block[data-hbm-in] .hb-heading > svg { animation: hbmSpinPop 0.6s var(--hbm-pop) calc(var(--hbm-d, 0ms) + 120ms) backwards; }
+  .hb-block.hb-callout[data-hbm-in] > .ic { animation: hbmWiggle 0.7s ease calc(var(--hbm-d, 0ms) + 200ms) backwards; }
+  .hb-block[data-hbm-in] .hb-quote-mark { animation: hbmQuoteIn 0.7s var(--hbm-pop) calc(var(--hbm-d, 0ms) + 120ms) backwards; }
+
+  .hb-block[data-hbm-in] .hb-timeline-item {
+    animation: hbmSlideIn 0.5s var(--hbm-spring) backwards;
+    animation-delay: calc(var(--hbm-d, 0ms) + 110ms + min(var(--i, 0), 8) * 65ms);
+  }
+  .hb-block[data-hbm-in] .hb-timeline-item::before {
+    animation: hbmDotPop 0.55s var(--hbm-pop) backwards;
+    animation-delay: calc(var(--hbm-d, 0ms) + 190ms + min(var(--i, 0), 8) * 65ms);
+  }
+  .hb-block[data-hbm-in] .hb-step,
+  .hb-block[data-hbm-in] .hb-access-card {
+    animation: hbmFadeUp 0.48s var(--hbm-spring) backwards;
+    animation-delay: calc(var(--hbm-d, 0ms) + 110ms + min(var(--i, 0), 8) * 60ms);
+  }
+  .hb-block[data-hbm-in] .hb-step-num {
+    animation: hbmPopIn 0.5s var(--hbm-pop) backwards;
+    animation-delay: calc(var(--hbm-d, 0ms) + 180ms + min(var(--i, 0), 8) * 60ms);
+  }
+  .hb-block[data-hbm-in] .hb-subcard {
+    animation: hbmRise 0.52s var(--hbm-spring) backwards;
+    animation-delay: calc(var(--hbm-d, 0ms) + 100ms + min(var(--i, 0), 8) * 55ms);
+  }
+  .hb-block[data-hbm-in] .hb-kpi {
+    animation: hbmPopIn 0.5s var(--hbm-pop) backwards;
+    animation-delay: calc(var(--hbm-d, 0ms) + 100ms + min(var(--i, 0), 8) * 55ms);
+  }
+  .hb-block[data-hbm-in] .hb-check-item {
+    animation: hbmSlideIn 0.42s var(--hbm-spring) backwards;
+    animation-delay: calc(var(--hbm-d, 0ms) + 110ms + min(var(--i, 0), 10) * 70ms);
+  }
+  .hb-block[data-hbm-in] .hb-check-item.done .hb-check-box {
+    animation: hbmPress 0.45s var(--hbm-pop) backwards;
+    animation-delay: calc(var(--hbm-d, 0ms) + 220ms + min(var(--i, 0), 10) * 70ms);
+  }
+  .hb-block[data-hbm-in] .hb-check-item .hbm-draw path {
+    animation: hbmDraw 0.4s cubic-bezier(0.65, 0, 0.35, 1) backwards;
+    animation-delay: calc(var(--hbm-d, 0ms) + 270ms + min(var(--i, 0), 10) * 70ms);
+  }
+
+  /* ── Hover / press: cards lift, icons perk up (view mode) ── */
+  .handbook-canvas:not(.is-editing) .hb-subcard,
+  .handbook-canvas:not(.is-editing) .hb-kpi,
+  .handbook-canvas:not(.is-editing) .hb-step,
+  .handbook-canvas:not(.is-editing) .hb-access-card {
+    transition: transform 0.45s var(--hbm-spring), border-color 0.2s ease;
+  }
+  .handbook-canvas:not(.is-editing) .hb-subcard:hover,
+  .handbook-canvas:not(.is-editing) .hb-kpi:hover,
+  .handbook-canvas:not(.is-editing) .hb-step:hover,
+  .handbook-canvas:not(.is-editing) .hb-access-card:hover {
+    transform: translateY(-3px);
+    border-color: color-mix(in srgb, var(--color-accent) 45%, var(--glass-border));
+  }
+  .handbook-canvas:not(.is-editing) .hb-subcard:active,
+  .handbook-canvas:not(.is-editing) .hb-kpi:active,
+  .handbook-canvas:not(.is-editing) .hb-step:active,
+  .handbook-canvas:not(.is-editing) .hb-access-card:active {
+    transform: translateY(-1px) scale(0.985);
+    transition-duration: 0.12s;
+  }
+  .handbook-canvas .hb-subcard .sc-icon { width: fit-content; transition: transform 0.45s var(--hbm-pop); }
+  .handbook-canvas:not(.is-editing) .hb-subcard:hover .sc-icon { transform: rotate(-8deg) scale(1.15); }
+  .handbook-canvas .hb-kpi-value { transition: transform 0.45s var(--hbm-pop); }
+  .handbook-canvas:not(.is-editing) .hb-kpi:hover .hb-kpi-value { transform: scale(1.07); }
+  .handbook-canvas .hb-step-num { transition: transform 0.45s var(--hbm-pop); }
+  .handbook-canvas:not(.is-editing) .hb-step:hover .hb-step-num { transform: scale(1.15) rotate(-8deg); }
+  .handbook-canvas .hb-timeline-item::before { transition: transform 0.4s var(--hbm-pop); }
+  .handbook-canvas .hb-timeline-title { transition: transform 0.4s var(--hbm-spring); }
+  .handbook-canvas:not(.is-editing) .hb-timeline-item:hover::before { transform: scale(1.35); }
+  .handbook-canvas:not(.is-editing) .hb-timeline-item:hover .hb-timeline-title { transform: translateX(3px); }
+  .handbook-canvas .hb-check-item { transition: transform 0.35s var(--hbm-spring); }
+  .handbook-canvas .hb-check-box { transition: transform 0.35s var(--hbm-pop); }
+  .handbook-canvas:not(.is-editing) .hb-check-item:hover { transform: translateX(3px); }
+  .handbook-canvas:not(.is-editing) .hb-check-item:hover .hb-check-box { transform: scale(1.12); }
+
+  /* ── Charts grow in (HandbookChart toggles the end state) ── */
+  .hb-chart .hbm-bar,
+  .hb-chart .hbm-hbar {
+    transition: transform 0.75s var(--hbm-spring) calc(var(--hbm-cd, 0ms) + 120ms + min(var(--i, 0), 10) * 70ms);
+  }
+  .hb-chart .hbm-val {
+    transition: opacity 0.4s ease calc(var(--hbm-cd, 0ms) + 380ms + min(var(--i, 0), 10) * 70ms);
+  }
+  .hb-chart .hbm-slice {
+    transition:
+      transform 0.8s var(--hbm-spring) calc(var(--hbm-cd, 0ms) + 100ms + min(var(--i, 0), 10) * 60ms),
+      opacity 0.3s ease calc(var(--hbm-cd, 0ms) + 100ms + min(var(--i, 0), 10) * 60ms);
+  }
+  .hb-chart .hbm-ring {
+    transition: stroke-dashoffset 1.1s cubic-bezier(0.22, 1, 0.36, 1) calc(var(--hbm-cd, 0ms) + 120ms + min(var(--i, 0), 6) * 90ms);
+  }
+  .hb-chart .hbm-line { transition: stroke-dashoffset 1s cubic-bezier(0.65, 0, 0.35, 1) calc(var(--hbm-cd, 0ms) + 100ms); }
+  .hb-chart .hbm-area { transition: opacity 0.7s ease calc(var(--hbm-cd, 0ms) + 500ms); }
+  .hb-chart .hbm-dot { transition: transform 0.45s var(--hbm-pop) calc(var(--hbm-cd, 0ms) + 140ms + var(--t, 0ms)); }
+  .hb-chart .hbm-prog { transition: transform 0.85s var(--hbm-spring) calc(var(--hbm-cd, 0ms) + 120ms + min(var(--i, 0), 10) * 80ms); }
+  .hb-chart .hbm-legend span {
+    transition: opacity 0.35s ease, transform 0.45s var(--hbm-spring);
+    transition-delay: calc(var(--hbm-cd, 0ms) + 450ms + min(var(--i, 0), 10) * 50ms);
+  }
+  .hb-chart .hbm-legend:not(.is-on) span { opacity: 0; transform: translateY(6px); }
+}
+
+@keyframes hbmFadeIn { from { opacity: 0; } }
+@keyframes hbmFadeUp { from { opacity: 0; transform: translateY(10px); } }
+@keyframes hbmRise { from { opacity: 0; transform: translateY(16px) scale(0.97); } }
+@keyframes hbmSlideIn { from { opacity: 0; transform: translateX(-12px); } }
+@keyframes hbmFromRight { from { opacity: 0; transform: translateX(28px); } }
+@keyframes hbmFromLeft { from { opacity: 0; transform: translateX(-24px); } }
+@keyframes hbmPopIn { from { opacity: 0; transform: scale(0.6); } }
+@keyframes hbmPress { from { transform: scale(0.7); } }
+@keyframes hbmDotPop { from { transform: scale(0); } }
+@keyframes hbmDraw { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
+@keyframes hbmToastIn { from { opacity: 0; transform: translateX(-50%) translateY(18px) scale(0.96); } }
+@keyframes hbmFloat { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
+@keyframes hbmBookOpen { from { opacity: 0; transform: perspective(200px) rotateY(-110deg); } }
+@keyframes hbmSpinPop { from { opacity: 0; transform: rotate(-60deg) scale(0.4); } }
+@keyframes hbmQuoteIn { from { opacity: 0; transform: translateY(10px) scale(0.5) rotate(-14deg); } }
+@keyframes hbmWiggle {
+  0% { opacity: 0; transform: scale(0.5); }
+  45% { opacity: 1; transform: scale(1.15) rotate(-10deg); }
+  65% { transform: scale(1) rotate(8deg); }
+  85% { transform: rotate(-4deg); }
+  100% { transform: none; }
+}

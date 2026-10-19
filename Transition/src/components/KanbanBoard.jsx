@@ -5,8 +5,11 @@ import { api } from "../data/api";
 import { getProjectDeadlines, deadlineTone, DAY_MS, milestoneAnchor } from "../utils/deadlines";
 import { notifyTaskUpdated, notifyMilestoneCompleted, notifyNoteAdded } from "../utils/notifications";
 import { useWorkspace } from "../utils/workspaceContext";
-import { resolveColumns, taskInColumn } from "../utils/columns";
+import { resolveColumns, taskInColumn, isArchivedStatus } from "../utils/columns";
+import { termsFor } from "../utils/workspaceTerms";
+import { isAdminPlusOrAbove } from "../utils/roles";
 import { morphOriginFrom } from "../utils/modalOrigin";
+import ColumnGather from "./ColumnGather";
 
 const cleanConvexError = (errorMessage) => {
   if (!errorMessage) return "An unexpected error occurred.";
@@ -40,10 +43,80 @@ const getMilestoneDeadline = (t, idx) => {
 };
 
 
+// A number that rolls to its new value (board totals). Text only — cheap.
+function CountUp({ value, duration = 650 }) {
+  const [shown, setShown] = useState(0);
+  const fromRef = useRef(0);
+  useEffect(() => {
+    const from = fromRef.current;
+    if (from === value || window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches) {
+      fromRef.current = value;
+      setShown(value);
+      return;
+    }
+    let raf = 0;
+    const t0 = performance.now();
+    const step = (now) => {
+      const p = Math.min(1, (now - t0) / duration);
+      const eased = 1 - Math.pow(1 - p, 3);
+      setShown(Math.round(from + (value - from) * eased));
+      if (p < 1) raf = requestAnimationFrame(step);
+      else fromRef.current = value;
+    };
+    raf = requestAnimationFrame(step);
+    return () => { cancelAnimationFrame(raf); fromRef.current = value; };
+  }, [value, duration]);
+  return <span className="count-up">{shown}</span>;
+}
+
+// Board totals tilt toward the pointer (transform only, via CSS variables).
+function tiltTotalCard(e) {
+  if (e.pointerType !== "mouse") return;
+  const el = e.currentTarget;
+  const r = el.getBoundingClientRect();
+  const x = (e.clientX - r.left) / r.width - 0.5;
+  const y = (e.clientY - r.top) / r.height - 0.5;
+  el.style.setProperty("--tc-rx", `${(-y * 10).toFixed(2)}deg`);
+  el.style.setProperty("--tc-ry", `${(x * 12).toFixed(2)}deg`);
+  el.style.setProperty("--tc-gx", `${((x + 0.5) * 100).toFixed(1)}%`);
+}
+function untiltTotalCard(e) {
+  const el = e.currentTarget;
+  el.style.setProperty("--tc-rx", "0deg");
+  el.style.setProperty("--tc-ry", "0deg");
+}
+
+// How far the hover surface must stretch above/below: the height of the
+// top and bottom info strips (their content varies per card).
+function measureStretch(e) {
+  const shell = e.currentTarget;
+  const top = shell.querySelector(".tf-wing-top")?.offsetHeight;
+  const bottom = shell.querySelector(".tf-wing-bottom")?.offsetHeight;
+  if (top) shell.style.setProperty("--tf-t", `${top}px`);
+  if (bottom) shell.style.setProperty("--tf-b", `${bottom}px`);
+}
+
 export default function KanbanBoard({ userRole, actualRole, userName, openTaskModal, openNotesModal, onContextMenu, showModal, staff, searchQuery, filterStaff, onOpenProfile, onClearFilter }) {
   const workspace = useWorkspace();
   const tasks = useQuery(api.tasks.getTasksLight, { workspace });
   const appConfig = useQuery(api.appConfig.getAppConfig, { workspace });
+  const terms = termsFor(workspace);
+  // Operations: projects belong to client accounts; the board can show one.
+  const accounts = useQuery(api.accounts.getAccounts, terms.accounts ? { workspace } : "skip");
+  const addAccount = useMutation(api.accounts.addAccount);
+  const accountKey = `wf_account_filter_${workspace}`;
+  const [accountFilter, setAccountFilterState] = useState(() => {
+    try { return localStorage.getItem(accountKey) || "all"; } catch { return "all"; }
+  });
+  useEffect(() => {
+    try { setAccountFilterState(localStorage.getItem(accountKey) || "all"); } catch { setAccountFilterState("all"); }
+  }, [accountKey]);
+  const setAccountFilter = (v) => {
+    setAccountFilterState(v);
+    try { localStorage.setItem(accountKey, v); } catch { /* private mode */ }
+  };
+  const [newAccountOpen, setNewAccountOpen] = useState(false);
+  const [newAccountName, setNewAccountName] = useState("");
   const toggleTaskPriority = useMutation(api.tasks.toggleTaskPriority);
   // The args object is part of the query cache key — the optimistic getQuery/
   // setQuery keys MUST match the useQuery key ({ workspace }) or drag-and-drop
@@ -68,7 +141,8 @@ export default function KanbanBoard({ userRole, actualRole, userName, openTaskMo
   const [expandedCards, setExpandedCards] = useState({});
   const [draggedMilestoneIdx, setDraggedMilestoneIdx] = useState(null);
   const [lastKnownTasks, setLastKnownTasks] = useState([]);
-  const [fullViewColumn, setFullViewColumn] = useState(null);
+  // A board total was clicked: that column's cards gather to the front.
+  const [gather, setGather] = useState(null); // { column, sourceEl, cardWidth }
   const [storageRefresh, setStorageRefresh] = useState(0); // Trigger re-render when tasks are viewed
   const warmTimer = useRef(null); // hover → prefetch the full task (see the card's onPointerEnter)
   useEffect(() => () => clearTimeout(warmTimer.current), []);
@@ -159,14 +233,6 @@ export default function KanbanBoard({ userRole, actualRole, userName, openTaskMo
     return { newNotes, newFeatures, newBugs, hasBadges, total };
   };
   
-  // Body scroll lock for full column view
-  useEffect(() => {
-    if (fullViewColumn) {
-      document.body.style.overflow = "hidden";
-    } else {
-      document.body.style.overflow = "";
-    }
-  }, [fullViewColumn]);
 
   // Reset the anti-flicker cache when the workspace changes, so we never show
   // the previous workspace's projects while the new workspace's query loads.
@@ -182,6 +248,27 @@ export default function KanbanBoard({ userRole, actualRole, userName, openTaskMo
     }
   }, [tasks]);
 
+  // Totals: a card bumps when its number changes (a project moved in or out).
+  // The numbers are recorded during render (liveTotals) and compared after each
+  // commit — declared here, above the loading return, so hook order never changes.
+  const liveTotals = useRef(null);
+  const prevTotals = useRef(null);
+  useEffect(() => {
+    const now = liveTotals.current;
+    if (!now) return;
+    const prev = prevTotals.current;
+    prevTotals.current = now;
+    if (!prev || window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches) return;
+    for (const id of Object.keys(now)) {
+      if ((prev[id] || 0) === (now[id] || 0)) continue;
+      const el = boardRef.current?.parentElement?.querySelector(`.total-card[data-col="${CSS.escape(id)}"]`);
+      el?.animate(
+        [{ transform: "scale(1)" }, { transform: "scale(1.07)", offset: 0.35 }, { transform: "scale(0.98)", offset: 0.7 }, { transform: "scale(1)" }],
+        { duration: 520, easing: "ease-out", composite: "add" },
+      );
+    }
+  });
+
   if (!tasks && lastKnownTasks.length === 0) {
     return (
       <div style={{ textAlign: "center", padding: 40 }}>
@@ -195,17 +282,20 @@ export default function KanbanBoard({ userRole, actualRole, userName, openTaskMo
   const displayTasks = Array.isArray(tasks) ? tasks : lastKnownTasks;
 
   // Per-workspace column config (manager-editable in Settings → Workspace
-  // Defaults). Falls back to the default 7 columns when none is saved.
-  const columnDefs = resolveColumns(appConfig?.columns);
+  // Defaults). Falls back to that workspace's default columns when none is saved.
+  const columnDefs = resolveColumns(appConfig?.columns, workspace);
   const columns = columnDefs.map((c) => c.id);
   const columnById = Object.fromEntries(columnDefs.map((c) => [c.id, c]));
   const columnLabel = (id) => columnById[id]?.label || id;
   // Every task resolves to exactly ONE column: the one matching its status, or
   // the first column as a fallback so a task whose column was removed (or a new
-  // task whose default status has no column) is never lost.
+  // task whose default status has no column) is never lost. Archived projects
+  // are the exception: with no archive column on this board they stay off it
+  // (Settings → Archived Projects) instead of falling into the first column.
   const columnForTask = (status) => {
     const match = columnDefs.find((c) => taskInColumn(status, c.id));
-    return match ? match.id : columns[0];
+    if (match) return match.id;
+    return isArchivedStatus(status) ? null : columns[0];
   };
   // Size the grid to the ACTUAL number of columns so a board with few columns
   // fills the space with properly-sized, centered columns instead of leaving
@@ -233,6 +323,21 @@ export default function KanbanBoard({ userRole, actualRole, userName, openTaskMo
       const a = (t.assignee || "").toLowerCase();
       return a.includes(fullName) || (firstName.length > 1 && a.includes(firstName));
     });
+  }
+
+  // Account filter (Operations). A remembered account that was deleted since
+  // falls back to "All accounts".
+  const accountView = accountFilter === "all" || accountFilter === "none" || !Array.isArray(accounts) || accounts.some((a) => a._id === accountFilter)
+    ? accountFilter : "all";
+  const accountCounts = { all: filtered.length, none: 0 };
+  if (terms.accounts) {
+    for (const t of filtered) {
+      const k = t.accountId || "none";
+      accountCounts[k] = (accountCounts[k] || 0) + 1;
+    }
+    if (accountView !== "all") {
+      filtered = filtered.filter((t) => (accountView === "none" ? !t.accountId : t.accountId === accountView));
+    }
   }
 
   // Search is visual-only on the board — doesn't filter cards out
@@ -331,6 +436,10 @@ export default function KanbanBoard({ userRole, actualRole, userName, openTaskMo
   }
 
   function renderTaskCard(t, isFullView = false, dimmed = false) {
+    // "gather": the board card itself, shown in the gathered front view —
+    // same look, but not draggable and without the hover wings.
+    const gathered = isFullView === "gather";
+    if (gathered) isFullView = false;
     const milestones = t.milestones || [];
     const totalM = milestones.length > 0 ? milestones.length : 10;
     const doneM = t.completedMilestones || 0;
@@ -354,7 +463,7 @@ export default function KanbanBoard({ userRole, actualRole, userName, openTaskMo
 
     const isProgrammerView = userRole === "Programmer";
     const cardClass = isFullView ? "rounded-task-card" : (isProgrammerView ? "programmer-card" : "task-card");
-    const isDefaultCard = !isFullView && !isProgrammerView;
+    const isDefaultCard = !isFullView && !isProgrammerView && !gathered;
     const badges = getTaskBadges(t); // compute once, reused in the header below
 
     // ── Hover-wing data (default board card only) ──
@@ -364,7 +473,7 @@ export default function KanbanBoard({ userRole, actualRole, userName, openTaskMo
     // at index `doneM` is the current one in progress.
     const wCurrentDotIdx = doneM < totalM ? doneM : -1;
     const wDaysLabel =
-      (t.status || "").toLowerCase() === "todo" ? "Starts once in Pending"
+      (t.status || "").toLowerCase() === "todo" ? "Starts when work begins"
       : completionLeft === null ? "No deadline set"
       : completionLeft < 0 ? `${Math.abs(completionLeft)} days overdue`
       : completionLeft === 0 ? "Due today"
@@ -448,16 +557,15 @@ export default function KanbanBoard({ userRole, actualRole, userName, openTaskMo
       <div
         key={t._id}
         className={cardClass}
-        draggable={!isFullView}
+        draggable={!isFullView && !gathered}
         data-id={t._id}
         onDragStart={(e) => {
-          if (isFullView) return;
+          if (isFullView || gathered) return;
           e.dataTransfer.setData("taskId", t._id);
           e.currentTarget.classList.add("dragging");
         }}
-        onDragEnd={(e) => !isFullView && e.currentTarget.classList.remove("dragging")}
+        onDragEnd={(e) => !isFullView && !gathered && e.currentTarget.classList.remove("dragging")}
         onClick={(e) => {
-          setFullViewColumn(null);
           // The card exactly as it looks right now (hover pop included) plus
           // the task data we already hold: the modal paints on this same
           // click and grows out of this very card.
@@ -496,6 +604,7 @@ export default function KanbanBoard({ userRole, actualRole, userName, openTaskMo
               ) : (
                 <span>#{(t._id || "").slice(-4).toUpperCase()}</span>
               )}
+              {terms.accounts && t.account && <span className="card-account-pill" title="Account">{t.account}</span>}
               {completionDue && (
                 <span
                   className={`card-completion-chip ${completionTone}`}
@@ -509,7 +618,8 @@ export default function KanbanBoard({ userRole, actualRole, userName, openTaskMo
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-end" }}>
             {t.isPrioritized && (
-              <span 
+              <span
+                className="priority-pill"
                 style={{ background: "#fef9c3", color: "#854d0e", padding: "4px 10px", borderRadius: "8px", cursor: "pointer", fontSize: "0.6rem", fontWeight: 900, letterSpacing: "0.5px" }}
                 onClick={(e) => {
                   e.stopPropagation();
@@ -543,7 +653,7 @@ export default function KanbanBoard({ userRole, actualRole, userName, openTaskMo
         
         {isFullView && (
           <div className="rounded-task-tag">
-            {t.status.toUpperCase()}
+            {String(columnLabel(columnForTask(t.status)) || t.status).toUpperCase()}
           </div>
         )}
 
@@ -666,12 +776,13 @@ export default function KanbanBoard({ userRole, actualRole, userName, openTaskMo
 
     if (!isDefaultCard) return cardEl;
 
-    // Default board card: the original design stays on top as an opaque front,
-    // with three wings tucked directly BEHIND it. On hover the card pops and the
-    // wings slide out from under it — dots left, latest note right, days +
-    // current milestone + controls drop down below. No fade: pure slide.
+    // Default board card: on hover it STRETCHES — one surface grows out from
+    // behind it on every side and the extra info slides out with it (dots
+    // left, latest note right, time left above, current milestone + moves
+    // below). See .tf-surface in index.css.
     return (
-      <div className="tf-shell" key={t._id}>
+      <div className="tf-shell" key={t._id} onPointerEnter={measureStretch}>
+        <div className="tf-surface" aria-hidden="true" />
         <div className="tf-wing tf-wing-top">
           <span className="tf-wing-cap">Time left</span>
           <span className={`tf-days ${completionTone || ""}`}>
@@ -730,6 +841,8 @@ export default function KanbanBoard({ userRole, actualRole, userName, openTaskMo
     );
   }
 
+  liveTotals.current = { ...totals };
+
   return (
     <div id="kanban-view" className="view-section">
       {filterStaff && (
@@ -772,13 +885,77 @@ export default function KanbanBoard({ userRole, actualRole, userName, openTaskMo
           <span>No projects assigned to {filterStaff.name}.</span>
         </div>
       )}
+      {terms.accounts && (
+        <div className="account-bar" role="toolbar" aria-label="Filter by account">
+          <span className="account-bar-label">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden="true"><path d="M3 21h18M5 21V7l7-4 7 4v14M9 9h1m4 0h1M9 13h1m4 0h1M9 17h1m4 0h1" /></svg>
+            Account
+          </span>
+          {[{ _id: "all", name: "All accounts" }, ...(accounts || []), { _id: "none", name: "No account" }].map((a, i) => (
+            <button
+              key={a._id}
+              type="button"
+              className={`account-chip ${accountView === a._id ? "active" : ""}`}
+              style={{ animationDelay: `${Math.min(i, 10) * 35}ms` }}
+              onClick={() => setAccountFilter(a._id)}
+            >
+              {a.name}
+              <span className="account-chip-count">{accountCounts[a._id] || 0}</span>
+            </button>
+          ))}
+          {isAdminPlusOrAbove(actualRole) && (newAccountOpen ? (
+            <form
+              className="account-new-form"
+              onSubmit={async (e) => {
+                e.preventDefault();
+                const name = newAccountName.trim();
+                if (!name) { setNewAccountOpen(false); return; }
+                try {
+                  const id = await addAccount({ workspace, name });
+                  setNewAccountName("");
+                  setNewAccountOpen(false);
+                  if (id) setAccountFilter(String(id));
+                } catch (err) {
+                  showModal({ title: "Couldn't create the account", message: err?.message || "Please try again.", type: "alert" });
+                }
+              }}
+            >
+              <input
+                autoFocus
+                value={newAccountName}
+                onChange={(e) => setNewAccountName(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Escape") { setNewAccountOpen(false); setNewAccountName(""); } }}
+                onBlur={() => { if (!newAccountName.trim()) setNewAccountOpen(false); }}
+                placeholder="New account name"
+                maxLength={80}
+              />
+              <button type="submit">Add</button>
+            </form>
+          ) : (
+            <button type="button" className="account-chip account-chip-new" onClick={() => setNewAccountOpen(true)} title="Create a client account (Admin+)">
+              + New account
+            </button>
+          ))}
+        </div>
+      )}
       <div className="kanban-totals-bar" style={{ gap: "15px", padding: "15px 120px", marginBottom: "15px", ...boardGridStyle }}>
         {columnDefs.map((cd) => {
           const over = cd.limit && totals[cd.id] > cd.limit;
           return (
-            <div className="total-card" key={cd.id} onClick={() => setFullViewColumn(cd.id)} style={{ padding: "15px", borderRadius: "var(--radius-md)", border: over ? "1px solid #fecaca" : "1px solid #f1f5f9", boxShadow: "var(--shadow-sm)" }}>
+            <div
+              className="total-card"
+              key={cd.id}
+              data-col={cd.id}
+              onClick={(e) => {
+                const boardCardEl = boardRef.current?.querySelector(".task-card, .programmer-card");
+                setGather({ column: cd, sourceEl: e.currentTarget, cardWidth: Math.max(boardCardEl?.offsetWidth || 260, 240) });
+              }}
+              onPointerMove={tiltTotalCard}
+              onPointerLeave={untiltTotalCard}
+              style={{ padding: "15px", borderRadius: "var(--radius-md)", border: over ? "1px solid #fecaca" : "1px solid #f1f5f9", boxShadow: "var(--shadow-sm)", "--tc-accent": cd.color }}
+            >
               <div className="total-value" style={{ fontSize: "1.4rem", color: cd.color }}>
-                {totals[cd.id]}
+                <CountUp value={totals[cd.id] || 0} />
                 {cd.limit ? <span style={{ fontSize: "0.8rem", color: over ? "#ef4444" : "#94a3b8", fontWeight: 700 }}> / {cd.limit}</span> : null}
               </div>
               <div className="total-label" style={{ fontSize: "0.6rem", letterSpacing: "1.2px" }}>{cd.label}</div>
@@ -824,31 +1001,17 @@ export default function KanbanBoard({ userRole, actualRole, userName, openTaskMo
         })}
       </div>
 
-      {/* Full View Modal */}
-      {fullViewColumn && (
-        <div className="modal-overlay" onClick={() => setFullViewColumn(null)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 1400 }}>
-            <button className="modal-close" onClick={() => setFullViewColumn(null)}>×</button>
-            <h2 style={{ 
-              fontWeight: 900, 
-              textTransform: "uppercase", 
-              marginBottom: 25, 
-              paddingBottom: 15,
-              borderBottom: "1px solid #f1f5f9",
-              color: "var(--color-text-primary)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between"
-            }}>
-              <span>All Tasks: {columnLabel(fullViewColumn)} ({totals[fullViewColumn]})</span>
-            </h2>
-            <div className="full-kanban-grid">
-              {filtered
-                .filter((t) => columnForTask(t.status) === fullViewColumn)
-                .map((t) => renderTaskCard(t, true, !isSearchMatch(t)))}
-            </div>
-          </div>
-        </div>
+      {/* Board total clicked → its cards gather to the front (ColumnGather). */}
+      {gather && (
+        <ColumnGather
+          key={gather.column.id}
+          column={gather.column}
+          tasks={filtered.filter((t) => columnForTask(t.status) === gather.column.id)}
+          renderCard={(t) => renderTaskCard(t, "gather", !isSearchMatch(t))}
+          sourceEl={gather.sourceEl}
+          cardWidth={gather.cardWidth}
+          onClose={() => setGather(null)}
+        />
       )}
     </div>
   );

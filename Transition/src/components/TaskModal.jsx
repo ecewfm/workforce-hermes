@@ -7,6 +7,12 @@ import { isAdminPlusOrAbove, isAdminLevel as isAdminLevelRole, canEditAnyCard } 
 import { milestoneAnchor, DAY_MS } from "../utils/deadlines";
 import FeatureModal from "./FeatureModal";
 import { createCardMorph } from "../utils/cardMorph";
+import { useWorkspace } from "../utils/workspaceContext";
+import { termsFor, itemWords } from "../utils/workspaceTerms";
+import { authApi } from "../data/auth";
+import Select from "./ui/Select";
+import { useOutsideClose } from "./ui/Popover";
+import { useAccountScope } from "../utils/accountScope";
 
 function deobfuscate(str) {
   if (!str || typeof str !== "string") return str;
@@ -34,8 +40,69 @@ function deobfuscate(str) {
 }
 
 
-export default function TaskModal({ taskId, isEditMode, initialNotesOpen, userRole, actualRole, userName, staff, onClose, showModal, showInputModal, onViewProfile, originRect, seedTask }) {
-  const liveTask = useQuery(api.tasks.getTaskById, { taskId });
+// How each sidebar kind looks (feature = the neutral default).
+const KIND_LOOK = {
+  feature: { pill: "var(--color-bg-subtle)", pillFg: "var(--color-text-secondary)", addBg: "#f8fafc", addFg: "#475569", addBorder: "#e2e8f0" },
+  bug: {
+    pill: "rgba(239, 68, 68, 0.15)", pillFg: "#ef4444", addBg: "#fef2f2", addFg: "#dc2626", addBorder: "#fca5a5",
+    stripe: "#ef4444", iconBg: "#fef2f2", iconFg: "#ef4444", badgeBg: "#fee2e2", badgeFg: "#ef4444",
+  },
+  roadblock: {
+    pill: "rgba(245, 158, 11, 0.16)", pillFg: "#b45309", addBg: "#fffbeb", addFg: "#b45309", addBorder: "#fcd34d",
+    stripe: "#f59e0b", iconBg: "#fffbeb", iconFg: "#d97706", badgeBg: "#fef3c7", badgeFg: "#b45309",
+  },
+};
+
+// What kind of document a link is (a small coloured label in the list).
+function docKind(url) {
+  const u = String(url || "").toLowerCase();
+  if (u.includes("docs.google.com/document")) return { label: "DOC", bg: "#dbeafe", fg: "#1d4ed8" };
+  if (u.includes("docs.google.com/spreadsheets")) return { label: "SHEET", bg: "#dcfce7", fg: "#15803d" };
+  if (u.includes("docs.google.com/presentation")) return { label: "SLIDES", bg: "#fef3c7", fg: "#b45309" };
+  if (u.includes("docs.google.com/forms") || u.includes("forms.gle")) return { label: "FORM", bg: "#ede9fe", fg: "#6d28d9" };
+  if (u.includes("drive.google.com")) return { label: "DRIVE", bg: "#e0f2fe", fg: "#0369a1" };
+  if (u.includes("sharepoint.com") || u.includes("onedrive") || u.includes("1drv.ms")) return { label: "OFFICE", bg: "#dbeafe", fg: "#0364b8" };
+  if (/\.pdf($|[?#])/.test(u)) return { label: "PDF", bg: "#fee2e2", fg: "#b91c1c" };
+  if (/\.(xlsx?|csv)($|[?#])/.test(u)) return { label: "SHEET", bg: "#dcfce7", fg: "#15803d" };
+  if (/\.(docx?)($|[?#])/.test(u)) return { label: "DOC", bg: "#dbeafe", fg: "#1d4ed8" };
+  if (/\.(pptx?)($|[?#])/.test(u)) return { label: "SLIDES", bg: "#fef3c7", fg: "#b45309" };
+  return { label: "LINK", bg: "var(--color-bg-subtle)", fg: "var(--color-text-secondary)" };
+}
+
+function KindIcon({ kind, size = 16 }) {
+  const common = { width: size, height: size, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 2.5, style: { flexShrink: 0 } };
+  if (kind === "bug") {
+    return (
+      <svg {...common}>
+        <path d="M20.9 9.1C21.7 8.3 21.7 7 20.9 6.2c-.8-.8-2.1-.8-2.9 0L17.5 6.7m-11 0L6 6.2C5.2 5.4 3.9 5.4 3.1 6.2c-.8.8-.8 2.1 0 2.9l.5.5m0 6L3.1 16.1C2.3 16.9 2.3 18.2 3.1 19c.8.8 2.1.8 2.9 0l.5-.5m11 0l.5.5c.8.8 2.1.8 2.9 0 .8-.8.8-2.1 0-2.9l-.5-.5" />
+        <path d="M12 2v2m0 16v2m7-9h2M3 12h2M12 16a4 4 0 1 0 0-8 4 4 0 0 0 0 8z" />
+      </svg>
+    );
+  }
+  if (kind === "roadblock") {
+    // A road barrier.
+    return (
+      <svg {...common}>
+        <rect x="2" y="7" width="20" height="6" rx="1.5" />
+        <path d="M7 7l-3 6M13 7l-3 6M19 7l-3 6M5 13v6M19 13v6" />
+      </svg>
+    );
+  }
+  return (
+    <svg {...common}>
+      <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+    </svg>
+  );
+}
+
+export default function TaskModal({ taskId, isEditMode, initialNotesOpen, userRole, actualRole, userName, staff, onClose, showModal, showInputModal, onViewProfile, originRect, seedTask, rehearsal, onRehearsed }) {
+  // rehearsal: an invisible, side-effect-free render the app does once when
+  // it's idle, so the first real open doesn't pay the browser's one-time
+  // warm-up (style/layout caches, text shaping, GPU shaders) — see App.jsx.
+  const workspace = useWorkspace();
+  const accountScope = useAccountScope(workspace, actualRole);
+  const terms = termsFor(workspace);
+  const liveTask = useQuery(api.tasks.getTaskById, rehearsal ? "skip" : { taskId });
   // The board hands us its (light) copy of the task so the modal can render —
   // and the morph can start — on the very click frame, instead of waiting a
   // network round-trip. Light tasks lack notes/features; the live query
@@ -69,10 +136,18 @@ export default function TaskModal({ taskId, isEditMode, initialNotesOpen, userRo
   const addNoteReply = useMutation(api.tasks.addNoteReply);
   const toggleTaskPriority = useMutation(api.tasks.toggleTaskPriority);
   const currentUserEmail = (localStorage.getItem("wf_email") || "").toLowerCase();
-  const taskViewHistoryTime = useQuery(api.tasks.getTaskViewHistory, { taskId, userEmail: localStorage.getItem("wf_email") || "" });
+  const taskViewHistoryTime = useQuery(api.tasks.getTaskViewHistory, rehearsal ? "skip" : { taskId, userEmail: localStorage.getItem("wf_email") || "" });
+  const accounts = useQuery(api.accounts.getAccounts, terms.accounts && !rehearsal ? { workspace } : "skip");
+  const setTaskAccount = useMutation(api.tasks.setTaskAccount);
+  const addAccount = useMutation(api.accounts.addAccount);
+  const updateTaskDocuments = useMutation(api.tasks.updateTaskDocuments);
+  const updateTaskPlanNotes = useMutation(api.tasks.updateTaskPlanNotes);
 
   const [selectedAssignees, setSelectedAssignees] = useState(new Set());
   const [showOptions, setShowOptions] = useState(false);
+  // The assignee list closes when you click anywhere else (it used to stay open over the fields below).
+  const multiRef = useRef(null);
+  useOutsideClose(showOptions, [multiRef], () => setShowOptions(false));
   const [editedTitle, setEditedTitle] = useState("");
   const [editedDesc, setEditedDesc] = useState("");
   const [editedAppscriptLink, setEditedAppscriptLink] = useState("");
@@ -80,10 +155,11 @@ export default function TaskModal({ taskId, isEditMode, initialNotesOpen, userRo
   const [featureModalConfig, setFeatureModalConfig] = useState(null);
   const [featureContextMenu, setFeatureContextMenu] = useState(null);
   const [editedMilestones, setEditedMilestones] = useState([]);
-  const [featureView, setFeatureView] = useState("feature"); // 'feature' or 'bug'
+  // Sidebar kind on show: Workforce has Features + Bugs tabs; Ops/Exec one Roadblocks list.
+  const itemKinds = terms.itemKinds;
+  const [featureView, setFeatureView] = useState(itemKinds[0]);
   const [noteInputText, setNoteInputText] = useState("");
   const [notesFullscreen, setNotesFullscreen] = useState(!!initialNotesOpen);
-  const [noteContextMenu, setNoteContextMenu] = useState(null); // { index, noteRect }
   const noteRefs = useRef({});
   const milestoneListRef = useRef(null);
   const dragFromRef = useRef(null);
@@ -97,6 +173,21 @@ export default function TaskModal({ taskId, isEditMode, initialNotesOpen, userRo
   const [selectedMilestones, setSelectedMilestones] = useState(new Set());
   const [passwordRevealed, setPasswordRevealed] = useState(false);
   const [apiCopied, setApiCopied] = useState(false);
+  // "⋯" menu holding System Links, API Access and Admin Credentials (Workforce, Admin-level).
+  const [accessOpen, setAccessOpen] = useState(false);
+  const accessRef = useRef(null);
+  useEffect(() => {
+    if (!accessOpen) return undefined;
+    const onDown = (e) => {
+      // Clicks in the "confirm it's you" password dialog don't count as outside.
+      if (accessRef.current?.contains(e.target) || e.target.closest?.(".custom-modal-overlay")) return;
+      setAccessOpen(false);
+    };
+    const onKey = (e) => { if (e.key === "Escape" && !document.querySelector(".custom-modal-overlay")) setAccessOpen(false); };
+    document.addEventListener("pointerdown", onDown, true);
+    window.addEventListener("keydown", onKey);
+    return () => { document.removeEventListener("pointerdown", onDown, true); window.removeEventListener("keydown", onKey); };
+  }, [accessOpen]);
   const [descExpanded, setDescExpanded] = useState(false);
 
   // Mentions logic
@@ -182,15 +273,18 @@ export default function TaskModal({ taskId, isEditMode, initialNotesOpen, userRo
       setPasswordRevealed(false);
       return;
     }
+    // Re-enter YOUR OWN password (checked by the server). There used to be a
+    // shared master password written into the app's code — anyone could read it.
     showInputModal({
-      title: "Security Check",
-      message: "Please enter the master password to reveal these credentials.",
-      fields: [{ name: "pass", label: "Master Password", type: "password", placeholder: "••••" }],
-      onConfirm: (data) => {
-        if (data.pass === "wfm1234") {
+      title: "Confirm it's you",
+      message: "Enter your Hermes password to reveal these credentials.",
+      fields: [{ name: "pass", label: "Your password", type: "password", placeholder: "••••••••" }],
+      onConfirm: async (data) => {
+        try {
+          await authApi.verifyPassword(data.pass || "");
           setPasswordRevealed(true);
-        } else {
-          showModal({ title: "Access Denied", message: "Incorrect master password.", type: "alert" });
+        } catch (err) {
+          showModal({ title: "Access Denied", message: err?.message || "That password isn't right.", type: "alert" });
         }
       }
     });
@@ -235,7 +329,7 @@ export default function TaskModal({ taskId, isEditMode, initialNotesOpen, userRo
 
   const hasTask = !!task;
   useLayoutEffect(() => {
-    if (!hasTask) return;
+    if (!hasTask || rehearsal) return;
     const morph = morphRef.current;
     morph.open({
       box: contentRef.current,
@@ -283,9 +377,20 @@ export default function TaskModal({ taskId, isEditMode, initialNotesOpen, userRo
   // doClose the class outlives the unmount until the pull-back finishes
   // (doClose's onDone removes it).
   useLayoutEffect(() => {
+    if (rehearsal) return;
     document.documentElement.classList.add("wf-modal-open");
     return () => { if (!closingRef.current) document.documentElement.classList.remove("wf-modal-open"); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Rehearsal: let the browser lay out, paint and draw it (a few frames),
+  // then hand control back so the app unmounts it.
+  useEffect(() => {
+    if (!rehearsal || !hasTask) return;
+    let raf = requestAnimationFrame(() => { raf = requestAnimationFrame(() => { raf = requestAnimationFrame(() => onRehearsed?.()); }); });
+    return () => cancelAnimationFrame(raf);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasTask]);
 
   // 1. Pure effects (no state dependencies other than taskId)
   useEffect(() => {
@@ -303,7 +408,7 @@ export default function TaskModal({ taskId, isEditMode, initialNotesOpen, userRo
 
   useEffect(() => {
     const markViewed = () => {
-      if (taskId) {
+      if (taskId && !rehearsal) {
         const userEmail = localStorage.getItem("wf_email") || "";
         const nowStr = Date.now().toString();
         localStorage.setItem(`task_viewed_${taskId}`, nowStr);
@@ -369,12 +474,6 @@ export default function TaskModal({ taskId, isEditMode, initialNotesOpen, userRo
     return milestoneTime > 0 && milestoneTime > lastViewedMilestones;
   }).length : 0;
 
-  useEffect(() => {
-    if (isProgrammer && task) {
-      console.log("📊 BADGE DEBUG:", { isProgrammer, globalTime, newNotes, newFeatures, newBugs, newMilestonesBadge });
-    }
-  }, [task?._id, isProgrammer, globalTime, newNotes, newFeatures, newBugs, newMilestonesBadge]);
-
   const clearBadge = (type) => {
     if (isProgrammer) {
       localStorage.setItem(`task_viewed_${type}_${taskId}`, Date.now().toString());
@@ -401,6 +500,82 @@ export default function TaskModal({ taskId, isEditMode, initialNotesOpen, userRo
 
   const canManageFeatures = isAdminLevel || canEditMilestone;
 
+  // ── Plan notes, documents, account ───────────────────────────────────────
+  const watchOuts = Array.isArray(task?.watchOuts) ? task.watchOuts : [];
+  const assumptions = Array.isArray(task?.assumptions) ? task.assumptions : [];
+  const documents = Array.isArray(task?.documents) ? task.documents : [];
+  const fail = (title) => (err) => showModal({ title, message: err?.message || "Please try again.", type: "alert" });
+
+  function addPlanNote(field) {
+    const isWatch = field === "watchOuts";
+    showInputModal({
+      title: isWatch ? "Add a watch-out" : "Add an assumption",
+      message: isWatch ? "A risk that could slow this project down — and how you'll handle it." : "Something this plan relies on that should be confirmed.",
+      fields: [{ name: "text", label: isWatch ? "Watch out for" : "Assumption", placeholder: isWatch ? "e.g. Agents may resist the new SOP — brief team leads first" : "e.g. One site, about 40 agents" }],
+      onConfirm: (d) => {
+        const text = (d.text || "").trim();
+        if (!text) return;
+        const list = [...(isWatch ? watchOuts : assumptions), text];
+        updateTaskPlanNotes({ taskId, [field]: list }).catch(fail("Couldn't save"));
+      },
+    });
+  }
+
+  function removePlanNote(field, idx) {
+    const list = (field === "watchOuts" ? watchOuts : assumptions).filter((_, i) => i !== idx);
+    updateTaskPlanNotes({ taskId, [field]: list }).catch(fail("Couldn't save"));
+  }
+
+  function handleAddDocument() {
+    showInputModal({
+      title: "Add a document",
+      message: "Link anything this project relies on — an SOP, a deck, a sheet, a brief.",
+      fields: [
+        { name: "name", label: "Name", placeholder: "e.g. Escalation SOP v2" },
+        { name: "url", label: "Link", placeholder: "https://docs.google.com/…" },
+      ],
+      onConfirm: (d) => {
+        let url = (d.url || "").trim();
+        if (!url) return;
+        if (!/^https?:\/\//i.test(url)) url = `https://${url}`;
+        const name = (d.name || "").trim() || url;
+        updateTaskDocuments({ taskId, documents: [...documents, { name, url }] }).catch(fail("Couldn't add the document"));
+      },
+    });
+  }
+
+  function handleRemoveDocument(idx) {
+    const doc = documents[idx];
+    showModal({
+      title: "Remove document",
+      message: `Remove "${doc?.name}" from this project? (The document itself isn't touched.)`,
+      type: "confirm",
+      onConfirm: () => updateTaskDocuments({ taskId, documents: documents.filter((_, i) => i !== idx) }).catch(fail("Couldn't remove the document")),
+    });
+  }
+
+  function handleAccountChange(value) {
+    if (value === "__new") {
+      showInputModal({
+        title: "New account",
+        message: "Create a client account for this workspace and put this project in it.",
+        fields: [{ name: "name", label: "Account name", placeholder: "e.g. Walmart" }],
+        onConfirm: async (d) => {
+          const name = (d.name || "").trim();
+          if (!name) return;
+          try {
+            const id = await addAccount({ workspace, name });
+            await setTaskAccount({ taskId, accountId: id });
+          } catch (err) {
+            fail("Couldn't create the account")(err);
+          }
+        },
+      });
+      return;
+    }
+    setTaskAccount({ taskId, accountId: value || null }).catch(fail("Couldn't change the account"));
+  }
+
   function toggleAssignee(name) {
     setSelectedAssignees((prev) => {
       const next = new Set(prev);
@@ -419,18 +594,20 @@ export default function TaskModal({ taskId, isEditMode, initialNotesOpen, userRo
         timeZone: "America/New_York",
         year: "numeric", month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit",
       });
+      updated[idx].completedAtTime = Date.now(); // the next milestone's countdown starts here
       notifyMilestoneCompleted(task.title, updated[idx].name);
     } else {
       delete updated[idx].completedAt;
+      delete updated[idx].completedAtTime;
     }
     const completedCount = updated.filter((m) => m.completed).length;
-    updateTaskMilestones({ 
-      taskId, 
-      milestones: updated, 
+    updateTaskMilestones({
+      taskId,
+      milestones: updated,
       completedCount,
       actorEmail: currentUserEmail,
       actorName: userName
-    });
+    }).catch((err) => showModal({ title: "Milestone not saved", message: err?.message || "Please try again.", type: "alert" }));
   }
 
   function handleAddNote() {
@@ -440,9 +617,7 @@ export default function TaskModal({ taskId, isEditMode, initialNotesOpen, userRo
       timeZone: "America/New_York",
       year: "numeric", month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit",
     });
-    console.log("📝 Adding note:", { taskId, text: text.substring(0, 30), writer: userName });
     addNoteToTask({ taskId, noteText: text, writer: userName, writerEmail: currentUserEmail, date: estDate });
-    console.log("🔔 Calling notifyNoteAdded:", { taskTitle: task.title, notePreview: text.substring(0, 30) });
     notifyNoteAdded(task.title, text);
     setNoteInputText("");
     setNotesFullscreen(false);
@@ -459,6 +634,7 @@ export default function TaskModal({ taskId, isEditMode, initialNotesOpen, userRo
     addNoteReply({
       taskId,
       noteIndex: threadModal.index,
+      noteId: threadModal.note?.id,
       replyText: text,
       writer: userName,
       writerEmail: currentUserEmail,
@@ -497,18 +673,23 @@ export default function TaskModal({ taskId, isEditMode, initialNotesOpen, userRo
   function handleDelete() {
     showModal({
       title: "Delete Project",
-      message: "Are you sure you want to permanently delete this project? This action cannot be undone.",
+      message: `Move "${task.title}" to the archive? It leaves the board. An Admin can restore it — or delete it for good — in Settings → Archived Projects.`,
       type: "confirm",
       onConfirm: () => { deleteTask({ taskId, actorEmail: currentUserEmail, actorName: userName, source: "modal" }); onClose(); }
     });
   }
 
   function handleSaveEdits() {
+    // Send each milestone's own times back: a renamed milestone used to get
+    // fresh timestamps, which moved every later deadline.
     const newMilestones = editedMilestones.map((m) => ({
       name: (m.name || "").trim() || "Unnamed",
       days: parseInt(m.days) || 0,
       completed: m.completed || false,
       completedAt: m.completedAt,
+      ...(m.completedAtTime ? { completedAtTime: m.completedAtTime } : {}),
+      ...(m.createdAtTime ? { createdAtTime: m.createdAtTime } : {}),
+      hint: (m.hint || "").trim(),
     }));
     updateTaskDetails({
       taskId,
@@ -543,8 +724,8 @@ export default function TaskModal({ taskId, isEditMode, initialNotesOpen, userRo
   function handleFeatureDelete(f) {
     setFeatureContextMenu(null);
     showModal({
-      title: `Delete ${f.type === "bug" ? "Bug" : "Feature"}`,
-      message: `Are you sure you want to permanently delete the ${f.type === "bug" ? "bug" : "feature"} "${f.name}"?`,
+      title: `Delete ${itemWords(f.type).title}`,
+      message: `Are you sure you want to permanently delete the ${itemWords(f.type).one} "${f.name}"?`,
       type: "confirm",
       onConfirm: () => { deleteTaskFeature({ taskId, featureId: f.id }); }
     });
@@ -555,8 +736,8 @@ export default function TaskModal({ taskId, isEditMode, initialNotesOpen, userRo
       case 'features':
         if (selectedFeatures.size === 0) return;
         showModal({
-          title: "Bulk Delete Features",
-          message: `Are you sure you want to permanently delete ${selectedFeatures.size} feature${selectedFeatures.size > 1 ? 's' : ''}?`,
+          title: `Bulk Delete ${itemWords(featureView === "bug" ? "feature" : featureView).heading}`,
+          message: `Are you sure you want to permanently delete ${selectedFeatures.size} ${selectedFeatures.size > 1 ? itemWords(featureView === "bug" ? "feature" : featureView).many : itemWords(featureView === "bug" ? "feature" : featureView).one}?`,
           type: "confirm",
           onConfirm: () => {
             deleteFeaturesBulk({ taskId, featureIds: Array.from(selectedFeatures) });
@@ -583,7 +764,9 @@ export default function TaskModal({ taskId, isEditMode, initialNotesOpen, userRo
           message: `Are you sure you want to permanently delete ${selectedNotes.size} note${selectedNotes.size > 1 ? 's' : ''}?`,
           type: "confirm",
           onConfirm: () => {
-            deleteNotesBulk({ taskId, indices: Array.from(selectedNotes) });
+            // Selection holds note ids (positions shift if someone else deletes meanwhile).
+            const picked = Array.from(selectedNotes);
+            deleteNotesBulk({ taskId, indices: picked.filter((k) => typeof k === "number"), noteIds: picked.filter((k) => typeof k === "string") });
             setSelectedNotes(new Set());
           }
         });
@@ -615,7 +798,7 @@ export default function TaskModal({ taskId, isEditMode, initialNotesOpen, userRo
         break;
       case 'notes':
         if (selectedNotes.size === items.length) setSelectedNotes(new Set());
-        else setSelectedNotes(new Set(items.map((_, i) => i)));
+        else setSelectedNotes(new Set(items.map((n, i) => n.id || i)));
         break;
       case 'milestones':
         if (selectedMilestones.size === items.length) setSelectedMilestones(new Set());
@@ -704,125 +887,87 @@ export default function TaskModal({ taskId, isEditMode, initialNotesOpen, userRo
   if (!task) return null;
 
   return createPortal(
-    <div className="modal-overlay task-modal-overlay tm-backdrop-delegated" ref={overlayRef} onClick={(e) => { if (e.target === e.currentTarget) doClose(); }}>
+    <div
+      className="modal-overlay task-modal-overlay tm-backdrop-delegated"
+      ref={overlayRef}
+      onClick={(e) => { if (e.target === e.currentTarget) doClose(); }}
+      {...(rehearsal ? { "data-rehearsal": "", "aria-hidden": true, style: { opacity: 0.002, pointerEvents: "none" } } : {})}
+    >
       <div className="task-modal-backdrop" ref={backdropRef} />
       <div className="modal-content task-modal-content" ref={contentRef} onClick={(e) => e.stopPropagation()}>
         <button className="modal-close" onClick={doClose}>×</button>
 
         <div className="modal-grid-3">
 
-          {/* ── Features & Bugs sidebar ── */}
-          <div className="features-sidebar" style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+          {/* ── Sidebar: Features & Bugs (Workforce) · Roadblocks (Operations, Executives) ── */}
+          {(() => {
+            const W = itemWords(featureView);
+            const look = KIND_LOOK[featureView] || KIND_LOOK.feature;
+            const items = (task.features || []).filter((f) => (f.type || "feature") === featureView);
+            const openCount = items.filter((f) => f.status === "pending").length;
+            const [selected, setSelected] = featureView === "bug" ? [selectedBugs, setSelectedBugs] : [selectedFeatures, setSelectedFeatures];
+            const bulkKey = featureView === "bug" ? "bugs" : "features";
+            return (
+          <div className={`features-sidebar kind-${featureView}`} style={{ display: "flex", flexDirection: "column", height: "100%" }}>
             <div className="features-header" style={{ flexShrink: 0, paddingBottom: 12, borderBottom: "1px solid #f1f5f9", marginBottom: 14 }}>
 
-              {/* ── View Tabs ── */}
-              <div className="taskmodal-tabs" role="tablist" aria-label="Feature view tabs">
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={featureView === "feature"}
-                  className={`taskmodal-tab ${featureView === "feature" ? "active" : ""}`}
-                  onClick={() => {
-                    setFeatureView("feature");
-                    clearBadge("features");
-                  }}
-                  style={{ position: "relative" }}
-                >
-                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ flexShrink: 0 }}>
-                    <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
-                  </svg>
-                  Features
-                  {isProgrammer && newFeatures > 0 && (
-                    <span style={{
-                      position: "absolute",
-                      top: "-6px",
-                      right: "-8px",
-                      background: "radial-gradient(circle, #ef4444 0%, #dc2626 100%)",
-                      color: "white",
-                      fontSize: "0.55rem",
-                      fontWeight: 900,
-                      padding: "1px 5px",
-                      borderRadius: "10px",
-                      minWidth: "16px",
-                      textAlign: "center",
-                      boxShadow: "0 0 8px 2px rgba(239, 68, 68, 0.4)",
-                      zIndex: 10,
-                    }}>
-                      {newFeatures}
-                    </span>
-                  )}
-                </button>
+              {/* ── View Tabs (only when there's more than one kind) ── */}
+              {itemKinds.length > 1 && (
+                <div className="taskmodal-tabs" role="tablist" aria-label="Item tabs">
+                  {itemKinds.map((kind) => {
+                    const badge = !isProgrammer ? 0 : kind === "bug" ? newBugs : kind === "feature" ? newFeatures : 0;
+                    return (
+                      <button
+                        key={kind}
+                        type="button"
+                        role="tab"
+                        aria-selected={featureView === kind}
+                        className={`taskmodal-tab ${featureView === kind ? "active" : ""}`}
+                        onClick={() => {
+                          setFeatureView(kind);
+                          clearBadge(kind === "bug" ? "bugs" : "features");
+                        }}
+                        style={{ position: "relative" }}
+                      >
+                        <KindIcon kind={kind} size={10} />
+                        {itemWords(kind).tab}
+                        {badge > 0 && <span className="tm-tab-badge">{badge}</span>}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
 
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={featureView === "bug"}
-                  className={`taskmodal-tab ${featureView === "bug" ? "active" : ""}`}
-                  onClick={() => {
-                    setFeatureView("bug");
-                    clearBadge("bugs");
-                  }}
-                  style={{ position: "relative" }}
-                >
-                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ flexShrink: 0 }}>
-                    <circle cx="12" cy="12" r="4" />
-                    <path d="M12 2v2m0 16v2m7-7h2M3 12h2M16.95 7.05l1.41-1.41M5.64 18.36l1.41-1.41M16.95 16.95l1.41 1.41M5.64 5.64l1.41 1.41" />
-                  </svg>
-                  Bugs
-                  {isProgrammer && newBugs > 0 && (
-                    <span style={{
-                      position: "absolute",
-                      top: "-6px",
-                      right: "-8px",
-                      background: "radial-gradient(circle, #ef4444 0%, #dc2626 100%)",
-                      color: "white",
-                      fontSize: "0.55rem",
-                      fontWeight: 900,
-                      padding: "1px 5px",
-                      borderRadius: "10px",
-                      minWidth: "16px",
-                      textAlign: "center",
-                      boxShadow: "0 0 8px 2px rgba(239, 68, 68, 0.4)",
-                      zIndex: 10,
-                    }}>
-                      {newBugs}
-                    </span>
-                  )}
-                </button>
-              </div>
-
-              {/* ── Row: title + pending badge + add button ── */}
+              {/* ── Row: title + open count + add button ── */}
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: "7px" }}>
+                  {itemKinds.length === 1 && <span className="tm-kind-icon" style={{ color: look.fg }}><KindIcon kind={featureView} size={13} /></span>}
                   <h3 style={{ margin: 0, fontSize: "0.82rem", fontWeight: 800, color: "var(--color-text-primary)", letterSpacing: "-0.2px" }}>
-                    {featureView === "feature" ? "Features" : "Bug Reports"}
+                    {W.heading}
                   </h3>
-                  {(task.features || []).filter(f => (f.type || "feature") === featureView && f.status === "pending").length > 0 && (
+                  {openCount > 0 && (
                     <span style={{
-                      background: featureView === "bug" ? "rgba(239, 68, 68, 0.15)" : "var(--color-bg-subtle)",
-                      color: featureView === "bug" ? "#ef4444" : "var(--color-text-secondary)",
+                      background: look.pill,
+                      color: look.pillFg,
                       fontSize: "0.58rem", padding: "2px 7px", borderRadius: "20px", fontWeight: 800, letterSpacing: "0.4px",
                     }}>
-                      {(task.features || []).filter(f => (f.type || "feature") === featureView && f.status === "pending").length} OPEN
+                      {openCount} OPEN
                     </span>
                   )}
                 </div>
                 {canManageFeatures && (
                   <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-                    {(featureView === "feature" ? selectedFeatures.size : selectedBugs.size) > 0 && (
-                      <button
-                        className="select-all-btn"
-                        onClick={() => handleSelectAll(featureView === "feature" ? "features" : "bugs", (task.features || []).filter(f => (f.type || "feature") === featureView))}
-                      >
+                    {selected.size > 0 && (
+                      <button className="select-all-btn" onClick={() => handleSelectAll(bulkKey, items)}>
                         Select All
                       </button>
                     )}
                     <button
                       className="btn-add-feature"
                       style={{
-                        background: featureView === "bug" ? "#fef2f2" : "#f8fafc",
-                        color: featureView === "bug" ? "#dc2626" : "#475569",
-                        border: `1.5px solid ${featureView === "bug" ? "#fca5a5" : "#e2e8f0"}`,
+                        background: look.addBg,
+                        color: look.addFg,
+                        border: `1.5px solid ${look.addBorder}`,
                         transition: "all 0.2s ease",
                       }}
                       onClick={() => setFeatureModalConfig({ mode: "add", type: featureView })}
@@ -837,58 +982,41 @@ export default function TaskModal({ taskId, isEditMode, initialNotesOpen, userRo
               </div>
             </div>
             <div className="features-list" style={{ flex: 1, overflowY: "auto", padding: "5px" }}>
-              {featureView === "feature" && selectedFeatures.size > 0 && (
+              {selected.size > 0 && (
                 <div className="bulk-action-bar">
-                  <span>{selectedFeatures.size} selected</span>
-                  <button className="btn-bulk-delete" onClick={() => handleBulkDelete('features')}>
+                  <span>{selected.size} selected</span>
+                  <button className="btn-bulk-delete" onClick={() => handleBulkDelete(bulkKey)}>
                     Delete Selected
                   </button>
                 </div>
               )}
-              {featureView === "bug" && selectedBugs.size > 0 && (
-                <div className="bulk-action-bar">
-                  <span>{selectedBugs.size} selected</span>
-                  <button className="btn-bulk-delete" onClick={() => handleBulkDelete('bugs')}>
-                    Delete Selected
-                  </button>
-                </div>
-              )}
-              {(task.features || []).filter(f => (f.type || "feature") === featureView).map((f) => {
-                const isSelected = featureView === "feature" ? selectedFeatures.has(f.id) : selectedBugs.has(f.id);
-                const setFn = featureView === "feature" ? setSelectedFeatures : setSelectedBugs;
+              {items.map((f) => {
+                const isSelected = selected.has(f.id);
+                const open = f.status !== "completed";
                 return (
                   <div
                     key={f.id}
                     className={`feature-card ${f.status === "completed" ? "completed" : ""} ${isSelected ? "bulk-selected-item" : ""}`}
-                    onClick={(e) => handleRowClickToggle(e, setFn, f.id)}
+                    onClick={(e) => handleRowClickToggle(e, setSelected, f.id)}
                     onContextMenu={(e) => handleFeatureContextMenu(e, f)}
-                    style={{ cursor: "pointer", userSelect: "none", borderLeft: featureView === "bug" && f.status !== "completed" ? "3px solid #ef4444" : undefined, display: "flex", alignItems: "center" }}
+                    style={{ cursor: "pointer", userSelect: "none", borderLeft: look.stripe && open ? `3px solid ${look.stripe}` : undefined, display: "flex", alignItems: "center" }}
                   >
                     <div style={{ flex: 1, display: "flex", gap: "12px", alignItems: "flex-start" }} onClick={(e) => {
                       if (e.ctrlKey || e.metaKey) return;
                       setFeatureModalConfig({ mode: "view", feature: f, type: featureView });
                     }}>
-                      <div className="feature-icon-box" style={{ background: featureView === "bug" ? "#fef2f2" : undefined, color: featureView === "bug" ? "#ef4444" : undefined }}>
-                        {featureView === "bug" ? (
-                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                            <path d="M20.9 9.1C21.7 8.3 21.7 7 20.9 6.2c-.8-.8-2.1-.8-2.9 0L17.5 6.7m-11 0L6 6.2C5.2 5.4 3.9 5.4 3.1 6.2c-.8.8-.8 2.1 0 2.9l.5.5m0 6L3.1 16.1C2.3 16.9 2.3 18.2 3.1 19c.8.8 2.1.8 2.9 0l.5-.5m11 0l.5.5c.8.8 2.1.8 2.9 0 .8-.8.8-2.1 0-2.9l-.5-.5" />
-                            <path d="M12 2v2m0 16v2m7-9h2M3 12h2M12 16a4 4 0 1 0 0-8 4 4 0 0 0 0 8z" />
-                          </svg>
-                        ) : (
-                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                            <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
-                          </svg>
-                        )}
+                      <div className="feature-icon-box" style={{ background: look.iconBg, color: look.iconFg }}>
+                        <KindIcon kind={featureView} size={16} />
                       </div>
                       <div className="feature-info" style={{ flex: 1 }}>
                         <h4>{f.name}</h4>
                         <p>{f.description}</p>
                         <div style={{ display: "flex", gap: "8px", fontSize: "0.65rem", color: "#64748b", marginBottom: "4px" }}>
-                          <span>Created: {f.createdAt || "N/A"}</span>
-                          {f.completedAt && <span>Completed: {f.completedAt}</span>}
+                          <span>{featureView === "roadblock" ? "Raised" : "Created"}: {f.createdAt || "N/A"}</span>
+                          {f.completedAt && <span>{featureView === "roadblock" ? "Cleared" : "Completed"}: {f.completedAt}</span>}
                         </div>
-                        <span className={`feature-badge ${f.status}`} style={{ background: featureView === "bug" && f.status === "pending" ? "#fee2e2" : undefined, color: featureView === "bug" && f.status === "pending" ? "#ef4444" : undefined }}>
-                          {f.status === "completed" ? "COMPLETED" : "PENDING"}
+                        <span className={`feature-badge ${f.status}`} style={{ background: open ? look.badgeBg : undefined, color: open ? look.badgeFg : undefined }}>
+                          {open ? W.open : W.done}
                         </span>
                       </div>
                     </div>
@@ -896,14 +1024,16 @@ export default function TaskModal({ taskId, isEditMode, initialNotesOpen, userRo
                 );
               })}
               {detailsLoading ? (
-                <div className="tm-loading-rows" aria-label={`Loading ${featureView === "bug" ? "bugs" : "features"}`}><span /><span /></div>
-              ) : (task.features || []).filter(f => (f.type || "feature") === featureView).length === 0 && (
-                <div style={{ textAlign: "center", color: "#94a3b8", fontStyle: "italic", fontSize: "0.8rem", marginTop: 20 }}>
-                  No {featureView === "bug" ? "bugs" : "features"} added yet.
+                <div className="tm-loading-rows" aria-label={`Loading ${W.many}`}><span /><span /></div>
+              ) : items.length === 0 && (
+                <div className="tm-empty-items" style={{ textAlign: "center", color: "#94a3b8", fontStyle: "italic", fontSize: "0.8rem", marginTop: 20 }}>
+                  {W.empty}
                 </div>
               )}
             </div>
           </div>
+            );
+          })()}
 
           {/* ── Main column ── */}
           <div className="modal-main-column" style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
@@ -931,7 +1061,7 @@ export default function TaskModal({ taskId, isEditMode, initialNotesOpen, userRo
                   </button>
                 ) : (
                   <div style={{ display: "flex", gap: 10 }}>
-                    {(task.webappLink || task.projectLink) && (
+                    {terms.tech && (task.webappLink || task.projectLink) && (
                       <a
                         href={(task.webappLink || task.projectLink).startsWith("http") ? (task.webappLink || task.projectLink) : `https://${(task.webappLink || task.projectLink)}`}
                         target="_blank" rel="noopener noreferrer"
@@ -945,7 +1075,7 @@ export default function TaskModal({ taskId, isEditMode, initialNotesOpen, userRo
                         View Project
                       </a>
                     )}
-                    {task.appscriptLink && (
+                    {terms.tech && task.appscriptLink && (
                       <a
                         href={task.appscriptLink.startsWith("http") ? task.appscriptLink : `https://${task.appscriptLink}`}
                         target="_blank" rel="noopener noreferrer"
@@ -957,6 +1087,104 @@ export default function TaskModal({ taskId, isEditMode, initialNotesOpen, userRo
                         </svg>
                         View Appscript
                       </a>
+                    )}
+                    {terms.tech && (userRole === "Admin" || userRole === "Admin+") && (
+                      <div className="tm-more" ref={accessRef}>
+                        <button
+                          type="button"
+                          className={`tm-more-btn${accessOpen ? " open" : ""}`}
+                          onClick={() => setAccessOpen((o) => !o)}
+                          aria-expanded={accessOpen}
+                          aria-label="System links, API access and admin login"
+                          title="System links · API access · Admin login"
+                        >
+                          <span /><span /><span />
+                        </button>
+                        {accessOpen && (
+                          <div className="tm-more-pop" role="dialog" aria-label="Project access">
+                            <div className="tm-more-head">
+                              Project access
+                              <span>Admins only</span>
+                            </div>
+
+                            <section className="tm-acc system-links-box">
+                              <div className="tm-acc-title">
+                                <span className="tm-acc-icon links">
+                                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" aria-hidden="true">
+                                    <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+                                    <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+                                  </svg>
+                                </span>
+                                System links
+                              </div>
+                              <div className="tm-acc-grid">
+                                <span className="tm-acc-key">Appscript</span>
+                                {task.appscriptLink ? (
+                                  <a className="tm-acc-link" href={task.appscriptLink.startsWith("http") ? task.appscriptLink : `https://${task.appscriptLink}`} target="_blank" rel="noopener noreferrer">{task.appscriptLink}</a>
+                                ) : <span className="tm-acc-empty">Not set</span>}
+                                <span className="tm-acc-key">Webapp</span>
+                                {(task.webappLink || task.projectLink) ? (
+                                  <a className="tm-acc-link" href={(task.webappLink || task.projectLink).startsWith("http") ? (task.webappLink || task.projectLink) : `https://${(task.webappLink || task.projectLink)}`} target="_blank" rel="noopener noreferrer">{task.webappLink || task.projectLink}</a>
+                                ) : <span className="tm-acc-empty">Not set</span>}
+                              </div>
+                            </section>
+
+                            <section className="tm-acc api-access-box">
+                              <div className="tm-acc-title">
+                                <span className="tm-acc-icon api">
+                                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" aria-hidden="true">
+                                    <polyline points="16 18 22 12 16 6" /><polyline points="8 6 2 12 8 18" />
+                                  </svg>
+                                </span>
+                                API access
+                              </div>
+                              <div className="tm-acc-api">
+                                <input readOnly value={`${window.location.origin}/api/task?taskId=${taskId}`} onFocus={(e) => e.target.select()} aria-label="API URL" />
+                                <button
+                                  type="button"
+                                  className={`tm-copy-btn${apiCopied ? " copied" : ""}`}
+                                  onClick={() => {
+                                    navigator.clipboard.writeText(`${window.location.origin}/api/task?taskId=${taskId}`);
+                                    setApiCopied(true);
+                                    setTimeout(() => setApiCopied(false), 1500);
+                                  }}
+                                >
+                                  {apiCopied ? "Copied!" : "Copy"}
+                                </button>
+                              </div>
+                              <div className="tm-acc-hint">
+                                GET reads this project · POST <code>resource=bug|feature|note</code> · PATCH <code>resource=links</code> sets system links. Auth: <code>x-api-key</code> header — see <b>TASK-API.md</b>.
+                              </div>
+                            </section>
+
+                            <section className="tm-acc admin-creds-box">
+                              <div className="tm-acc-title">
+                                <span className="tm-acc-icon creds">
+                                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" aria-hidden="true">
+                                    <rect x="3" y="11" width="18" height="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                                  </svg>
+                                </span>
+                                Admin login
+                                <span className="tm-acc-tag">Sensitive</span>
+                              </div>
+                              <div className="tm-acc-grid mono">
+                                <span className="tm-acc-key">Email</span>
+                                <span className={passwordRevealed ? "tm-acc-secret shown" : "tm-acc-secret"}>{passwordRevealed ? (deobfuscate(task.adminCredentials?.email) || "—") : "••••••••••••"}</span>
+                                <span className="tm-acc-key">Password</span>
+                                <span className={passwordRevealed ? "tm-acc-secret shown" : "tm-acc-secret"}>{passwordRevealed ? (deobfuscate(task.adminCredentials?.password) || "—") : "••••••••"}</span>
+                              </div>
+                              {!passwordRevealed && (
+                                <button type="button" className="tm-reveal-btn" onClick={handleRevealPassword}>
+                                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden="true">
+                                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" />
+                                  </svg>
+                                  Reveal — confirm it's you
+                                </button>
+                              )}
+                            </section>
+                          </div>
+                        )}
+                      </div>
                     )}
                     {userRole === "Admin" && (
                       <button className="btn-modern btn-modern-delete" onClick={handleDelete}>
@@ -1007,7 +1235,7 @@ export default function TaskModal({ taskId, isEditMode, initialNotesOpen, userRo
                 })()}
                 {isEditMode ? (
                   <div style={{ flex: 1, marginLeft: 8 }}>
-                    <div className="custom-multiselect">
+                    <div className="custom-multiselect" ref={multiRef}>
                       <div className="multiselect-trigger" onClick={() => setShowOptions(!showOptions)} style={{ color: selectedAssignees.size > 0 ? "#1e293b" : "#64748b", padding: "4px 8px", fontSize: "0.8rem" }}>
                         {selectedAssignees.size > 0 ? Array.from(selectedAssignees).join(", ") : "Select Assignees..."}
                       </div>
@@ -1026,6 +1254,33 @@ export default function TaskModal({ taskId, isEditMode, initialNotesOpen, userRo
                 )}
               </div>
 
+              {terms.accounts && (
+                <div className="tm-account-row">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden="true">
+                    <path d="M3 21h18M5 21V7l7-4 7 4v14M9 9h1m4 0h1M9 13h1m4 0h1M9 17h1m4 0h1" />
+                  </svg>
+                  <span className="tm-account-label">Account</span>
+                  {canManageFeatures ? (
+                    <Select
+                      size="sm"
+                      className="tm-account-select"
+                      value={task.accountId || ""}
+                      onChange={(v) => handleAccountChange(v)}
+                      ariaLabel="Account"
+                      menuWidth={220}
+                      options={[
+                        ...(accountScope.scoped ? [] : [{ value: "", label: "No account" }]),
+                        ...(accounts || []).map((a) => ({ value: a._id, label: a.name })),
+                        ...(task.accountId && !(accounts || []).some((a) => a._id === task.accountId) ? [{ value: task.accountId, label: task.account || "…" }] : []),
+                        ...(isAdminPlus ? [{ value: "__new", label: "+ New account…", action: true }] : []),
+                      ]}
+                    />
+                  ) : (
+                    <span className="tm-account-pill">{task.account || "No account"}</span>
+                  )}
+                </div>
+              )}
+
               <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 0 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <input
@@ -1040,7 +1295,7 @@ export default function TaskModal({ taskId, isEditMode, initialNotesOpen, userRo
                     }}
                     style={{ cursor: "pointer", width: 16, height: 16 }}
                   />
-                  <label htmlFor="priority-checkbox" style={{ fontSize: "0.75rem", fontWeight: 700, cursor: "pointer", userSelect: "none" }}>
+                  <label htmlFor="priority-checkbox" className="tm-priority-label" style={{ fontSize: "0.75rem", fontWeight: 700, cursor: "pointer", userSelect: "none" }}>
                     Mark as Priority
                   </label>
                 </div>
@@ -1057,7 +1312,7 @@ export default function TaskModal({ taskId, isEditMode, initialNotesOpen, userRo
                       style={{ width: "100%", height: 80, fontSize: "0.85rem", padding: 12, borderRadius: "var(--radius-md)", marginBottom: 15 }}
                       placeholder="Enter project description..."
                     />
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 15, marginBottom: 15 }}>
+                    {terms.tech && <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 15, marginBottom: 15 }}>
                       <div>
                         <label style={{ fontSize: "0.6rem", fontWeight: 900, color: "var(--color-text-secondary)", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Appscript Link</label>
                         <input
@@ -1080,7 +1335,7 @@ export default function TaskModal({ taskId, isEditMode, initialNotesOpen, userRo
                           placeholder="Deployed Webapp URL"
                         />
                       </div>
-                    </div>
+                    </div>}
                   </>
                 ) : (
                   <>
@@ -1143,6 +1398,52 @@ export default function TaskModal({ taskId, isEditMode, initialNotesOpen, userRo
                   </button>
                 </div>
               )}
+              {(watchOuts.length > 0 || assumptions.length > 0 || (!terms.tech && canEditMilestone && !isEditMode)) && (
+                <div className="tm-plan-notes">
+                  {(watchOuts.length > 0 || (!terms.tech && canEditMilestone)) && (
+                    <section className="tm-plan-section tm-watch">
+                      <div className="tm-plan-head">
+                        <span className="tm-plan-icon" aria-hidden="true">
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M10.3 3.9L1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z" /><line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" /></svg>
+                        </span>
+                        <h4>Watch out for</h4>
+                        {canEditMilestone && <button type="button" className="tm-plan-add" onClick={() => addPlanNote("watchOuts")}>+ Add</button>}
+                      </div>
+                      {watchOuts.length > 0 ? (
+                        <ul>
+                          {watchOuts.map((w, i) => (
+                            <li key={i}>
+                              <span>{w}</span>
+                              {canEditMilestone && <button type="button" className="tm-plan-x" title="Remove" onClick={() => removePlanNote("watchOuts", i)}>×</button>}
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <p className="tm-plan-empty">Note the risks that could slow this project down — and how you'll handle them.</p>
+                      )}
+                    </section>
+                  )}
+                  {assumptions.length > 0 && (
+                    <section className="tm-plan-section tm-assume">
+                      <div className="tm-plan-head">
+                        <span className="tm-plan-icon" aria-hidden="true">
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10" /><path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3" /><line x1="12" y1="17" x2="12.01" y2="17" /></svg>
+                        </span>
+                        <h4>Assumptions</h4>
+                        {canEditMilestone && <button type="button" className="tm-plan-add" onClick={() => addPlanNote("assumptions")}>+ Add</button>}
+                      </div>
+                      <ul>
+                        {assumptions.map((a, i) => (
+                          <li key={i}>
+                            <span>{a}</span>
+                            {canEditMilestone && <button type="button" className="tm-plan-x" title="Remove" onClick={() => removePlanNote("assumptions", i)}>×</button>}
+                          </li>
+                        ))}
+                      </ul>
+                    </section>
+                  )}
+                </div>
+              )}
               <div className="milestone-vertical-list" style={{ marginTop: 10, padding: "5px" }} ref={milestoneListRef}>
                 {isEditMode ? (
                   <>
@@ -1197,6 +1498,17 @@ export default function TaskModal({ taskId, isEditMode, initialNotesOpen, userRo
                               onClick={() => setEditedMilestones(prev => prev.filter((_, i) => i !== idx))}
                             >×</button>
                           </div>
+                          <input
+                            type="text"
+                            className="form-input edit-m-hint"
+                            value={m.hint || ""}
+                            onChange={(e) => {
+                              const next = [...editedMilestones];
+                              next[idx] = { ...next[idx], hint: e.target.value };
+                              setEditedMilestones(next);
+                            }}
+                            placeholder="What this step means / done when… (optional)"
+                          />
                         </div>
                       </div>
                     ))}
@@ -1265,6 +1577,7 @@ export default function TaskModal({ taskId, isEditMode, initialNotesOpen, userRo
                             </span>
                             {actionBtn}
                           </div>
+                          {m.hint && <div className="milestone-hint">{m.hint}</div>}
                           {status === "active" && deadlineTime && (
                             <div className="milestone-date" style={{ color: isOverdue ? "#ef4444" : "#10b981", display: "flex", alignItems: "center", gap: 4, marginTop: 4 }}>
                               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
@@ -1292,95 +1605,36 @@ export default function TaskModal({ taskId, isEditMode, initialNotesOpen, userRo
               </div>
             </div>
 
-            {(userRole === "Admin" || userRole === "Admin+") && (
-              <>
-                <div className="system-links-box" style={{ flexShrink: 0, marginTop: 10, background: "var(--color-bg-subtle)", border: "2px solid #3b82f6", borderRadius: "8px", overflow: "hidden", boxShadow: "var(--shadow-sm)" }}>
-                  <div className="creds-header" style={{ background: "#3b82f6", padding: "6px 12px", color: "white", fontSize: "0.6rem", fontWeight: 900, display: "flex", alignItems: "center", gap: "8px", letterSpacing: "1px" }}>
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
-                      <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
-                      <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
-                    </svg>
-                    SYSTEM LINKS
-                  </div>
-                  <div className="creds-content" style={{ padding: "8px 12px", color: "var(--color-brand-text)" }}>
-                    <div style={{ display: "grid", gridTemplateColumns: "100px 1fr", gap: "4px 10px", alignItems: "center" }}>
-                      <span style={{ fontSize: "0.6rem", fontWeight: 900, textTransform: "uppercase", color: "#3b82f6" }}>Appscript:</span>
-                      {task.appscriptLink ? (
-                        <a href={task.appscriptLink.startsWith("http") ? task.appscriptLink : `https://${task.appscriptLink}`} target="_blank" rel="noopener noreferrer" style={{ fontWeight: 700, fontSize: "0.75rem", color: "var(--color-accent)", textDecoration: "none", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{task.appscriptLink}</a>
-                      ) : <span style={{ color: "#94a3b8", fontSize: "0.75rem" }}>—</span>}
-                      
-                      <span style={{ fontSize: "0.6rem", fontWeight: 900, textTransform: "uppercase", color: "#3b82f6" }}>Webapp:</span>
-                      {(task.webappLink || task.projectLink) ? (
-                        <a href={(task.webappLink || task.projectLink).startsWith("http") ? (task.webappLink || task.projectLink) : `https://${(task.webappLink || task.projectLink)}`} target="_blank" rel="noopener noreferrer" style={{ fontWeight: 700, fontSize: "0.75rem", color: "var(--color-accent)", textDecoration: "none", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{task.webappLink || task.projectLink}</a>
-                      ) : <span style={{ color: "#94a3b8", fontSize: "0.75rem" }}>—</span>}
-                    </div>
-                  </div>
+            {!terms.tech && (
+              <div className="documents-box">
+                <div className="documents-header">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" aria-hidden="true">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" />
+                  </svg>
+                  DOCUMENTS{documents.length > 0 ? ` (${documents.length})` : ""}
+                  {canManageFeatures && (
+                    <button type="button" className="documents-add" onClick={handleAddDocument}>+ ADD</button>
+                  )}
                 </div>
-
-                <div className="api-access-box" style={{ flexShrink: 0, marginTop: 10, background: "var(--color-bg-subtle)", border: "2px solid #8b5cf6", borderRadius: "8px", overflow: "hidden", boxShadow: "var(--shadow-sm)" }}>
-                  <div className="creds-header" style={{ background: "#8b5cf6", padding: "6px 12px", color: "white", fontSize: "0.6rem", fontWeight: 900, display: "flex", alignItems: "center", gap: "8px", letterSpacing: "1px" }}>
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
-                      <polyline points="16 18 22 12 16 6" />
-                      <polyline points="8 6 2 12 8 18" />
-                    </svg>
-                    API ACCESS
-                  </div>
-                  <div className="creds-content" style={{ padding: "8px 12px", color: "var(--color-brand-text)" }}>
-                    <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
-                      <input
-                        readOnly
-                        value={`${window.location.origin}/api/task?taskId=${taskId}`}
-                        onFocus={(e) => e.target.select()}
-                        style={{ flex: 1, minWidth: 0, padding: "5px 8px", fontSize: "0.68rem", fontFamily: "monospace", background: "var(--color-bg-primary)", border: "1px solid var(--glass-border)", borderRadius: "4px", color: "var(--color-brand-text)" }}
-                      />
-                      <button
-                        onClick={() => {
-                          navigator.clipboard.writeText(`${window.location.origin}/api/task?taskId=${taskId}`);
-                          setApiCopied(true);
-                          setTimeout(() => setApiCopied(false), 1500);
-                        }}
-                        style={{ flexShrink: 0, padding: "5px 10px", fontSize: "0.55rem", fontWeight: 900, background: apiCopied ? "#22c55e" : "#8b5cf6", border: "none", color: "white", borderRadius: "4px", cursor: "pointer", letterSpacing: "0.5px" }}
-                      >
-                        {apiCopied ? "COPIED!" : "COPY"}
-                      </button>
-                    </div>
-                    <div style={{ marginTop: 6, fontSize: "0.58rem", color: "#94a3b8", lineHeight: 1.5 }}>
-                      GET reads this project · POST <code>resource=bug|feature|note</code> · PATCH <code>resource=links</code> to set system links. Auth: <code>x-api-key</code> header. See <b>TASK-API.md</b>.
-                    </div>
-                  </div>
+                <div className="documents-list">
+                  {documents.length === 0 ? (
+                    <div className="documents-empty">No documents yet — add the SOP, deck, sheet or brief this project relies on.</div>
+                  ) : documents.map((d, i) => {
+                    const k = docKind(d.url);
+                    return (
+                      <div className="document-row" key={`${d.url}-${i}`}>
+                        <span className="document-kind" style={{ background: k.bg, color: k.fg }}>{k.label}</span>
+                        <a href={d.url} target="_blank" rel="noopener noreferrer" className="document-name" title={d.url}>{d.name}</a>
+                        {canManageFeatures && (
+                          <button type="button" className="document-remove" title="Remove" onClick={() => handleRemoveDocument(i)}>×</button>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
-
-                <div className="admin-creds-box" style={{ flexShrink: 0, marginTop: 10, background: "var(--color-bg-subtle)", border: "2px solid var(--color-accent)", borderRadius: "8px", overflow: "hidden", boxShadow: "var(--shadow-sm)" }}>
-                  <div className="creds-header" style={{ background: "var(--color-accent)", padding: "6px 12px", color: "white", fontSize: "0.6rem", fontWeight: 900, display: "flex", alignItems: "center", gap: "8px", letterSpacing: "1px" }}>
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
-                      <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-                      <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-                    </svg>
-                    ADMIN CREDENTIALS (SENSITIVE)
-                  </div>
-                  <div className="creds-content" style={{ padding: "8px 12px", color: "var(--color-brand-text)" }}>
-                    <div style={{ display: "grid", gridTemplateColumns: "80px 1fr", gap: "2px 10px", alignItems: "center" }}>
-                      <span style={{ fontSize: "0.6rem", fontWeight: 900, textTransform: "uppercase", color: "var(--color-accent)" }}>Email:</span>
-                      <span style={{ fontWeight: 700, fontSize: "0.8rem", fontFamily: "monospace" }}>
-                        {passwordRevealed ? (deobfuscate(task.adminCredentials?.email) || "—") : "••••••••••••"}
-                      </span>
-                      <span style={{ fontSize: "0.6rem", fontWeight: 900, textTransform: "uppercase", color: "var(--color-accent)" }}>Pass:</span>
-                      <span style={{ fontWeight: 700, fontSize: "0.8rem", fontFamily: "monospace" }}>
-                        {passwordRevealed ? (deobfuscate(task.adminCredentials?.password) || "—") : "••••••••"}
-                      </span>
-                    </div>
-                    {!passwordRevealed && (
-                      <button 
-                        onClick={handleRevealPassword}
-                        style={{ marginTop: 8, width: "100%", padding: "4px", fontSize: "0.55rem", fontWeight: 900, background: "var(--color-bg-primary)", border: "1px dashed var(--color-accent)", color: "var(--color-accent)", borderRadius: "4px", cursor: "pointer" }}
-                      >
-                        CLICK TO REVEAL
-                      </button>
-                    )}
-                  </div>
-                </div>
-              </>
+              </div>
             )}
+
           </div>
 
           {/* ── Notes column ── */}
@@ -1420,7 +1674,7 @@ export default function TaskModal({ taskId, isEditMode, initialNotesOpen, userRo
                 )}
               </div>
             </div>
-            <div className="notes-list" onClick={() => setNoteContextMenu(null)} style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "0 5px", marginBottom: 10 }}>
+            <div className="notes-list" style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "0 5px", marginBottom: 10 }}>
               {selectedNotes.size > 0 && (
                 <div className="bulk-action-bar">
                   <span>{selectedNotes.size} selected</span>
@@ -1446,8 +1700,8 @@ export default function TaskModal({ taskId, isEditMode, initialNotesOpen, userRo
                   <div
                     key={i}
                     ref={(el) => { noteRefs.current[i] = el; }}
-                    className={`note-item ${selectedNotes.has(i) ? "bulk-selected-item" : ""}`}
-                    onClick={(e) => handleRowClickToggle(e, setSelectedNotes, i)}
+                    className={`note-item ${selectedNotes.has(n.id || i) ? "bulk-selected-item" : ""}`}
+                    onClick={(e) => handleRowClickToggle(e, setSelectedNotes, n.id || i)}
                     style={{ 
                       background: "var(--color-card-bg)", 
                       padding: 12, 
@@ -1482,7 +1736,7 @@ export default function TaskModal({ taskId, isEditMode, initialNotesOpen, userRo
                               title={`${label}: ${arr.join(', ')}`}
                               onClick={(e) => {
                                 e.stopPropagation();
-                                toggleNoteReaction({ taskId, noteIndex: i, reactionType: key, userEmail: currentUserEmail, userName });
+                                toggleNoteReaction({ taskId, noteIndex: i, noteId: n.id, reactionType: key, userEmail: currentUserEmail, userName });
                               }}
                               style={{ 
                                 display: "flex", 
@@ -1633,94 +1887,6 @@ export default function TaskModal({ taskId, isEditMode, initialNotesOpen, userRo
 
         </div>
       </div>
-
-      {/* Note Context Menu with Emoji Picker — fixed position anchored to note */}
-      {noteContextMenu && (() => {
-        const rect = noteContextMenu.noteRect;
-        // Position: centered horizontally on the note, just above it
-        const menuWidth = 280;
-        const menuLeft = Math.max(8, Math.min(rect.left + (rect.width / 2) - (menuWidth / 2), window.innerWidth - menuWidth - 8));
-        const menuTop = Math.max(8, rect.top - 8); // just above the note, with transform to shift up
-        return (
-          <>
-            <div
-              style={{ position: "fixed", inset: 0, zIndex: 9998 }}
-              onClick={() => setNoteContextMenu(null)}
-              onContextMenu={(e) => { e.preventDefault(); setNoteContextMenu(null); }}
-            />
-            <div
-              className="note-context-menu"
-              style={{
-                position: "fixed",
-                top: menuTop,
-                left: menuLeft,
-                transform: "translateY(-100%)",
-                background: "#1a1a1a",
-                padding: "8px",
-                borderRadius: "16px",
-                boxShadow: "0 10px 40px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.08)",
-                zIndex: 9999,
-                border: "1px solid rgba(255,255,255,0.1)",
-                width: menuWidth,
-                animation: "fadeInUp 0.15s ease-out",
-              }}
-            >
-              {/* Emoji Row */}
-              <div style={{ display: "flex", gap: "2px", marginBottom: "6px", background: "rgba(255,255,255,0.05)", padding: "6px 4px", borderRadius: "12px", justifyContent: "center" }}>
-                {[
-                  { key: "heart", emoji: "❤️" },
-                  { key: "haha", emoji: "😆" },
-                  { key: "wow", emoji: "😮" },
-                  { key: "sad", emoji: "😢" },
-                  { key: "angry", emoji: "😡" },
-                  { key: "like", emoji: "👍" },
-                ].map(({ key, emoji }) => (
-                  <button
-                    key={key}
-                    onClick={() => {
-                      toggleNoteReaction({ taskId, noteIndex: noteContextMenu.index, reactionType: key, userEmail: currentUserEmail, userName });
-                      setNoteContextMenu(null);
-                    }}
-                    style={{
-                      background: "none",
-                      border: "none",
-                      fontSize: "1.3rem",
-                      padding: "6px 8px",
-                      cursor: "pointer",
-                      borderRadius: "8px",
-                      transition: "all 0.15s",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center"
-                    }}
-                    onMouseEnter={e => { e.currentTarget.style.background = "rgba(255,255,255,0.15)"; e.currentTarget.style.transform = "scale(1.25)"; }}
-                    onMouseLeave={e => { e.currentTarget.style.background = "none"; e.currentTarget.style.transform = "scale(1)"; }}
-                  >
-                    {emoji}
-                  </button>
-                ))}
-              </div>
-
-              <div style={{ height: 1, background: "rgba(255,255,255,0.08)", margin: "4px 0" }} />
-              
-              <button
-                style={{ width: "100%", padding: "10px 14px", textAlign: "left", background: "none", border: "none", fontSize: "0.82rem", cursor: "pointer", display: "flex", alignItems: "center", gap: 10, color: "white", fontWeight: 700, borderRadius: "10px" }}
-                onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.1)"}
-                onMouseLeave={e => e.currentTarget.style.background = "none"}
-                onClick={() => {
-                  setThreadModal({ index: noteContextMenu.index, note: task.notes[noteContextMenu.index] });
-                  setNoteContextMenu(null);
-                }}
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-                </svg>
-                Reply in Thread
-              </button>
-            </div>
-          </>
-        );
-      })()}
 
       {/* Thread Modal */}
       {threadModal && (

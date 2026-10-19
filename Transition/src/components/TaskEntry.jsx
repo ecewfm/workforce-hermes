@@ -5,10 +5,40 @@ import { fallbackMilestonesFor, withTemplateHints } from "../utils/defaults";
 import { useWorkspace } from "../utils/workspaceContext";
 import { WORKSPACE_META, isInDepartment } from "../utils/departments";
 import ConsultPanel from "./ConsultPanel";
+import Select from "./ui/Select";
+import DatePicker from "./ui/DatePicker";
+import { useOutsideClose } from "./ui/Popover";
 import { isCaddyEnabled } from "../utils/aiConfig";
+import { termsFor } from "../utils/workspaceTerms";
+import { isAdminPlusOrAbove } from "../utils/roles";
+import { useAccountScope } from "../utils/accountScope";
 
-export default function TaskEntry({ staff, userRole, userName, onCreated, showModal, plannerSeed, onPlannerSeedUsed }) {
+export default function TaskEntry({ staff, userRole, actualRole, userName, onCreated, showModal, plannerSeed, onPlannerSeedUsed }) {
   const workspace = useWorkspace();
+  const terms = termsFor(workspace);
+  // Operations: which client account the project is for (Admin+ can add one).
+  const accounts = useQuery(api.accounts.getAccounts, terms.accounts ? { workspace } : "skip");
+  const addAccount = useMutation(api.accounts.addAccount);
+  const boardAccount = () => {
+    try {
+      const v = localStorage.getItem(`wf_account_filter_${workspace}`) || "";
+      return v === "all" || v === "none" ? "" : v;
+    } catch { return ""; }
+  };
+  const [accountId, setAccountId] = useState(boardAccount);
+  // Tied to client accounts? Then a project must go in one of them (one → picked for you).
+  const scope = useAccountScope(workspace, actualRole);
+  useEffect(() => {
+    if (scope.scoped && !accountId && scope.accountIds.length === 1) setAccountId(scope.accountIds[0]);
+  }, [scope.scoped, scope.accountIds.join(), accountId]);
+  const [newAccountName, setNewAccountName] = useState(null); // null = closed
+  useEffect(() => {
+    if (accountId && Array.isArray(accounts) && !accounts.some((a) => a._id === accountId)) setAccountId("");
+  }, [accounts, accountId]);
+  // Operations/Executives: documents the project relies on ({ name, url }).
+  const [documents, setDocuments] = useState([]);
+  // From the AI plan: risks ("watch out for") and assumptions — saved on the task.
+  const [planNotes, setPlanNotes] = useState({ watchOuts: [], assumptions: [] });
   // Only staff who belong to THIS workspace's department can be assigned a task
   // created here (e.g. the Operations workspace lists only Operations members).
   const workspaceDept = WORKSPACE_META[workspace]?.department;
@@ -41,6 +71,9 @@ export default function TaskEntry({ staff, userRole, userName, onCreated, showMo
   const [milestones, setMilestones] = useState(() => fallbackMilestonesFor(workspace));
   const [selectedAssignees, setSelectedAssignees] = useState(new Set());
   const [showOptions, setShowOptions] = useState(false);
+  // The assignee list closes when you click anywhere else (it used to stay open over the fields below).
+  const multiRef = useRef(null);
+  useOutsideClose(showOptions, [multiRef], () => setShowOptions(false));
   const [submitting, setSubmitting] = useState(false);
   // Two-step wizard: AI plans first ("consult"), then the prefilled details
   // form ("form"). If Caddy is off, jump straight to the manual form.
@@ -128,6 +161,9 @@ export default function TaskEntry({ staff, userRole, userName, onCreated, showMo
     setDraftTitle("");
     setDraftDesc("");
     setDraftStart("");
+    setDocuments([]);
+    setPlanNotes({ watchOuts: [], assumptions: [] });
+    setAccountId(boardAccount());
     setStep(isCaddyEnabled() ? "consult" : "form");
   }
 
@@ -136,8 +172,9 @@ export default function TaskEntry({ staff, userRole, userName, onCreated, showMo
   // to the details step for final touches.
   function applyPlan(plan, startDate) {
     milestonesTouched.current = true;
-    // doneWhen rides along as the row hint (shown in the overview, not saved).
+    // doneWhen becomes the milestone's meaning (saved, shown in the task modal).
     setMilestones(plan.milestones.map((m) => ({ name: m.name, days: m.days, ...(m.doneWhen ? { hint: `Done when: ${m.doneWhen}` } : {}) })));
+    setPlanNotes({ watchOuts: plan.risks || [], assumptions: plan.assumptions || [] });
     setDraftTitle(plan.title || "");
     setDraftDesc([plan.description, plan.successMeasure && `Goal: ${plan.successMeasure}`].filter(Boolean).join("\n\n"));
     setDraftStart(startDate || "");
@@ -151,7 +188,20 @@ export default function TaskEntry({ staff, userRole, userName, onCreated, showMo
     setDraftTitle("");
     setDraftDesc("");
     setDraftStart("");
+    setPlanNotes({ watchOuts: [], assumptions: [] });
     setStep("form");
+  }
+
+  async function createAccount() {
+    const name = (newAccountName || "").trim();
+    if (!name) { setNewAccountName(null); return; }
+    try {
+      const id = await addAccount({ workspace, name });
+      setAccountId(id ? String(id) : "");
+      setNewAccountName(null);
+    } catch (err) {
+      showModal({ title: "Couldn't create the account", message: err?.message || "Please try again.", type: "alert" });
+    }
   }
 
   async function handleSubmit(e) {
@@ -162,16 +212,25 @@ export default function TaskEntry({ staff, userRole, userName, onCreated, showMo
       name: m.name,
       days: m.days,
       completed: false,
+      ...(m.hint ? { hint: m.hint } : {}), // what the step means — kept on the task
     }));
+    const docs = documents
+      .map((d) => ({ name: (d.name || "").trim(), url: (d.url || "").trim() }))
+      .filter((d) => d.url)
+      .map((d) => ({ name: d.name || d.url, url: /^https?:\/\//i.test(d.url) ? d.url : `https://${d.url}` }));
 
     // We don't await here to make it feel INSTANT because we have an optimistic update
     addTask({
       workspace,
       title: document.getElementById("task-title").value,
       assignee: Array.from(selectedAssignees).join(", "),
-      startDate: document.getElementById("task-date").value,
+      startDate: draftStart,
       description: document.getElementById("task-desc").value,
       milestones: milestonesData,
+      ...(terms.accounts && accountId ? { accountId } : {}),
+      ...(docs.length ? { documents: docs } : {}),
+      ...(planNotes.watchOuts.length ? { watchOuts: planNotes.watchOuts } : {}),
+      ...(planNotes.assumptions.length ? { assumptions: planNotes.assumptions } : {}),
     })
       .then(() => {
         // Success handled by showing modal early
@@ -179,8 +238,8 @@ export default function TaskEntry({ staff, userRole, userName, onCreated, showMo
       .catch((err) => {
         console.error("Task submission error:", err);
         showModal({
-          title: "Deployment Failed",
-          message: "There was an error deploying your task. Please try again.",
+          title: "Couldn't create the project",
+          message: err?.message || "Something went wrong creating the project. Please try again.",
           type: "error",
         });
       })
@@ -190,8 +249,8 @@ export default function TaskEntry({ staff, userRole, userName, onCreated, showMo
 
     // Show success modal INSTANTLY
     showModal({
-      title: "Project Deployed",
-      message: "Your project has been successfully added and is currently syncing.",
+      title: "Project Created",
+      message: "Your project has been added to the board and is syncing.",
       type: "success",
       onConfirm: () => {
         resetForm();
@@ -249,7 +308,7 @@ export default function TaskEntry({ staff, userRole, userName, onCreated, showMo
                 </div>
                 <div className="form-group">
                   <label className="form-label">Assignees *</label>
-                  <div className="custom-multiselect">
+                  <div className="custom-multiselect" ref={multiRef}>
                     <div className="multiselect-trigger" onClick={() => setShowOptions(!showOptions)} style={{ color: selectedAssignees.size > 0 ? "#1e293b" : "#64748b" }}>
                       {selectedAssignees.size > 0 ? Array.from(selectedAssignees).join(", ") : "Select Assignees..."}
                     </div>
@@ -274,14 +333,68 @@ export default function TaskEntry({ staff, userRole, userName, onCreated, showMo
                     </div>
                   </div>
                 </div>
+                {terms.accounts && (
+                  <div className="form-group">
+                    <label className="form-label">Account</label>
+                    {newAccountName === null ? (
+                      <Select
+                        value={accountId}
+                        onChange={(v) => (v === "__new" ? setNewAccountName("") : setAccountId(v))}
+                        ariaLabel="Account"
+                        placeholder="Pick an account"
+                        options={[
+                          ...(scope.scoped ? [] : [{ value: "", label: "No account" }]),
+                          ...(accounts || []).map((a) => ({ value: a._id, label: a.name, hint: a.projects ? `${a.projects} project${a.projects === 1 ? "" : "s"}` : undefined })),
+                          ...(isAdminPlusOrAbove(actualRole) ? [{ value: "__new", label: "+ New account…", action: true }] : []),
+                        ]}
+                      />
+                    ) : (
+                      <div className="entry-new-account">
+                        <input
+                          autoFocus
+                          className="form-input"
+                          value={newAccountName}
+                          placeholder="New account name"
+                          maxLength={80}
+                          onChange={(e) => setNewAccountName(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") { e.preventDefault(); createAccount(); }
+                            if (e.key === "Escape") setNewAccountName(null);
+                          }}
+                        />
+                        <button type="button" className="btn-primary" onClick={createAccount}>Add</button>
+                        <button type="button" className="btn-secondary" onClick={() => setNewAccountName(null)}>Cancel</button>
+                      </div>
+                    )}
+                  </div>
+                )}
                 <div className="form-group">
                   <label className="form-label">Start Date *</label>
-                  <input type="date" id="task-date" className="form-input" defaultValue={draftStart} required />
+                  <DatePicker id="task-date" value={draftStart} onChange={setDraftStart} placeholder="Pick a start date" required />
                 </div>
                 <div className="form-group">
                   <label className="form-label">Description</label>
                   <textarea id="task-desc" className="form-input" style={{ height: 80 }} placeholder="Details..." defaultValue={draftDesc}></textarea>
                 </div>
+                {!terms.tech && (
+                  <div className="form-group">
+                    <label className="form-label">Documents</label>
+                    <div className="entry-docs">
+                      {documents.map((d, i) => (
+                        <div key={i} className="entry-doc-row">
+                          <input className="form-input" placeholder="Name (e.g. Escalation SOP)" value={d.name}
+                            onChange={(e) => setDocuments((prev) => prev.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)))} />
+                          <input className="form-input" placeholder="https://…" value={d.url}
+                            onChange={(e) => setDocuments((prev) => prev.map((x, j) => (j === i ? { ...x, url: e.target.value } : x)))} />
+                          <button type="button" className="btn-remove-milestone" onClick={() => setDocuments((prev) => prev.filter((_, j) => j !== i))}>×</button>
+                        </div>
+                      ))}
+                      <button type="button" className="btn-add-milestone" onClick={() => setDocuments((prev) => [...prev, { name: "", url: "" }])}>
+                        + Add Document
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div>
@@ -303,7 +416,7 @@ export default function TaskEntry({ staff, userRole, userName, onCreated, showMo
               <div style={{ display: "flex", justifyContent: "center", gap: 15, marginTop: 40 }}>
                 <button type="button" className="btn-secondary" onClick={resetForm}>Clear</button>
                 <button type="submit" className="btn-primary" style={{ width: "auto", padding: "12px 40px" }} disabled={submitting}>
-                  {submitting ? "DEPLOYING..." : "Create Task"}
+                  {submitting ? "CREATING..." : "Create Task"}
                 </button>
               </div>
             </form>
@@ -327,6 +440,23 @@ export default function TaskEntry({ staff, userRole, userName, onCreated, showMo
                 </div>
               ))}
             </div>
+            {(planNotes.watchOuts.length > 0 || planNotes.assumptions.length > 0) && (
+              <div className="entry-plan-notes">
+                {planNotes.watchOuts.length > 0 && (
+                  <div className="entry-plan-block watch">
+                    <div className="entry-plan-title">Watch out for</div>
+                    <ul>{planNotes.watchOuts.map((w, i) => <li key={i}>{w}</li>)}</ul>
+                  </div>
+                )}
+                {planNotes.assumptions.length > 0 && (
+                  <div className="entry-plan-block assume">
+                    <div className="entry-plan-title">Assumptions</div>
+                    <ul>{planNotes.assumptions.map((a, i) => <li key={i}>{a}</li>)}</ul>
+                  </div>
+                )}
+                <div className="entry-plan-foot">Saved with the project — you'll find them in its task view.</div>
+              </div>
+            )}
             <div className="timeline-summary-box">
               <div style={{ fontWeight: 800, color: "var(--color-accent)", fontSize: "0.9rem" }}>
                 Total Guided Timeline: {totalDays} Days (~{months} Months)

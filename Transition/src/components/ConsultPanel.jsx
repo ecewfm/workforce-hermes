@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from "react";
+import DatePicker from "./ui/DatePicker";
 import { useQuery } from "../data/react";
 import { api } from "../data/api";
 import { planTask } from "../utils/taskPlanner";
@@ -200,7 +201,7 @@ export default function ConsultPanel({ department, workspace, workspaceLabel, te
               )}
               <div className="consult-start-row">
                 <label htmlFor="consult-start">Start date <span>(optional)</span></label>
-                <input id="consult-start" type="date" className="consult-date" value={startDate} onChange={(e) => setStartDate(e.target.value)} disabled={busy} />
+                <DatePicker id="consult-start" size="sm" className="consult-date-picker" value={startDate} onChange={setStartDate} disabled={busy} allowClear placeholder="Any time" />
               </div>
               {phase === "idle" && (
                 <button className="consult-generate" onClick={() => run()} disabled={!brief.trim()}>
@@ -243,7 +244,7 @@ export default function ConsultPanel({ department, workspace, workspaceLabel, te
               <TimelineBar milestones={plan.milestones} total={totalDays} />
               <div className="consult-dates">
                 <label htmlFor="consult-start-2">Start</label>
-                <input id="consult-start-2" type="date" className="consult-date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+                <DatePicker id="consult-start-2" size="sm" className="consult-date-picker" value={startDate} onChange={setStartDate} allowClear placeholder="Pick a date" />
                 <span className="consult-dates-arrow">→</span>
                 <span className="consult-finish">
                   {finish
@@ -458,6 +459,9 @@ function examplesFor(department) {
     return [
       { label: "Business case", text: "Build a business case for opening a fourth site, with cost modeling and a board recommendation." },
       { label: "Tool consolidation", text: "Evaluate consolidating our three reporting tools into one and present a recommendation to leadership." },
+      { label: "Client renewal", text: "Prepare the renewal strategy for our largest client: account health review, pricing options, and a negotiation plan before the contract ends in 90 days." },
+      { label: "Org change", text: "Restructure the team-lead layer across two sites: design the new structure, align with HR and finance, and communicate it to all staff." },
+      { label: "Annual targets", text: "Set next year's operating targets (service level, attrition, margin) with each department head and get them approved." },
     ];
   if (department === "Workforce")
     return [
@@ -470,5 +474,7 @@ function examplesFor(department) {
 function refineChipsFor(department) {
   if (department === "Operations")
     return ["Tighter timeline", "Add a pilot first", "Roll out site by site", "Fewer, bigger steps", "More detail"];
+  if (department === "Executives")
+    return ["Faster decision", "Add a board review", "Add stakeholder buy-in", "Fewer, bigger steps", "More detail"];
   return ["Tighter timeline", "More buffer", "Fewer, bigger steps", "More detail"];
 }

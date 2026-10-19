@@ -1,15 +1,16 @@
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import { applySettings, loadSettings, saveSettings } from "./utils/settingsManager";
 import { getProjectDeadlines, fmtDate } from "./utils/deadlines";
 import { isAdminLevel, isAdminPlusOrAbove, isManager, defaultViewRole, roleBadgeLabel } from "./utils/roles";
 import { accessibleWorkspaces, DEFAULT_WORKSPACE, DEPARTMENTS, workspaceLabel } from "./utils/departments";
 import { WorkspaceContext } from "./utils/workspaceContext";
+import { termsFor, roleLabel } from "./utils/workspaceTerms";
 import { workspaceNeedsPassword, markWorkspaceUnlocked, clearWorkspaceUnlocks, hashPassword } from "./utils/workspacePassword";
 import { morphOriginFrom } from "./utils/modalOrigin";
-import { useQuery, useMutation } from "./data/react";
+import { useQuery, useMutation, useConvex } from "./data/react";
 import { api } from "./data/api";
 import { supabase, hasStoredSession } from "./data/supabase";
-import { signOut } from "./data/auth";
+import { signOut, authApi } from "./data/auth";
 import { initNotifications } from "./utils/notifications";
 import WorkspaceSelect, { WorkspaceCards } from "./components/WorkspaceSelect";
 import WorkspacePasswordGate from "./components/WorkspacePasswordGate";
@@ -17,7 +18,6 @@ import Dashboard from "./components/Dashboard";
 import KanbanBoard from "./components/KanbanBoard";
 import TaskEntry from "./components/TaskEntry";
 import Notebook from "./components/Notebook";
-import AdminPanel from "./components/AdminPanel";
 import TaskModal from "./components/TaskModal";
 import NotesModal from "./components/NotesModal";
 import RoboHand from "./components/RoboHand";
@@ -35,6 +35,7 @@ import TaskNotificationPopup from "./components/TaskNotificationPopup";
 import Settings from "./components/Settings";
 import NotificationBell from "./components/NotificationBell";
 import Handbook from "./components/Handbook";
+import HeaderSearch from "./components/HeaderSearch";
 
 const ACTIVITY_EVENTS = ["mousemove", "keydown", "click", "scroll", "touchstart"];
 
@@ -83,6 +84,7 @@ export default function App() {
   // Workspace-switch transition: the target key being switched to, and the
   // animation phase ("loading" = centered card + spinner, "out" = shrink to 0).
   const [transitioningTo, setTransitioningTo] = useState(null);
+  const [wsCurtain, setWsCurtain] = useState(false);
   const [transitionPhase, setTransitionPhase] = useState(null);
 
   // --- App state ---
@@ -120,7 +122,7 @@ export default function App() {
     const HINTS = [
       "Hi, I'm Caddy 👋 Ask me for a project's updates.",
       "Need a task logged? Just tell me about it.",
-      "I can jot ideas to the notebook or file a bug for you.",
+      terms.tech ? "I can jot ideas to the notebook or file a bug for you." : "I can jot ideas to the notebook or flag a roadblock for you.",
       "Try: “What's the latest project with updates?”",
     ];
     let hideTimer;
@@ -132,7 +134,7 @@ export default function App() {
     const first = window.setTimeout(show, 7000);
     const interval = window.setInterval(show, 85000);
     return () => { window.clearTimeout(first); window.clearTimeout(hideTimer); window.clearInterval(interval); };
-  }, [showAI, caddyOn]);
+  }, [showAI, caddyOn, activeWorkspace]);
   const [contextMenu, setContextMenu] = useState({ visible: false, x: 0, y: 0, task: null });
   const [showSettings, setShowSettings] = useState(false);
   const [showHandbook, setShowHandbook] = useState(false);
@@ -145,7 +147,6 @@ export default function App() {
   const [showLoginNotifications, setShowLoginNotifications] = useState(false);
   const [showAllProjects, setShowAllProjects] = useState(false);
   const [showRoleSwitcherPopup, setShowRoleSwitcherPopup] = useState(false);
-  const [showSearch, setShowSearch] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [showUserProjectsModal, setShowUserProjectsModal] = useState(false);
   const [activeProjectsTab, setActiveProjectsTab] = useState("overview");
@@ -169,6 +170,164 @@ export default function App() {
   const [staff, setStaff] = useState([]);
   // Header search + modals read the active workspace's tasks.
   const tasks = useQuery(api.tasks.getTasksLight, { workspace: activeWorkspace || DEFAULT_WORKSPACE });
+  // Where the last click/tap happened — profile cards grow out of that point.
+  const lastPointer = useRef(null);
+  useEffect(() => {
+    const onDown = (e) => { lastPointer.current = { x: e.clientX, y: e.clientY }; };
+    window.addEventListener("pointerdown", onDown, true);
+    return () => window.removeEventListener("pointerdown", onDown, true);
+  }, []);
+  const profileRef = useRef(null);
+  const profileFrom = useRef(null);
+  const profileOpen = !!viewingStaff;
+  useLayoutEffect(() => {
+    const card = profileRef.current;
+    if (!profileOpen || !card || window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches) return;
+    const r = card.getBoundingClientRect();
+    const p = lastPointer.current || { x: r.left + r.width / 2, y: r.top - 40 };
+    const dx = p.x - (r.left + r.width / 2), dy = p.y - (r.top + r.height / 2);
+    profileFrom.current = { dx, dy };
+    card.style.animation = "none"; // the generic CSS pop would fight this
+    card.animate(
+      [{ opacity: 0, transform: `translate(${dx}px, ${dy}px) scale(0.18)` }, { opacity: 1, transform: "none" }],
+      { duration: 520, easing: "cubic-bezier(0.34, 1.4, 0.64, 1)" },
+    );
+    card.querySelector(".profile-popover-header")?.animate(
+      [{ transform: "scale(1.18)" }, { transform: "none" }],
+      { duration: 700, easing: "cubic-bezier(0.2, 0, 0, 1)" },
+    );
+    card.querySelector(".profile-popover-avatar-large")?.animate(
+      [{ opacity: 0, transform: "scale(0.3) rotate(-12deg)" }, { opacity: 1, transform: "none" }],
+      { duration: 560, delay: 110, easing: "cubic-bezier(0.34, 1.7, 0.64, 1)", fill: "backwards" },
+    );
+    const rows = card.querySelectorAll(".profile-popover-main > *, .profile-popover-body > :not(.profile-popover-main)");
+    [...rows].slice(0, 10).forEach((el, i) =>
+      el.animate(
+        [{ opacity: 0, transform: "translateY(12px)" }, { opacity: 1, transform: "none" }],
+        { duration: 380, delay: 170 + i * 45, easing: "cubic-bezier(0.2, 0, 0, 1)", fill: "backwards" },
+      ));
+  }, [profileOpen]);
+  // Workspace picker (click the WORKFORCE HERMES title): the cards deal out of
+  // the title, spinning into place, and fly back into it when it closes.
+  const wsTitleRef = useRef(null);
+  const wsPickerRef = useRef(null);
+  const wsPickerClosing = useRef(false);
+  const wsPickerOpenedAt = useRef(0);
+  const wsCardPaths = () => {
+    const root = wsPickerRef.current;
+    const t = wsTitleRef.current?.getBoundingClientRect();
+    const cards = root ? [...root.querySelectorAll(".workspace-select-card")] : [];
+    const mid = (cards.length - 1) / 2;
+    return cards.map((el, i) => {
+      const r = el.getBoundingClientRect();
+      const dx = t ? t.left + t.width / 2 - (r.left + r.width / 2) : 0;
+      const dy = t ? t.top + t.height / 2 - (r.top + r.height / 2) : -window.innerHeight / 2;
+      return { el, i, from: `translate(${dx}px, ${dy}px) scale(0.12) rotate(${(i - mid) * 12}deg)` };
+    });
+  };
+  useLayoutEffect(() => {
+    const root = wsPickerRef.current;
+    if (!showWorkspacePicker || !root) return;
+    wsPickerClosing.current = false;
+    wsPickerOpenedAt.current = performance.now();
+    if (window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches) return;
+    root.style.animation = "none"; // replaced by the motion below
+    root.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 320, easing: "ease-out" });
+    root.querySelector(".ws-picker-head")?.animate(
+      [{ opacity: 0, transform: "translateY(-30px) scale(0.94)" }, { opacity: 1, transform: "none" }],
+      { duration: 560, delay: 120, easing: "cubic-bezier(0.34, 1.4, 0.64, 1)", fill: "backwards" },
+    );
+    for (const { el, i, from } of wsCardPaths()) {
+      el.animate(
+        [{ opacity: 0, transform: from }, { opacity: 1, offset: 0.3 }, { opacity: 1, transform: "none" }],
+        { duration: 760, delay: 60 + i * 85, easing: "cubic-bezier(0.34, 1.22, 0.64, 1)", fill: "backwards" },
+      );
+      el.querySelector(".workspace-card-icon")?.animate(
+        [{ transform: "scale(0.4) rotate(-90deg)" }, { transform: "none" }],
+        { duration: 700, delay: 260 + i * 85, easing: "cubic-bezier(0.34, 1.7, 0.64, 1)", fill: "backwards" },
+      );
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showWorkspacePicker]);
+  function openWorkspacePicker() {
+    if (myWorkspaces.length <= 1) return;
+    wsTitleRef.current?.animate(
+      [{ transform: "scale(1)" }, { transform: "scale(0.93)", offset: 0.35 }, { transform: "scale(1)" }],
+      { duration: 360, easing: "cubic-bezier(0.34, 1.56, 0.64, 1)" },
+    );
+    setShowWorkspacePicker(true);
+  }
+  function closeWorkspacePicker() {
+    const root = wsPickerRef.current;
+    if (!root || wsPickerClosing.current || window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches) { setShowWorkspacePicker(false); return; }
+    wsPickerClosing.current = true;
+    const paths = wsCardPaths();
+    for (const { el, i, from } of paths) {
+      el.animate(
+        [{ opacity: 1, transform: getComputedStyle(el).transform === "none" ? "none" : getComputedStyle(el).transform }, { opacity: 0, transform: from }],
+        { duration: 400, delay: (paths.length - 1 - i) * 50, easing: "cubic-bezier(0.55, 0, 0.75, 0.2)", fill: "forwards" },
+      );
+    }
+    root.querySelector(".ws-picker-head")?.animate(
+      [{ opacity: 1 }, { opacity: 0, transform: "translateY(-18px)" }],
+      { duration: 220, easing: "ease-in", fill: "forwards" },
+    );
+    // The title "catches" the cards.
+    wsTitleRef.current?.animate(
+      [{ transform: "scale(1)" }, { transform: "scale(1.08)", offset: 0.5 }, { transform: "scale(1)" }],
+      { duration: 380, delay: 300, easing: "cubic-bezier(0.34, 1.56, 0.64, 1)" },
+    );
+    const done = () => { wsPickerClosing.current = false; setShowWorkspacePicker(false); };
+    root.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 260, delay: 240, easing: "ease-in", fill: "forwards" }).finished.then(done, done);
+  }
+  // Esc closes the picker (not mid-switch).
+  useEffect(() => {
+    if (!showWorkspacePicker || transitioningTo) return undefined;
+    const onKey = (e) => { if (e.key === "Escape") closeWorkspacePicker(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showWorkspacePicker, transitioningTo]);
+
+  const profileClosing = useRef(false);
+  function closeProfile() {
+    const card = profileRef.current;
+    const from = profileFrom.current;
+    if (!card || profileClosing.current || window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches) { setViewingStaff(null); return; }
+    profileClosing.current = true;
+    const done = () => { profileClosing.current = false; setViewingStaff(null); };
+    card.closest(".profile-popover-overlay")?.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 220, easing: "ease-in", fill: "forwards" });
+    card.animate(
+      [{ opacity: 1, transform: "none" }, { opacity: 0, transform: from ? `translate(${from.dx * 0.6}px, ${from.dy * 0.6}px) scale(0.4)` : "scale(0.9)" }],
+      { duration: 240, easing: "cubic-bezier(0.4, 0, 1, 1)", fill: "forwards" },
+    ).finished.then(done, done);
+  }
+
+  // How this workspace names things (Workforce = the programming team's words).
+  const terms = termsFor(activeWorkspace || DEFAULT_WORKSPACE);
+  const convex = useConvex();
+
+  // First-open warm-up: once the app is up and the browser is idle, render the
+  // task modal ONCE, invisibly and without side effects (TaskModal
+  // "rehearsal"). The very first real open otherwise pays the browser's
+  // one-time costs — style/layout caches, text shaping, GPU shaders — as a
+  // ~150ms hitch right on the click. Measured: after one rehearsal, the first
+  // real open has no long frames at all.
+  const [rehearsalTask, setRehearsalTask] = useState(null);
+  const rehearsedRef = useRef(false);
+  useEffect(() => {
+    if (rehearsedRef.current || authStage !== "authenticated" || !tasks?.length) return;
+    const t = window.setTimeout(() => {
+      const go = () => {
+        if (rehearsedRef.current) return;
+        rehearsedRef.current = true;
+        setRehearsalTask(tasks[0]);
+      };
+      if (window.requestIdleCallback) window.requestIdleCallback(go, { timeout: 2500 });
+      else go();
+    }, 1500);
+    return () => window.clearTimeout(t);
+  }, [tasks, authStage]);
   // Staff list (live — role/department changes show up without a reload).
   const liveStaff = useQuery(api.staff.getStaff);
   // Active workspace's config — read here to gate entry when a password is set.
@@ -202,6 +361,8 @@ export default function App() {
   const updateProjectLink = useMutation(api.tasks.updateProjectLink);
   const updateAdminCredentials = useMutation(api.tasks.updateAdminCredentials);
   const updateTaskDetailsMut = useMutation(api.tasks.updateTaskDetails);
+  const updateTaskLinksMut = useMutation(api.tasks.updateTaskLinks);
+  const updateTaskDocumentsMut = useMutation(api.tasks.updateTaskDocuments);
   const setTaskDeadlineMut = useMutation(api.tasks.setTaskDeadline);
 
   const activeProfile = useMemo(() => {
@@ -582,11 +743,15 @@ export default function App() {
   // and shows "Loading workspace…", then shrinks to zero) before committing.
   function beginWorkspaceTransition(key) {
     if (transitioningTo) return; // a transition is already running
-    if (key === activeWorkspace) { setShowWorkspacePicker(false); return; }
+    if (key === activeWorkspace) { closeWorkspacePicker(); return; }
     setTransitioningTo(key);
     setTransitionPhase("loading");
-    setTimeout(() => setTransitionPhase("out"), 1300); // hold, then shrink
-    setTimeout(() => commitWorkspaceSwitch(key), 1850); // after shrink, switch
+    setTimeout(() => setTransitionPhase("out"), 1050); // hold, then the card swells over the screen
+    setTimeout(() => {
+      commitWorkspaceSwitch(key); // switch under the cover…
+      setWsCurtain(true); // …then a matching curtain fades away to reveal it
+      setTimeout(() => setWsCurtain(false), 700);
+    }, 1560);
   }
 
   function changeRole(role) {
@@ -728,7 +893,7 @@ export default function App() {
           <img src="https://i.imgur.com/BRd5lrB.png" alt="ECE Logo" className="header-logo" />
           <div className="header-text-content">
             <h1>WORKFORCE HERMES</h1>
-            <p>Workforce Programming Project Database</p>
+            <p>ECE Project Database · Workforce · Operations · Executives</p>
           </div>
           <img src="https://i.imgur.com/ycmU6oP.png" alt="WFM Logo" className="header-logo" />
         </div>
@@ -836,7 +1001,7 @@ export default function App() {
       {/* Header */}
       <header>
         <div className="header-container">
-          <div className="user-profile" style={{ display: "flex", flexDirection: "row", alignItems: "center", gap: "12px", width: "auto", minWidth: 200 }}>
+          <div className="user-profile" style={{ display: "flex", flexDirection: "row", alignItems: "center", gap: "12px", width: "auto", minWidth: 200, flexShrink: 0, marginRight: 16 }}>
             <div 
               className="header-avatar-container"
               onClick={() => {
@@ -883,7 +1048,7 @@ export default function App() {
                   }}
                   title={(!isMainAdmin && isAdminLevel(actualRole)) ? "Click to switch view" : ""}
                 >
-                  {roleBadgeLabel(actualRole, userRole)}
+                  {roleLabel(roleBadgeLabel(actualRole, userRole), activeWorkspace)}
                   {(!isMainAdmin && isAdminLevel(actualRole)) && (
                     <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" style={{ marginLeft: 4 }}><path d="M6 9l6 6 6-6"/></svg>
                   )}
@@ -910,7 +1075,7 @@ export default function App() {
                         onMouseEnter={(e) => { if(userRole !== "Programmer") e.currentTarget.style.background = "var(--glass-bg)" }}
                         onMouseLeave={(e) => { if(userRole !== "Programmer") e.currentTarget.style.background = "transparent" }}
                       >
-                        Programmer View
+                        {terms.memberRole} View
                       </div>
                     </div>
                   </>
@@ -921,98 +1086,13 @@ export default function App() {
               userEmail={localStorage.getItem("wf_email") || ""}
               onOpenTask={(taskId, origin) => openTaskModal(taskId, false, false, origin || null)}
             />
-            <button
-              className="btn-settings-header"
-              onClick={() => setShowSearch(!showSearch)}
-              title="Search"
-              style={{ padding: "8px", borderRadius: "50%", marginLeft: "0px" }}
-            >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                <circle cx="11" cy="11" r="8"></circle>
-                <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-              </svg>
-            </button>
-            <div style={{ display: "flex", alignItems: "center", position: "relative" }}>
-              <div 
-                style={{ 
-                  display: "flex", 
-                  alignItems: "center", 
-                  width: showSearch ? "210px" : "0px", 
-                  opacity: showSearch ? 1 : 0, 
-                  overflow: "visible", 
-                  transition: "width 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.2s ease, visibility 0.3s",
-                  marginLeft: showSearch ? "8px" : "0px",
-                  marginRight: showSearch ? "8px" : "0px",
-                  pointerEvents: showSearch ? "auto" : "none",
-                  visibility: showSearch ? "visible" : "hidden"
-                }}
-              >
-                <input
-                  type="text"
-                  placeholder="Search tasks, people..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  autoFocus={showSearch}
-                  style={{
-                    width: "200px",
-                    padding: "8px 12px",
-                    borderRadius: "16px",
-                    border: "1px solid var(--color-accent)",
-                    outline: "none",
-                    fontSize: "0.8rem",
-                    background: "var(--color-card-bg)",
-                    color: "var(--color-text-primary)",
-                    boxShadow: "0 4px 12px rgba(0,0,0,0.05)",
-                    boxSizing: "border-box"
-                  }}
-                />
-                {showSearch && searchQuery.trim().length > 0 && (
-                  <div style={{
-                    position: "absolute",
-                    top: "100%",
-                    left: 0,
-                    width: "250px",
-                    background: "var(--color-card-bg)",
-                    borderRadius: "12px",
-                    border: "1px solid var(--glass-border)",
-                    boxShadow: "0 10px 25px rgba(0,0,0,0.1)", 
-                    marginTop: "8px", 
-                    maxHeight: "300px", 
-                    overflowY: "auto", 
-                    padding: "8px",
-                    zIndex: 2000,
-                    animation: "slideDown 0.2s ease-out"
-                  }}>
-                    {/* Staff matches */}
-                    {staff?.filter(s => s.name.toLowerCase().includes(searchQuery.toLowerCase()) || s.email.toLowerCase().includes(searchQuery.toLowerCase())).map(s => (
-                      <div key={s._id || s.email} style={{ padding: "8px", cursor: "pointer", borderRadius: "6px", fontSize: "0.8rem", display: "flex", alignItems: "center", gap: "8px" }}
-                        onMouseEnter={e => e.currentTarget.style.background = "var(--color-bg-subtle)"}
-                        onMouseLeave={e => e.currentTarget.style.background = "transparent"}
-                        onClick={() => { setKanbanFilterStaff(s); switchView("kanban"); setShowSearch(false); setSearchQuery(""); }}
-                      >
-                        {s.avatarUrl ? (
-                          <img src={s.avatarUrl} alt={s.name} style={{ width: "20px", height: "20px", borderRadius: "50%", objectFit: "cover" }} />
-                        ) : (
-                          <div style={{ width: "20px", height: "20px", borderRadius: "50%", background: "var(--color-accent)", color: "white", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.6rem" }}>{s.name.charAt(0)}</div>
-                        )}
-                        <span>{s.name} <span style={{ color: "var(--color-text-secondary)", fontSize: "0.7rem" }}>· View projects</span></span>
-                      </div>
-                    ))}
-                    {/* Task matches */}
-                    {tasks?.filter(t => t.title.toLowerCase().includes(searchQuery.toLowerCase()) || (searchQuery.toLowerCase() === "priority" && t.isPrioritized)).map(t => (
-                      <div key={t._id} style={{ padding: "8px", cursor: "pointer", borderRadius: "6px", fontSize: "0.8rem", display: "flex", flexDirection: "column" }}
-                        onMouseEnter={e => e.currentTarget.style.background = "var(--color-bg-subtle)"}
-                        onMouseLeave={e => e.currentTarget.style.background = "transparent"}
-                        onClick={(e) => { openTaskModal(t._id, false, false, morphOriginFrom(e.currentTarget), t); setShowSearch(false); setSearchQuery(""); }}
-                      >
-                        <div style={{ fontWeight: 800 }}>{t.title}</div>
-                        <div style={{ fontSize: "0.65rem", color: "#64748b" }}>{t.assignee || "Unassigned"}</div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
+            <HeaderSearch
+              staff={staff}
+              tasks={tasks}
+              onQueryChange={setSearchQuery}
+              onPickStaff={(st) => { setKanbanFilterStaff(st); switchView("kanban"); }}
+              onPickTask={(t, origin) => openTaskModal(t._id, false, false, origin, t)}
+            />
             <button
               className="btn-settings-header"
               onClick={() => setShowSettings(true)}
@@ -1028,20 +1108,22 @@ export default function App() {
           <div className="header-box" style={{ maxWidth: 1280, padding: "12px 40px", gap: 28, borderRadius: "20px", border: "1px solid var(--glass-border)", background: "var(--glass-bg)", boxShadow: "var(--shadow-md)" }}>
             <img src="https://i.imgur.com/BRd5lrB.png" alt="ECE Logo" className="header-logo" style={{ height: "45px" }} />
             <div
-              className="header-text-content"
+              ref={wsTitleRef}
+              className={`header-text-content${myWorkspaces.length > 1 ? " can-switch" : ""}`}
               style={{ whiteSpace: "nowrap", cursor: myWorkspaces.length > 1 ? "pointer" : "default" }}
-              onClick={() => { if (myWorkspaces.length > 1) setShowWorkspacePicker(true); }}
+              onClick={openWorkspacePicker}
               title={myWorkspaces.length > 1 ? "Switch workspace" : ""}
             >
               <h1 style={{ fontSize: "1.6rem", letterSpacing: "-1.2px" }}>WORKFORCE HERMES</h1>
-              <p style={{ fontSize: "0.75rem", letterSpacing: "0.8px", color: "var(--color-text-secondary)", fontWeight: 700 }}>Workforce Programming Project Database</p>
+              <p style={{ fontSize: "0.75rem", letterSpacing: "0.8px", color: "var(--color-text-secondary)", fontWeight: 700 }}>{terms.appSubtitle}</p>
             </div>
             <img src="https://i.imgur.com/ycmU6oP.png" alt="WFM Logo" className="header-logo" style={{ height: "45px" }} />
             <div style={{ width: "1px", height: "30px", background: "var(--glass-border)", margin: "0 10px" }}></div>
             <button
               className="btn-project-consolidation"
               onClick={() => setShowHandbook(true)}
-              title="Open the Programming Handbook"
+              data-handbook-launcher
+              title={`Open the ${terms.handbookTitle}`}
               style={{
                 padding: "8px 16px",
                 borderRadius: "12px",
@@ -1067,7 +1149,7 @@ export default function App() {
             <button
               className="btn-project-consolidation"
               onClick={() => setShowAllProjects(true)}
-              title="View All Project Links"
+              title={`View all ${terms.projectLinks.toLowerCase()}`}
               style={{ 
                 padding: "8px 16px", 
                 borderRadius: "12px", 
@@ -1087,7 +1169,7 @@ export default function App() {
                 <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
                 <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
               </svg>
-              PROJECT LINKS
+              {terms.projectLinks.toUpperCase()}
             </button>
           </div>
         </div>
@@ -1170,6 +1252,7 @@ export default function App() {
           <TaskEntry
             staff={staff || []}
             userRole={userRole}
+            actualRole={actualRole}
             userName={userName}
             onCreated={() => switchView("kanban")}
             showModal={showModal}
@@ -1180,10 +1263,6 @@ export default function App() {
         {currentView === "notebook" && (
           <Notebook userRole={userRole} userName={userName} showModal={showModal} />
         )}
-        {currentView === "admin" && isAdminPlusOrAbove(actualRole) && (
-          <AdminPanel staff={staff} showModal={showModal} onViewProfile={(s) => setViewingStaff(s)} />
-        )}
-
         {currentView === "announcements" && isAdminPlusOrAbove(actualRole) && (
           <AnnouncementComposer userName={userName} showModal={showModal} />
         )}
@@ -1193,6 +1272,24 @@ export default function App() {
       <RoboHand />
       {/* The screen-as-camera that keeps aiming at the cursor */}
       <CameraFollow />
+
+      {/* The one-time invisible warm-up (see rehearsalTask above). */}
+      {rehearsalTask && !modalTaskId && (
+        <TaskModal
+          rehearsal
+          taskId={rehearsalTask._id}
+          seedTask={rehearsalTask}
+          userRole={userRole}
+          actualRole={actualRole}
+          userName={userName}
+          staff={staff || []}
+          onClose={() => {}}
+          onRehearsed={() => setRehearsalTask(null)}
+          showModal={showModal}
+          showInputModal={showInputModal}
+          onViewProfile={() => {}}
+        />
+      )}
 
       {/* Task Modal */}
       {modalTaskId && (
@@ -1312,7 +1409,38 @@ export default function App() {
 
           {/* Managers (and the main admin) edit links/credentials on ANY card,
               like the owner; everyone else only on cards they're assigned to. */}
-          {(isManager(actualRole) || isMainAdmin || contextMenu.task.assignee.toLowerCase().includes(userName.toLowerCase())) && (
+          {!terms.tech && (isManager(actualRole) || isMainAdmin || contextMenu.task.assignee.toLowerCase().includes(userName.toLowerCase())) && (
+            <div
+              className="context-menu-item"
+              onClick={() => {
+                const t = contextMenu.task;
+                if (!t?._id) return;
+                showInputModal({
+                  title: "Add a document",
+                  message: `Link a document to "${t.title}" — an SOP, a deck, a sheet, a brief.`,
+                  fields: [
+                    { name: "name", label: "Name", placeholder: "e.g. Escalation SOP v2" },
+                    { name: "url", label: "Link", placeholder: "https://docs.google.com/…" },
+                  ],
+                  onConfirm: (data) => {
+                    let url = (data.url || "").trim();
+                    if (!url) return;
+                    if (!/^https?:\/\//i.test(url)) url = `https://${url}`;
+                    updateTaskDocumentsMut({ taskId: t._id, documents: [...(t.documents || []), { name: (data.name || "").trim() || url, url }] })
+                      .catch((err) => showModal({ title: "Couldn't add the document", message: err.message, type: "alert" }));
+                  },
+                });
+                setContextMenu((prev) => ({ ...prev, visible: false }));
+              }}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /><line x1="12" y1="18" x2="12" y2="12" /><line x1="9" y1="15" x2="15" y2="15" />
+              </svg>
+              Add Document{(contextMenu.task.documents || []).length ? ` (${contextMenu.task.documents.length})` : ""}
+            </div>
+          )}
+
+          {terms.tech && (isManager(actualRole) || isMainAdmin || contextMenu.task.assignee.toLowerCase().includes(userName.toLowerCase())) && (
             <>
               <div
                 className="context-menu-item"
@@ -1323,17 +1451,10 @@ export default function App() {
                     message: "Enter the deployed URL for this web application.",
                     fields: [{ name: "link", label: "Webapp URL", placeholder: "https://...", initialValue: contextMenu.task.webappLink || contextMenu.task.projectLink }],
                     onConfirm: (data) => {
-                      console.log("DEBUG: onConfirm called for Webapp Link. data:", data);
                       if (!contextMenu.task) return;
-                      updateTaskDetailsMut({
-                        taskId: contextMenu.task._id,
-                        newTitle: contextMenu.task.title,
-                        newDescription: contextMenu.task.description || "",
-                        newAssignee: contextMenu.task.assignee,
-                        newWebappLink: data.link,
-                        newAppscriptLink: contextMenu.task.appscriptLink,
-                        newMilestones: contextMenu.task.milestones || []
-                      }).catch(err => console.error("Webapp Link Mutation Error:", err));
+                      // Patch just the link (re-sending the whole task risked its milestones).
+                      updateTaskLinksMut({ taskId: contextMenu.task._id, webappLink: data.link || "" })
+                        .catch((err) => showModal({ title: "Couldn't save the link", message: err.message, type: "alert" }));
                     }
                   });
                   setContextMenu((prev) => ({ ...prev, visible: false }));
@@ -1355,17 +1476,9 @@ export default function App() {
                     message: "Enter the URL for the Google Apps Script project.",
                     fields: [{ name: "link", label: "Appscript URL", placeholder: "https://script.google.com/...", initialValue: contextMenu.task.appscriptLink }],
                     onConfirm: (data) => {
-                      console.log("DEBUG: onConfirm called for Appscript Link. data:", data);
                       if (!contextMenu.task) return;
-                      updateTaskDetailsMut({
-                        taskId: contextMenu.task._id,
-                        newTitle: contextMenu.task.title,
-                        newDescription: contextMenu.task.description || "",
-                        newAssignee: contextMenu.task.assignee,
-                        newWebappLink: contextMenu.task.webappLink,
-                        newAppscriptLink: data.link,
-                        newMilestones: contextMenu.task.milestones || []
-                      }).catch(err => console.error("Appscript Link Mutation Error:", err));
+                      updateTaskLinksMut({ taskId: contextMenu.task._id, appscriptLink: data.link || "" })
+                        .catch((err) => showModal({ title: "Couldn't save the link", message: err.message, type: "alert" }));
                     }
                   });
                   setContextMenu((prev) => ({ ...prev, visible: false }));
@@ -1377,32 +1490,46 @@ export default function App() {
                 </svg>
                 {contextMenu.task.appscriptLink ? "Edit Appscript Link" : "Add Appscript Link"}
               </div>
-              <div
+              {isAdminLevel(actualRole) && <div
                 className="context-menu-item"
-                onClick={() => {
-                  if (!contextMenu.task || !contextMenu.task._id) return;
-                  showInputModal({
-                    title: "Admin Credentials",
-                    message: "Provide login details for administrative access.",
-                    fields: [
-                      { name: "email", label: "Email / Username", placeholder: "email@example.com", initialValue: contextMenu.task.adminCredentials?.email },
-                      { name: "password", label: "Password", placeholder: "••••••••", type: "password", initialValue: contextMenu.task.adminCredentials?.password }
-                    ],
-                    onConfirm: (data) => {
-                      console.log("Saving Admin Creds for ID:", contextMenu.task._id, data);
-                      updateAdminCredentials({ taskId: contextMenu.task._id, email: data.email, password: data.password })
-                        .catch(err => console.error("Admin Cred Mutation Error:", err));
-                    }
-                  });
+                onClick={async () => {
+                  const t = contextMenu.task;
+                  if (!t || !t._id) return;
                   setContextMenu((prev) => ({ ...prev, visible: false }));
+                  // Same rule as revealing them in the task modal: confirm it's you first.
+                  showInputModal({
+                    title: "Confirm it's you",
+                    message: "Enter your Hermes password to view or change this project's admin login.",
+                    fields: [{ name: "pass", label: "Your password", type: "password", placeholder: "••••••••" }],
+                    onConfirm: async (d) => {
+                      try { await authApi.verifyPassword(d.pass || ""); }
+                      catch (err) { showModal({ title: "Access Denied", message: err?.message || "That password isn't right.", type: "alert" }); return; }
+                      // The board's copy never carries credentials — read the full task.
+                      let creds;
+                      try { creds = (await convex.query(api.tasks.getTaskById, { taskId: t._id }))?.adminCredentials || {}; }
+                      catch (err) { showModal({ title: "Couldn't load the login", message: err?.message || "Please try again.", type: "alert" }); return; }
+                      showInputModal({
+                        title: "Admin Credentials",
+                        message: "Provide login details for administrative access.",
+                        fields: [
+                          { name: "email", label: "Email / Username", placeholder: "email@example.com", initialValue: creds.email },
+                          { name: "password", label: "Password", placeholder: "••••••••", type: "password", initialValue: creds.password }
+                        ],
+                        onConfirm: (data) => {
+                          updateAdminCredentials({ taskId: t._id, email: data.email, password: data.password })
+                            .catch((err) => showModal({ title: "Couldn't save the login", message: err.message, type: "alert" }));
+                        }
+                      });
+                    },
+                  });
                 }}
               >
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
                   <path d="M7 11V7a5 5 0 0 1 10 0v4" />
                 </svg>
-                {contextMenu.task.adminCredentials ? "Edit Admin Credentials" : "Add Admin Credentials"}
-              </div>
+                Admin Credentials
+              </div>}
             </>
           )}
 
@@ -1417,7 +1544,7 @@ export default function App() {
                 type: "confirm",
                 onConfirm: async () => {
                   try {
-                    await updateTaskStatus({ taskId: contextMenu.task._id, newStatus: "scrapyard" });
+                    await updateTaskStatus({ taskId: contextMenu.task._id, newStatus: "scrapped" });
                     showModal({ title: "Archived", message: `"${contextMenu.task.title}" has been archived successfully.`, type: "success" });
                   } catch (err) {
                     showModal({ title: "Error", message: err.message, type: "alert" });
@@ -1440,7 +1567,7 @@ export default function App() {
             onClick={() => {
               showModal({
                 title: "Delete Project",
-                message: "Are you sure you want to permanently delete this project? This action cannot be undone.",
+                message: `Move "${contextMenu.task.title}" to the archive? It leaves the board. An Admin can restore it — or delete it for good — in Settings → Archived Projects.`,
                 type: "confirm",
                 onConfirm: () => deleteTask({ taskId: contextMenu.task._id, actorEmail: localStorage.getItem("wf_email") || "", actorName: userName, source: "context-menu" })
               });
@@ -1515,8 +1642,8 @@ export default function App() {
 
       {/* Profile Popover */}
       {activeProfile && (
-        <div className="profile-popover-overlay" onClick={() => setViewingStaff(null)}>
-          <div className="profile-popover-content" onClick={(e) => e.stopPropagation()}>
+        <div className="profile-popover-overlay" onClick={closeProfile}>
+          <div className="profile-popover-content" ref={profileRef} onClick={(e) => e.stopPropagation()}>
             <div className="profile-popover-header" style={{ backgroundImage: activeProfile.avatarUrl ? `url(${activeProfile.avatarUrl})` : "none" }}>
               <div className="profile-popover-avatar-large">
                 {activeProfile.avatarUrl ? (
@@ -1530,7 +1657,7 @@ export default function App() {
                   </div>
                 )}
               </div>
-              <button className="profile-popover-close" onClick={() => setViewingStaff(null)}>×</button>
+              <button className="profile-popover-close" onClick={closeProfile}>×</button>
             </div>
             <div className="profile-popover-body">
               <div className="profile-popover-main">
@@ -1750,10 +1877,36 @@ export default function App() {
                 <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
                 <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
               </svg>
-              <span>Consolidated Project Links</span>
+              <span>{terms.tech ? "Consolidated Project Links" : terms.projectLinks}</span>
             </h2>
-            
-            <div className="full-kanban-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: "20px" }}>
+
+            {!terms.tech && (
+              <div className="full-kanban-grid project-docs-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: "20px" }}>
+                {(tasks || []).filter((t) => (t.documents || []).length > 0).map((t, i) => (
+                  <div key={t._id} className="programmer-card project-docs-card" style={{ borderTop: "6px solid #0ea5e9", animationDelay: `${Math.min(i, 12) * 40}ms` }}>
+                    <div className="card-header" style={{ cursor: "pointer" }} onClick={(e) => { setShowAllProjects(false); openTaskModal(t._id, false, false, null, t); }}>
+                      <h4 style={{ color: "var(--color-text-primary)" }}>{t.title}</h4>
+                      {t.account && <span className="project-docs-account">{t.account}</span>}
+                    </div>
+                    <div className="project-docs-list">
+                      {(t.documents || []).map((d, j) => (
+                        <a key={`${d.url}-${j}`} href={d.url} target="_blank" rel="noopener noreferrer" className="project-docs-link" title={d.url}>
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /></svg>
+                          <span>{d.name}</span>
+                        </a>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+                {(tasks || []).filter((t) => (t.documents || []).length > 0).length === 0 && (
+                  <div style={{ gridColumn: "1 / -1", textAlign: "center", padding: "40px", color: "#94a3b8" }}>
+                    No documents yet. Open a project and use “+ ADD” under Documents — or right-click a card → Add Document.
+                  </div>
+                )}
+              </div>
+            )}
+
+            {terms.tech && <div className="full-kanban-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: "20px" }}>
               {tasks?.filter(t => t.webappLink || t.appscriptLink || t.projectLink).map(t => (
                 <div 
                   key={t._id} 
@@ -1798,7 +1951,7 @@ export default function App() {
                   No projects with links found.
                 </div>
               )}
-            </div>
+            </div>}
           </div>
         </div>
       )}
@@ -1807,7 +1960,8 @@ export default function App() {
           Big cards float on a hard-blurred, dimmed backdrop (no wrapper card). */}
       {showWorkspacePicker && (
         <div
-          className="modal-overlay"
+          ref={wsPickerRef}
+          className="modal-overlay ws-picker-overlay"
           style={{
             zIndex: 5000,
             alignItems: "center",
@@ -1817,17 +1971,19 @@ export default function App() {
             WebkitBackdropFilter: "blur(28px)",
             padding: 20,
           }}
-          onClick={() => { if (!transitioningTo) setShowWorkspacePicker(false); }}
+          onClick={() => {
+            // A click that misses a card while they are still dealing out doesn't close it.
+            if (!transitioningTo && performance.now() - wsPickerOpenedAt.current > 800) closeWorkspacePicker();
+          }}
         >
           <div onClick={(e) => e.stopPropagation()} style={{ maxWidth: 2000, width: "96%", textAlign: "center", position: "relative" }}>
-            {!transitioningTo && (
-              <>
-                <h2 style={{ fontWeight: 900, margin: "0 15px 8px 0", fontSize: "2.5rem", color: "#000000", textShadow: "0 2px 10px rgba(0,0,0,0.4)" }}>Please Choose a Workspace</h2>
-                <p style={{ margin: "0 0 36px 0", fontSize: "1.25rem", color: "rgba(0, 0, 0, 0.85)" }}>
-                  Choose where you'd like to go — each workspace has its own separate data.
-                </p>
-              </>
-            )}
+            {/* Stays in the layout (just fades) so the cards don't jump when you pick one. */}
+            <div className="ws-picker-head" style={{ opacity: transitioningTo ? 0 : 1, transform: transitioningTo ? "translateY(-12px)" : "none", transition: "opacity 0.3s ease, transform 0.3s ease" }}>
+              <h2 style={{ fontWeight: 900, margin: "0 15px 8px 0", fontSize: "2.5rem", color: "#000000", textShadow: "0 2px 10px rgba(0,0,0,0.4)" }}>Please Choose a Workspace</h2>
+              <p style={{ margin: "0 0 36px 0", fontSize: "1.25rem", color: "rgba(0, 0, 0, 0.85)" }}>
+                Choose where you'd like to go — each workspace has its own separate data.
+              </p>
+            </div>
 
             {/* The real selected card flies to center (FLIP), others blur out,
                 then it shrinks to zero — all handled inside WorkspaceCards. */}
@@ -1842,6 +1998,8 @@ export default function App() {
           </div>
         </div>
       )}
+      {/* Workspace switched under the swelling card — this fades away to show it. */}
+      {wsCurtain && <div className="ws-curtain" aria-hidden="true" />}
     </WorkspaceContext.Provider>
   );
 }

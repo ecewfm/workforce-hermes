@@ -1,6 +1,7 @@
 import { useQuery, useMutation } from "../data/react";
 import { api } from "../data/api";
 import { useWorkspace } from "../utils/workspaceContext";
+import { sanitizeHtml } from "../utils/sanitizeHtml";
 
 /**
  * AnnouncementPopup — shows one unseen announcement at a time as a modal overlay.
@@ -37,10 +38,10 @@ export default function AnnouncementPopup() {
         {/* Title */}
         <h2 className="announcement-popup-title">{unseen.title}</h2>
 
-        {/* Body — rendered as HTML for rich text */}
+        {/* Body — rich text, sanitized (it's user-written HTML) */}
         <div
           className="announcement-popup-body"
-          dangerouslySetInnerHTML={{ __html: unseen.body }}
+          dangerouslySetInnerHTML={{ __html: sanitizeHtml(unseen.body) }}
         />
 
         {/* Footer */}

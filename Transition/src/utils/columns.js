@@ -20,6 +20,32 @@ export const DEFAULT_COLUMNS = [
   { id: "scrapped", label: "Scrapped Yard", color: "#94a3b8" },
 ];
 
+// Operations / Executives: business projects, not software releases.
+export const OPERATIONS_COLUMNS = [
+  { id: "todo", label: "To Do", color: "#065f46" },
+  { id: "pending", label: "Pending", color: "#10b981" },
+  { id: "development", label: "Work In Progress", color: "#059669" },
+  { id: "done", label: "Done", color: "#064e3b" },
+  { id: "scrapped", label: "Archived", color: "#94a3b8" },
+];
+export const EXECUTIVES_COLUMNS = [
+  { id: "todo", label: "To Do", color: "#065f46" },
+  { id: "pending", label: "Pending", color: "#10b981" },
+  { id: "development", label: "Work In Progress", color: "#059669" },
+  { id: "done", label: "Done", color: "#064e3b" },
+  { id: "implemented", label: "Implemented", color: "#047857" },
+  { id: "scrapped", label: "Archived", color: "#94a3b8" },
+];
+
+/** The built-in columns for a workspace (what "Restore Default Columns" brings back). */
+export function defaultColumnsFor(workspace) {
+  const src = workspace === "operations" ? OPERATIONS_COLUMNS : workspace === "executives" ? EXECUTIVES_COLUMNS : DEFAULT_COLUMNS;
+  return src.map((c) => ({ ...c }));
+}
+
+/** Archived projects (right-click → Archive, or Delete) carry this status. */
+export const ARCHIVED_STATUS = "scrapped";
+
 // Palette offered when a manager adds/recolors a column.
 export const COLUMN_COLOR_PRESETS = [
   "#065f46", "#10b981", "#059669", "#34d399", "#047857",
@@ -28,15 +54,19 @@ export const COLUMN_COLOR_PRESETS = [
 
 // The status the "development" column historically also matched. Kept so old
 // tasks stored as "inprogress" still land in a development-style column.
-export const LEGACY_STATUS_ALIASES = { development: ["inprogress"] };
+// "scrapyard" was the old archive status (now "scrapped" everywhere).
+export const LEGACY_STATUS_ALIASES = { development: ["inprogress"], scrapped: ["scrapyard"] };
+
+/** Is this an archived project's status? */
+export const isArchivedStatus = (status) => statusesForColumn(ARCHIVED_STATUS).includes((status || "").toLowerCase());
 
 /**
  * Resolve the columns to render for a workspace: the saved config if present
- * and non-empty, otherwise the defaults. Always returns a sanitized array of
+ * and non-empty, otherwise that workspace's defaults. Always returns a sanitized array of
  * { id, label, color, limit }.
  */
-export function resolveColumns(configColumns) {
-  const src = Array.isArray(configColumns) && configColumns.length > 0 ? configColumns : DEFAULT_COLUMNS;
+export function resolveColumns(configColumns, workspace) {
+  const src = Array.isArray(configColumns) && configColumns.length > 0 ? configColumns : defaultColumnsFor(workspace);
   return src
     .filter((c) => c && c.id)
     .map((c) => ({

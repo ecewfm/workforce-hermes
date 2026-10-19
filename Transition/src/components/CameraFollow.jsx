@@ -56,7 +56,9 @@ export default function CameraFollow() {
     const modalOwnsStage = () => document.documentElement.classList.contains("wf-modal-open");
     // Overlay presence is MAINTAINED by the mutation observer (below) so the
     // hot mousemove path never touches querySelector.
-    let overlayNow = !!document.querySelector(OVERLAYS);
+    // (The task modal's invisible warm-up render isn't an overlay anyone sees.)
+    const overlayOpen = () => [...document.querySelectorAll(OVERLAYS)].some((el) => !el.hasAttribute("data-rehearsal"));
+    let overlayNow = overlayOpen();
 
     // .view-stage remounts on every view switch (key={currentView}) — rebind
     // the tweens whenever the node changes.
@@ -98,7 +100,7 @@ export default function CameraFollow() {
       if (moRaf) return;
       moRaf = requestAnimationFrame(() => {
         moRaf = 0;
-        overlayNow = !!document.querySelector(OVERLAYS);
+        overlayNow = overlayOpen();
         if (!prefs.cameraFollow) return;
         if (modalOwnsStage()) return; // task modal's camera — hands off
         if (overlayNow) park();

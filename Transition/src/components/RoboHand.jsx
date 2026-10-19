@@ -109,6 +109,10 @@ export default function RoboHand() {
     let prefs = getFxPrefs();
 
     // ── Arm factory: each arm owns its geometry, tweens and "chase brain".
+    // Motion model: every frame the hand eases toward a GOAL point (no
+    // competing tweens on its position — that's what used to make it jump),
+    // the base re-reads its button so it stays attached, and the hand's
+    // angle turns smoothly instead of snapping.
     const makeArm = () => {
       const g = document.createElementNS(SVG_NS, "g");
       g.setAttribute("style", "display:none");
@@ -124,13 +128,48 @@ export default function RoboHand() {
         inner: g.querySelector(".rh-inner"),
         fingers: [...g.querySelectorAll(".rh-finger")],
         thumb: g.querySelector(".rh-thumb"),
+        source: null, side: 0, along: 0.5,
         anchor: { x: 0, y: 0 },
         hand: { x: 0, y: 0 },
+        angle: 0,
+        outDir: [0, -1],
+        mode: "off", // emerge → chase → retract → off
+        modeAt: 0,
+        emergeReach: 26,
         shortfall: { v: 40 }, // how far it stays SHORT of the cursor
         bendSign: 1,
         lungeMin: 0.6, lungeVar: 1.0, // per-arm lunge cadence
         active: false,
         idleTl: null, grabTl: null, lungeCall: null,
+      };
+      const digitEls = [...st.fingers, ...(st.thumb ? [st.thumb] : [])];
+      const digitRest = digitEls.map((d) => gsap.getProperty(d, "rotation"));
+
+      // Base point on the source button's edge (re-read every frame).
+      const OUT = 5;
+      st.readAnchor = () => {
+        if (!st.source?.isConnected) return;
+        const r = st.source.getBoundingClientRect();
+        const t = st.along;
+        if (st.side === 0) { st.anchor.x = r.left + r.width * t; st.anchor.y = r.top - OUT; }
+        else if (st.side === 1) { st.anchor.x = r.right + OUT; st.anchor.y = r.top + r.height * t; }
+        else if (st.side === 2) { st.anchor.x = r.left + r.width * t; st.anchor.y = r.bottom + OUT; }
+        else { st.anchor.x = r.left - OUT; st.anchor.y = r.top + r.height * t; }
+      };
+
+      // Where the hand wants to be right now.
+      st.goal = () => {
+        if (st.mode === "emerge") {
+          return { x: st.anchor.x + st.outDir[0] * st.emergeReach, y: st.anchor.y + st.outDir[1] * st.emergeReach };
+        }
+        if (st.mode === "chase") {
+          // SHORT of the cursor along the reach line — never past it, never behind the base.
+          const dx = lastCursor.x - st.anchor.x, dy = lastCursor.y - st.anchor.y;
+          const dist = Math.hypot(dx, dy) || 1;
+          const reach = Math.max(dist - st.shortfall.v, Math.min(dist, 10));
+          return { x: st.anchor.x + (dx / dist) * reach, y: st.anchor.y + (dy / dist) * reach };
+        }
+        return { x: st.anchor.x, y: st.anchor.y }; // retract
       };
 
       st.render = () => {
@@ -145,22 +184,37 @@ export default function RoboHand() {
         st.lower.setAttribute("x2", st.hand.x); st.lower.setAttribute("y2", st.hand.y);
         st.base.setAttribute("cx", st.anchor.x); st.base.setAttribute("cy", st.anchor.y);
         st.elbow.setAttribute("cx", ex); st.elbow.setAttribute("cy", ey);
-        // Hand rotates around its own wrist: plain translate-then-rotate.
-        const angle = (Math.atan2(st.hand.y - ey, st.hand.x - ex) * 180) / Math.PI;
-        st.handG.setAttribute("transform", `translate(${st.hand.x} ${st.hand.y}) rotate(${angle})`);
+        st.handG.setAttribute("transform", `translate(${st.hand.x} ${st.hand.y}) rotate(${st.angle})`);
+        return { ex, ey, dist };
       };
-      st.xTo = gsap.quickTo(st.hand, "x", { duration: 0.28, ease: "power2.out", onUpdate: st.render });
-      st.yTo = gsap.quickTo(st.hand, "y", { duration: 0.28, ease: "power2.out", onUpdate: st.render });
 
-      // Aim SHORT of the cursor along the reach line — never past it, never
-      // back behind the base. Gated while the hand is still climbing out.
-      st.aim = () => {
-        if (st.emerging) return;
-        const dx = lastCursor.x - st.anchor.x, dy = lastCursor.y - st.anchor.y;
-        const dist = Math.hypot(dx, dy) || 1;
-        const reach = Math.max(dist - st.shortfall.v, Math.min(dist, 10));
-        st.xTo(st.anchor.x + (dx / dist) * reach);
-        st.yTo(st.anchor.y + (dy / dist) * reach);
+      // One step per display frame (dt in seconds).
+      st.step = (dt) => {
+        st.readAnchor();
+        const goal = st.goal();
+        // Exponential ease toward the goal — frame-rate independent.
+        const k = st.mode === "retract" ? 16 : st.mode === "emerge" ? 11 : 13;
+        const a = 1 - Math.exp(-k * dt);
+        st.hand.x += (goal.x - st.hand.x) * a;
+        st.hand.y += (goal.y - st.hand.y) * a;
+        const dx = st.hand.x - st.anchor.x, dy = st.hand.y - st.anchor.y;
+        const dist = Math.hypot(dx, dy);
+        // Hand angle: along the forearm once it's out; the push-out direction
+        // while it's still close to the base (where the forearm angle is noise).
+        const bend = Math.min(26, 6 + dist * 0.22) * st.bendSign;
+        const ex = st.anchor.x + dx / 2 + (-dy / (dist || 1)) * bend;
+        const ey = st.anchor.y + dy / 2 + (dx / (dist || 1)) * bend;
+        const want = dist < 16
+          ? (Math.atan2(st.outDir[1], st.outDir[0]) * 180) / Math.PI
+          : (Math.atan2(st.hand.y - ey, st.hand.x - ex) * 180) / Math.PI;
+        let da = ((want - st.angle + 540) % 360) - 180; // shortest turn
+        st.angle += da * (1 - Math.exp(-14 * dt));
+        st.render();
+        if (st.mode === "emerge" && performance.now() - st.modeAt > 380) { st.mode = "chase"; st.modeAt = performance.now(); }
+        if (st.mode === "retract" && dist < 1.5 && performance.now() - st.modeAt > 260) {
+          st.mode = "off";
+          st.g.style.display = "none";
+        }
       };
 
       // Lunge: strain almost to the cursor, snap a grab — MISS — fall back,
@@ -170,9 +224,11 @@ export default function RoboHand() {
       };
       st.lunge = () => {
         if (!st.active) return;
+        if (st.mode !== "chase") { st.scheduleLunge(); return; }
         gsap.to(st.shortfall, {
-          v: 7, duration: 0.13, ease: "power2.in", onUpdate: st.aim,
+          v: 7, duration: 0.16, ease: "power2.in",
           onComplete: () => {
+            if (!st.active) return;
             if (st.idleTl) st.idleTl.pause();
             const digits = [...st.fingers, ...(st.thumb ? [st.thumb] : [])];
             st.grabTl = gsap.timeline({ onComplete: () => { if (st.idleTl) st.idleTl.resume(); } });
@@ -181,86 +237,111 @@ export default function RoboHand() {
               duration: 0.09, stagger: 0.012, ease: "power2.in", yoyo: true, repeat: 1,
               transformOrigin: "left center",
             });
-            gsap.to(st.shortfall, { v: st.restShort(), duration: 0.38, ease: "power2.out", onUpdate: st.aim, onComplete: st.scheduleLunge });
+            gsap.to(st.shortfall, { v: st.restShort(), duration: 0.42, ease: "power2.out", onComplete: st.scheduleLunge });
           },
         });
       };
 
       st.spawn = (btn, opts = {}) => {
-        const r = btn.getBoundingClientRect();
         // RANDOM AREA: any side of the button, random point along it.
-        const side = Math.floor(Math.random() * 4);
-        const t = 0.12 + Math.random() * 0.76;
-        const OUT = 5;
-        if (side === 0) { st.anchor.x = r.left + r.width * t; st.anchor.y = r.top - OUT; }
-        else if (side === 1) { st.anchor.x = r.right + OUT; st.anchor.y = r.top + r.height * t; }
-        else if (side === 2) { st.anchor.x = r.left + r.width * t; st.anchor.y = r.bottom + OUT; }
-        else { st.anchor.x = r.left - OUT; st.anchor.y = r.top + r.height * t; }
-        const outDir = [[0, -1], [1, 0], [0, 1], [-1, 0]][side]; // away from the button
+        st.source = btn;
+        st.side = Math.floor(Math.random() * 4);
+        st.along = 0.12 + Math.random() * 0.76;
+        st.readAnchor();
+        st.outDir = [[0, -1], [1, 0], [0, 1], [-1, 0]][st.side]; // away from the button
         st.bendSign = Math.random() < 0.5 ? 1 : -1;
         st.restShort = opts.restShort || (() => 26 + Math.random() * 14);
         st.lungeMin = opts.lungeMin ?? 0.6;
         st.lungeVar = opts.lungeVar ?? 1.0;
+        st.emergeReach = 20 + Math.random() * 12;
+        killDigits();
+        gsap.killTweensOf([st.inner, st.shortfall]);
         st.shortfall.v = opts.startShort ?? 44;
         // NO fade: switch on collapsed at the base, then pure motion out.
         st.hand.x = st.anchor.x; st.hand.y = st.anchor.y;
+        st.angle = (Math.atan2(st.outDir[1], st.outDir[0]) * 180) / Math.PI;
         st.render();
-        if (st.emergeTl) st.emergeTl.kill();
-        gsap.killTweensOf([st.g, st.inner, st.shortfall]);
-        gsap.set(st.g, { display: "block", autoAlpha: 1 });
+        st.g.style.display = "block";
         gsap.set(st.inner, { scale: 0, transformOrigin: "center center" });
         // Phase 1 — CLIMB OUT: the hand squeezes out from behind the button
-        // edge (scaling up as it pushes through) and crawls a couple dozen
-        // px outward. Only THEN does it start chasing the cursor.
-        st.emerging = true;
-        const reach = 20 + Math.random() * 12;
-        st.emergeTl = gsap.timeline({
-          onComplete: () => { st.emerging = false; st.emergeTl = null; st.aim(); },
-        });
-        st.emergeTl
-          .to(st.inner, { scale: 1, duration: 0.34, ease: "back.out(1.6)" }, 0)
-          .to(st.hand, {
-            x: st.anchor.x + outDir[0] * reach,
-            y: st.anchor.y + outDir[1] * reach,
-            duration: 0.4, ease: "power2.out", onUpdate: st.render,
-          }, 0.05);
+        // edge (scaling up as it pushes through) and crawls outward; then it
+        // starts chasing the cursor.
+        gsap.to(st.inner, { scale: 1, duration: 0.34, ease: "back.out(1.6)" });
+        st.mode = "emerge";
+        st.modeAt = performance.now();
         st.idleTl = gsap.timeline({ repeat: -1, yoyo: true, defaults: { duration: 0.55, ease: "sine.inOut" } });
         st.fingers.forEach((f, i) => st.idleTl.to(f, { rotation: "-=6", transformOrigin: "left center" }, i * 0.07));
         if (st.thumb) st.idleTl.to(st.thumb, { rotation: "+=7", transformOrigin: "left center" }, 0.05);
         st.active = true;
         st.scheduleLunge();
+        startLoop();
+      };
+
+      // Fingers back to their drawn pose (idle/grab tweens are relative).
+      const killDigits = () => {
+        if (st.idleTl) { st.idleTl.kill(); st.idleTl = null; }
+        if (st.grabTl) { st.grabTl.kill(); st.grabTl = null; }
+        if (st.lungeCall) { st.lungeCall.kill(); st.lungeCall = null; }
+        gsap.killTweensOf(digitEls);
+        digitEls.forEach((d, i) => gsap.set(d, { rotation: digitRest[i], transformOrigin: "left center" }));
       };
 
       st.retract = () => {
         if (!st.active) return;
         st.active = false;
-        st.emerging = false;
-        if (st.emergeTl) { st.emergeTl.kill(); st.emergeTl = null; }
-        if (st.idleTl) { st.idleTl.kill(); st.idleTl = null; }
-        if (st.grabTl) { st.grabTl.kill(); st.grabTl = null; }
-        if (st.lungeCall) { st.lungeCall.kill(); st.lungeCall = null; }
+        killDigits();
         gsap.killTweensOf(st.shortfall);
         // NO fade: hand rides back into the base, tucks away, then off.
-        st.xTo(st.anchor.x); st.yTo(st.anchor.y);
-        gsap.to(st.inner, { scale: 0, duration: 0.16, ease: "back.in(1.8)", delay: 0.1 });
-        gsap.set(st.g, { display: "none", delay: 0.3 });
+        st.mode = "retract";
+        st.modeAt = performance.now();
+        gsap.to(st.inner, { scale: 0, duration: 0.16, ease: "back.in(1.8)", delay: 0.08 });
       };
 
       st.destroy = () => {
         st.retract();
-        gsap.killTweensOf([st.g, st.inner, st.shortfall, st.hand]);
+        gsap.killTweensOf([st.inner, st.shortfall]);
         g.remove();
       };
       return st;
     };
 
-    // ONE arm only — the hovered button's. (Randomness lives in where it
-    // spawns and how it moves, not in how many there are.)
+    // ONE arm only. (Randomness lives in where it spawns and how it moves,
+    // not in how many there are.)
     const arms = [makeArm()];
 
+    // A single rAF loop drives every visible arm; it stops when all are off.
+    let loopRaf = 0;
+    let lastT = 0;
+    const loop = (now) => {
+      const dt = Math.min(0.05, Math.max(0.001, (now - (lastT || now)) / 1000 || 0.016));
+      lastT = now;
+      let any = false;
+      for (const a of arms) if (a.mode !== "off") { a.step(dt); any = true; }
+      loopRaf = any ? requestAnimationFrame(loop) : 0;
+      if (!any) lastT = 0;
+    };
+    const startLoop = () => { if (!loopRaf) loopRaf = requestAnimationFrame(loop); };
+
+    // The arm only chases while the pointer is ON the nav buttons. Crossing
+    // the small gap between two buttons keeps it (no tear-down + re-grow
+    // somewhere else — that was the "glitchy" teleport); leaving the button
+    // row sends it straight back in.
+    let leaveTimer = 0;
+    const navZone = () => {
+      const rs = [...document.querySelectorAll(".nav-btn")].map((b) => b.getBoundingClientRect()).filter((r) => r.width);
+      if (!rs.length) return null;
+      return {
+        left: Math.min(...rs.map((r) => r.left)) - 4, right: Math.max(...rs.map((r) => r.right)) + 4,
+        top: Math.min(...rs.map((r) => r.top)) - 4, bottom: Math.max(...rs.map((r) => r.bottom)) + 4,
+      };
+    };
+    const inZone = (x, y) => { const z = navZone(); return !!z && x >= z.left && x <= z.right && y >= z.top && y <= z.bottom; };
     const activate = (btn, e) => {
+      clearTimeout(leaveTimer);
+      leaveTimer = 0;
       hoveredBtn = btn;
       lastCursor.x = e.clientX; lastCursor.y = e.clientY;
+      if (arms[0].active) return; // already reaching — carry on
       // The arm comes from a DIFFERENT button than the hovered one, reaching
       // across the nav for your cursor — the button you're on never looks
       // like it's breaking open. (Falls back to itself only if it's alone.)
@@ -270,21 +351,34 @@ export default function RoboHand() {
     };
 
     const deactivate = () => {
+      clearTimeout(leaveTimer);
+      leaveTimer = 0;
       hoveredBtn = null;
       arms.forEach((a) => a.retract());
     };
+    // In a gap between buttons: give it a moment (an existing countdown isn't restarted).
+    const deactivateSoon = () => {
+      if (!leaveTimer) leaveTimer = setTimeout(() => { leaveTimer = 0; deactivate(); }, 260);
+    };
+    const keep = () => { clearTimeout(leaveTimer); leaveTimer = 0; };
 
     const onOver = (e) => {
       if (!prefs.roboArms) return; // toggled off in Settings
       const btn = e.target.closest?.(".nav-btn");
-      if (!btn || btn === hoveredBtn) return;
-      if (hoveredBtn) deactivate();
+      if (!btn) return;
+      if (btn === hoveredBtn) { keep(); return; }
       activate(btn, e);
     };
     const onOut = (e) => {
       if (!hoveredBtn) return;
       if (e.relatedTarget && hoveredBtn.contains(e.relatedTarget)) return;
-      if (e.target.closest?.(".nav-btn") === hoveredBtn) deactivate();
+      if (e.target.closest?.(".nav-btn") === hoveredBtn) {
+        // Straight onto another nav button: handled by onOver. A gap in the
+        // button row: after a beat. Anywhere else: right away.
+        if (e.relatedTarget?.closest?.(".nav-btn")) return;
+        if (inZone(e.clientX, e.clientY)) deactivateSoon();
+        else deactivate();
+      }
     };
     // rAF-gated: high-polling mice fire mousemove hundreds of times per
     // second — process at most one per display frame.
@@ -297,9 +391,11 @@ export default function RoboHand() {
       if (!e || !hoveredBtn) return;
       // Watchdog: if a mouseout was ever missed (portal churn, alt-tab),
       // never leave a hand stranded on screen.
-      if (!hoveredBtn.isConnected || !hoveredBtn.matches(":hover")) { deactivate(); return; }
+      if (!hoveredBtn.isConnected) { deactivate(); return; }
+      if (e.target?.closest?.(".nav-btn")) keep();
+      else if (inZone(e.clientX, e.clientY)) deactivateSoon();
+      else { deactivate(); return; } // off the buttons: stop chasing
       lastCursor.x = e.clientX; lastCursor.y = e.clientY;
-      arms.forEach((a) => { if (a.active) a.aim(); });
     };
     const onMove = (e) => {
       if (!hoveredBtn) return;
@@ -324,7 +420,10 @@ export default function RoboHand() {
       document.removeEventListener("mousemove", onMove);
       window.removeEventListener("blur", onWindowBlur);
       window.removeEventListener("wf-fx-prefs", onPrefs);
+      clearTimeout(leaveTimer);
+      leaveTimer = 0;
       if (moveRaf) cancelAnimationFrame(moveRaf);
+      if (loopRaf) cancelAnimationFrame(loopRaf);
       arms.forEach((a) => a.destroy());
     };
   }, []);

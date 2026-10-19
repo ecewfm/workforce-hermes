@@ -44,8 +44,10 @@ function makeClient() {
  *   GET    /api/task?taskId=X                        → usage guide + full task
  *   POST   /api/task?taskId=X&resource=bug           → report a bug   { name, description?, author }
  *   POST   /api/task?taskId=X&resource=feature       → add a feature  { name, description?, author }
+ *   POST   /api/task?taskId=X&resource=roadblock     → flag a roadblock (Operations/Executives) { name, description?, author }
  *   POST   /api/task?taskId=X&resource=note          → add an update  { text, author }
  *   PATCH  /api/task?taskId=X&resource=feature&id=F  → edit/complete  { name?, description?, status?, author }
+ *          (resource=bug / resource=roadblock work the same; "completed" = fixed / cleared)
  *   PATCH  /api/task?taskId=X&resource=links         → set links      { appscriptLink?, webappLink?, projectLink? }
  *   DELETE /api/task?taskId=X&resource=feature&id=F  → delete a feature/bug
  *
@@ -121,7 +123,7 @@ function buildUsage(base, taskId) {
       `-d '{"text":"Fixed the SLA export bug","author":"Jomari"}'`,
     notes: [
       "author is how the update shows up in the app (note writer / 'suggested by'). Use the person's name.",
-      "resource must be one of: bug, feature, note (for POST); feature/bug or links (for PATCH).",
+      "resource must be one of: bug, feature, roadblock, note (for POST); feature/bug/roadblock or links (for PATCH).",
       "status (PATCH on a feature/bug) is 'pending' or 'completed'.",
       "Writes fire the same notifications as the app (assignees, managers, @mentions).",
     ],
@@ -192,7 +194,9 @@ export default async function handler(req, res) {
         taskId: task._id,
         ...sanitizeTask(task),
         bugs: features.filter((f) => f.type === "bug"),
-        features: features.filter((f) => f.type !== "bug"),
+        features: features.filter((f) => (f.type || "feature") === "feature"),
+        roadblocks: features.filter((f) => f.type === "roadblock"),
+        documents: task.documents || [],
         systemLinks: {
           appscriptLink: task.appscriptLink || null,
           webappLink: task.webappLink || task.projectLink || null,
@@ -204,7 +208,7 @@ export default async function handler(req, res) {
 
     // ── POST: add bug / feature / note ───────────────────────────────
     if (req.method === "POST") {
-      if (resource === "bug" || resource === "feature") {
+      if (resource === "bug" || resource === "feature" || resource === "roadblock") {
         if (!body.name || !String(body.name).trim()) {
           return res.status(400).json({ error: "Missing 'name' in body.", usage });
         }
@@ -240,12 +244,12 @@ export default async function handler(req, res) {
         return res.status(201).json({ ok: true, note: notes[notes.length - 1], attributedTo: author });
       }
 
-      return res.status(400).json({ error: "POST requires resource=bug, resource=feature, or resource=note.", usage });
+      return res.status(400).json({ error: "POST requires resource=bug, resource=feature, resource=roadblock, or resource=note.", usage });
     }
 
     // ── PATCH: edit feature/bug, or set system links ─────────────────
     if (req.method === "PATCH") {
-      if (resource === "feature" || resource === "bug") {
+      if (resource === "feature" || resource === "bug" || resource === "roadblock") {
         if (!featureId) return res.status(400).json({ error: "Missing 'id' query parameter (the feature/bug id).", usage });
 
         const task = await client.query(api.tasks.getTaskById, { taskId });
@@ -293,13 +297,13 @@ export default async function handler(req, res) {
         return res.status(200).json({ ok: true, systemLinks: links });
       }
 
-      return res.status(400).json({ error: "PATCH requires resource=feature, resource=bug, or resource=links.", usage });
+      return res.status(400).json({ error: "PATCH requires resource=feature, resource=bug, resource=roadblock, or resource=links.", usage });
     }
 
     // ── DELETE: remove a feature/bug ─────────────────────────────────
     if (req.method === "DELETE") {
-      if (resource !== "feature" && resource !== "bug") {
-        return res.status(400).json({ error: "DELETE requires resource=feature or resource=bug.", usage });
+      if (resource !== "feature" && resource !== "bug" && resource !== "roadblock") {
+        return res.status(400).json({ error: "DELETE requires resource=feature, resource=bug or resource=roadblock.", usage });
       }
       if (!featureId) return res.status(400).json({ error: "Missing 'id' query parameter (the feature/bug id).", usage });
 

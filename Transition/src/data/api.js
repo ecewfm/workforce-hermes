@@ -14,7 +14,7 @@ import { supabase } from "./supabase";
 import { authApi } from "./auth";
 
 const WS = (w) => w || "workforce";
-const TASK_TABLES = ["tasks", "task_milestones", "task_notes", "note_replies", "note_reactions", "task_features", "feature_images"];
+const TASK_TABLES = ["tasks", "task_milestones", "task_notes", "note_replies", "note_reactions", "task_features", "feature_images", "workspace_accounts", "staff_accounts"];
 export const FEATURE_BUCKET = "feature-images";
 
 async function rpc(fn, params) {
@@ -92,6 +92,8 @@ export const api = {
     addTask: mutation("tasks.addTask", TASK_TABLES, (a) => rpc("add_task", {
       p_workspace: WS(a.workspace), p_title: a.title, p_assignee: a.assignee || "", p_description: a.description || "",
       p_milestones: a.milestones || [], p_start_date: a.startDate || null,
+      p_account_id: a.accountId || null, p_documents: a.documents || null,
+      p_watch_outs: a.watchOuts || null, p_assumptions: a.assumptions || null,
     })),
     updateTaskStatus: mutation("tasks.updateTaskStatus", ["tasks"], (a) => rpc("update_task_status", { p_task_id: a.taskId, p_status: a.newStatus })),
     updateTaskMilestones: mutation("tasks.updateTaskMilestones", TASK_TABLES, (a) => rpc("update_task_milestones", {
@@ -110,6 +112,13 @@ export const api = {
     updateTaskLinks: mutation("tasks.updateTaskLinks", ["tasks"], (a) => rpc("update_task_links", {
       p_task_id: a.taskId, p_links: defined({ appscriptLink: a.appscriptLink, webappLink: a.webappLink, projectLink: a.projectLink }),
     })),
+    // Operations/Executives: a list of named links ({ name, url }) — returns the cleaned list.
+    updateTaskDocuments: mutation("tasks.updateTaskDocuments", ["tasks"], (a) => rpc("update_task_documents", { p_task_id: a.taskId, p_documents: a.documents || [] })),
+    // The plan's "watch out for" risks and assumptions (send either or both).
+    updateTaskPlanNotes: mutation("tasks.updateTaskPlanNotes", ["tasks"], (a) => rpc("update_task_plan_notes", {
+      p_task_id: a.taskId, p_watch_outs: a.watchOuts ?? null, p_assumptions: a.assumptions ?? null,
+    })),
+    setTaskAccount: mutation("tasks.setTaskAccount", ["tasks"], (a) => rpc("set_task_account", { p_task_id: a.taskId, p_account_id: a.accountId || null })),
     updateProjectLink: mutation("tasks.updateProjectLink", ["tasks"], (a) => rpc("update_project_link", { p_task_id: a.taskId, p_project_link: a.projectLink })),
     updateAdminCredentials: mutation("tasks.updateAdminCredentials", ["tasks"], (a) => rpc("update_admin_credentials", {
       p_task_id: a.taskId, p_email: a.email ?? "", p_password: a.password ?? "",
@@ -129,19 +138,34 @@ export const api = {
     })),
     deleteTaskFeature: mutation("tasks.deleteTaskFeature", TASK_TABLES, (a) => rpc("delete_task_feature", { p_task_id: a.taskId, p_feature_id: a.featureId })),
     deleteTaskFeaturesBulk: mutation("tasks.deleteTaskFeaturesBulk", TASK_TABLES, (a) => rpc("delete_task_features_bulk", { p_task_id: a.taskId, p_feature_ids: a.featureIds })),
-    deleteTaskNotesBulk: mutation("tasks.deleteTaskNotesBulk", TASK_TABLES, (a) => rpc("delete_task_notes_bulk", { p_task_id: a.taskId, p_indices: a.indices })),
+    deleteTaskNotesBulk: mutation("tasks.deleteTaskNotesBulk", TASK_TABLES, (a) => rpc("delete_task_notes_bulk", {
+      p_task_id: a.taskId, p_indices: a.indices || [], p_note_ids: a.noteIds?.length ? a.noteIds : null,
+    })),
     deleteTaskMilestonesBulk: mutation("tasks.deleteTaskMilestonesBulk", TASK_TABLES, (a) => rpc("delete_task_milestones_bulk", { p_task_id: a.taskId, p_indices: a.indices })),
     markTaskAsViewed: mutation("tasks.markTaskAsViewed", ["task_views"], (a) => rpc("mark_task_viewed", { p_task_id: a.taskId })),
     toggleNoteReaction: mutation("tasks.toggleNoteReaction", TASK_TABLES, (a) => rpc("toggle_note_reaction", {
-      p_task_id: a.taskId, p_note_index: a.noteIndex, p_reaction: a.reactionType,
+      p_task_id: a.taskId, p_note_index: a.noteIndex ?? 0, p_reaction: a.reactionType, p_note_id: a.noteId || null,
     })),
     addNoteReply: mutation("tasks.addNoteReply", TASK_TABLES, (a) => rpc("add_note_reply", {
-      p_task_id: a.taskId, p_note_index: a.noteIndex, p_text: a.replyText, p_writer: a.writer || null,
+      p_task_id: a.taskId, p_note_index: a.noteIndex ?? 0, p_text: a.replyText, p_writer: a.writer || null, p_note_id: a.noteId || null,
     })),
     // Uploads now go straight to Supabase Storage — see uploadFeatureImage().
     generateUploadUrl: mutation("tasks.generateUploadUrl", [], async () => {
       throw new Error("generateUploadUrl was replaced by uploadFeatureImage(file).");
     }),
+  },
+
+  // ── Accounts (client accounts a workspace's projects belong to — Operations) ─
+  accounts: {
+    getAccounts: query("accounts.getAccounts", ["workspace_accounts", "tasks"], ({ workspace }) => rpc("get_accounts", { p_workspace: WS(workspace) })),
+    addAccount: mutation("accounts.addAccount", ["workspace_accounts"], (a) => rpc("add_account", { p_workspace: WS(a.workspace), p_name: a.name })),
+    renameAccount: mutation("accounts.renameAccount", ["workspace_accounts", "tasks"], (a) => rpc("rename_account", { p_account_id: a.accountId, p_name: a.name })),
+    deleteAccount: mutation("accounts.deleteAccount", ["workspace_accounts", "tasks"], (a) => rpc("delete_account", { p_account_id: a.accountId })),
+    // Who belongs to which account. Someone tied to accounts (below Admin+) only
+    // sees those accounts' projects — enforced by the database.
+    getStaffAccounts: query("accounts.getStaffAccounts", ["staff_accounts", "workspace_accounts", "staff"], ({ workspace }) => rpc("get_staff_accounts", { p_workspace: WS(workspace) })),
+    setStaffAccounts: mutation("accounts.setStaffAccounts", ["staff_accounts", "workspace_accounts"], (a) =>
+      rpc("set_staff_accounts", { p_email: a.email, p_workspace: WS(a.workspace), p_account_ids: a.accountIds || [] })),
   },
 
   // ── Staff ─────────────────────────────────────────────────────────────────
@@ -152,6 +176,8 @@ export const api = {
       p_name: a.name, p_email: a.email, p_role: a.role, p_departments: a.departments || null,
     })),
     updateStaffRole: mutation("staff.updateStaffRole", ["staff"], (a) => rpc("update_staff_role", { p_staff_email: a.staffEmail, p_new_role: a.newRole })),
+    // Pending request → member of the workspace it was approved from.
+    approveStaff: mutation("staff.approveStaff", ["staff"], (a) => rpc("approve_staff", { p_email: a.email, p_workspace: WS(a.workspace) })),
     updateStaffDepartment: mutation("staff.updateStaffDepartment", ["staff"], (a) => rpc("update_staff_department", {
       p_staff_email: a.staffEmail, p_departments: a.departments || [],
     })),
@@ -207,7 +233,11 @@ export const api = {
   // ── Handbook ──────────────────────────────────────────────────────────────
   handbook: {
     getHandbook: query("handbook.getHandbook", ["handbooks"], ({ workspace }) => rpc("get_handbook", { p_workspace: WS(workspace) })),
-    saveHandbook: mutation("handbook.saveHandbook", ["handbooks"], (a) => rpc("save_handbook", { p_workspace: WS(a.workspace), p_blocks: a.blocks || [] })),
+    // baseUpdatedAt: the version you started editing — the server refuses to
+    // overwrite a newer save. Returns the new version (ms).
+    saveHandbook: mutation("handbook.saveHandbook", ["handbooks"], (a) => rpc("save_handbook", {
+      p_workspace: WS(a.workspace), p_blocks: a.blocks || [], p_base_updated_at: a.baseUpdatedAt ?? null,
+    })),
   },
 
   // ── Notifications (always the signed-in user's own) ───────────────────────

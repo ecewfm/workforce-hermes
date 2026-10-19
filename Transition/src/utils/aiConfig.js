@@ -82,12 +82,14 @@ export function thinkingConfigFor(model, level = "high", includeThoughts = true)
 export const ENABLE_WEB_SEARCH = String(import.meta.env.VITE_GEMINI_WEB_SEARCH || "").toLowerCase() === "true";
 
 // Rough intent check: is the user asking Caddy to DO something (create/modify a
-// project, feature, bug, note, milestone, column…) rather than just answer a
-// question? Action requests get routed to TASK_MODEL for higher-quality tool
-// use; queries stay on the lighter model. Verb + task-noun keeps false
+// project, feature, bug, roadblock, note, milestone, column…) rather than just
+// answer a question? Action requests get routed to TASK_MODEL for higher-quality
+// tool use; queries stay on the lighter model. Verb + task-noun keeps false
 // positives low (a miss just means the lighter model — the current default).
-const TASK_VERB = /\b(create|make|add|new|set\s?up|setup|start|build|log|file|open|register|schedule|assign|update|change|jot|post|mark|complete|move|rename|remove|delete)\b/i;
-const TASK_NOUN = /\b(project|task|feature|bug|note|idea|milestone|deadline|column|status|ticket|assignment)\b/i;
+// Covers every workspace's words: Workforce's features/bugs and Operations/
+// Executives' roadblocks, accounts and documents.
+const TASK_VERB = /\b(create|make|add|new|set\s?up|setup|start|build|log|file|flag|raise|open|register|schedule|assign|update|change|jot|post|mark|complete|move|rename|remove|delete)\b/i;
+const TASK_NOUN = /\b(project|task|feature|bug|roadblocks?|blockers?|issues?|requests?|accounts?|documents?|note|idea|milestone|deadline|column|status|ticket|assignment)\b/i;
 export function isTaskRequest(text) {
   const t = String(text || "");
   return TASK_VERB.test(t) && TASK_NOUN.test(t);

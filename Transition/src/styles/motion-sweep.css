@@ -1,0 +1,126 @@
+/* ============================================================
+   Button sweep — every clickable thing answers the pointer.
+   These were the controls an audit found with no hover and/or
+   no press feedback. Presses use the separate `scale` property
+   so they stack on top of any hover transform instead of
+   fighting it. Loaded last (main.jsx) so it wins ties.
+   ============================================================ */
+
+:root { --press-spring: cubic-bezier(0.34, 1.56, 0.64, 1); }
+
+/* ── Shared press: sink a little, spring back on release ── */
+.header-text-content.can-switch,
+.role-badge,
+.ai-launcher,
+.gather-close,
+.taskmodal-tab,
+.skin-card,
+.settings-nav-item,
+.staff-action-btn,
+.avatar-wrapper,
+.documents-add,
+.ai-iconbtn,
+.consult-chip,
+.consult-skip,
+.btn-back-consult,
+.hs-item,
+.hs-clear,
+.ai-hint,
+.ai-hint-x,
+.announcement-history-card,
+.multiselect-trigger,
+.milestone-list-item,
+.tm-priority-label,
+.priority-pill,
+.dash-showall-btn,
+.btn-remove-milestone,
+.modal-assignee,
+.profile-popover-close,
+.btn-add-feature,
+.btn-add-note,
+.workspace-select-card {
+  transition:
+    transform 0.3s var(--press-spring),
+    scale 0.22s var(--press-spring),
+    translate 0.3s var(--press-spring),
+    background-color 0.18s ease,
+    border-color 0.18s ease,
+    box-shadow 0.25s ease,
+    color 0.18s ease,
+    opacity 0.2s ease,
+    filter 0.2s ease;
+}
+.header-text-content.can-switch:active,
+.role-badge:active,
+.ai-launcher:active,
+.gather-close:active,
+.taskmodal-tab:active,
+.skin-card:active,
+.settings-nav-item:active,
+.staff-action-btn:active,
+.avatar-wrapper:active,
+.documents-add:active,
+.ai-iconbtn:active,
+.consult-chip:active,
+.consult-skip:active:not(:disabled),
+.btn-back-consult:active,
+.hs-item:active,
+.hs-clear:active,
+.ai-hint-x:active,
+.multiselect-trigger:active,
+.tm-priority-label:active,
+.priority-pill:active,
+.dash-showall-btn:active,
+.btn-remove-milestone:active,
+.modal-assignee:active,
+.profile-popover-close:active,
+.btn-add-feature:active,
+.btn-add-note:active,
+.workspace-select-card:active { scale: 0.95; }
+.ai-hint:active,
+.announcement-history-card:active,
+.milestone-list-item:active { scale: 0.985; }
+
+/* ── Hovers that were missing ── */
+.btn-add-feature:hover { transform: translateY(-1px); box-shadow: 0 6px 14px -6px rgba(16, 185, 129, 0.7); filter: brightness(1.05); }
+.btn-add-note:hover { background: #475569; transform: translateY(-1px); box-shadow: 0 6px 14px -8px rgba(15, 23, 42, 0.6); }
+.btn-remove-milestone:hover { background: #dc2626; transform: rotate(90deg); box-shadow: 0 6px 14px -6px rgba(239, 68, 68, 0.7); }
+.multiselect-trigger:hover { border-color: color-mix(in srgb, var(--color-accent) 55%, #e2e8f0); background: var(--color-card-bg, #fff); }
+.consult-chip:hover { transform: translateY(-1px); }
+.consult-skip:hover:not(:disabled) { transform: translateX(2px); }
+.btn-back-consult:hover { transform: translateX(-2px); }
+.hs-item:hover { background: color-mix(in srgb, var(--color-accent) 9%, transparent); }
+.hs-clear:hover { background: #fee2e2; color: #ef4444; transform: rotate(90deg); }
+/* (.ai-hint keeps its entrance animation on transform, so it lifts with translate) */
+.ai-hint:hover { translate: 0 -2px; box-shadow: 0 18px 38px -12px rgba(0, 0, 0, 0.4); }
+.ai-hint-x:hover { transform: rotate(90deg) scale(1.1); }
+.announcement-history-card:hover { transform: translateY(-2px); box-shadow: 0 10px 22px -14px rgba(15, 23, 42, 0.45); }
+.milestone-list-item:hover { border-color: color-mix(in srgb, var(--color-accent) 40%, var(--glass-border)); box-shadow: 0 8px 18px -14px rgba(15, 23, 42, 0.5); }
+.tm-priority-label:hover { color: #b45309; }
+.priority-pill:hover { background: #fde68a !important; box-shadow: 0 4px 10px -4px rgba(180, 83, 9, 0.5); transform: translateY(-1px); }
+.dash-showall-btn:hover { transform: translateY(-1px); box-shadow: 0 6px 14px -8px color-mix(in srgb, var(--color-accent) 80%, transparent); filter: brightness(1.06); }
+.modal-assignee[style*="pointer"]:hover { color: var(--color-accent); }
+.toggle-switch:hover .toggle-slider { box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-accent) 16%, transparent); }
+
+/* API "COPY": lifts on hover, sinks on press, pops when it turns "COPIED!". */
+.tm-copy-btn { transition: transform 0.3s var(--press-spring), scale 0.22s var(--press-spring), filter 0.2s ease, box-shadow 0.25s ease; }
+.tm-copy-btn:hover { transform: translateY(-1px); filter: brightness(1.1); box-shadow: 0 6px 14px -6px rgba(139, 92, 246, 0.8); }
+.tm-copy-btn:active { scale: 0.92; }
+.tm-copy-btn.copied { animation: tmCopied 0.45s var(--press-spring); }
+@keyframes tmCopied { 0% { scale: 0.85; } 60% { scale: 1.12; } 100% { scale: 1; } }
+
+/* The dropdown under the assignee picker drops in (it used to just appear). */
+.multiselect-options { transform-origin: top center; }
+
+@media (prefers-reduced-motion: reduce) {
+  .header-text-content.can-switch, .role-badge, .ai-launcher, .gather-close, .taskmodal-tab, .skin-card,
+  .settings-nav-item, .staff-action-btn, .avatar-wrapper, .documents-add, .ai-iconbtn, .consult-chip,
+  .consult-skip, .btn-back-consult, .hs-item, .hs-clear, .ai-hint, .ai-hint-x, .announcement-history-card,
+  .multiselect-trigger, .milestone-list-item, .tm-priority-label, .priority-pill, .dash-showall-btn,
+  .btn-remove-milestone, .modal-assignee, .profile-popover-close, .btn-add-feature, .btn-add-note,
+  .workspace-select-card { transition: none; scale: none !important; }
+}
+
+/* Caddy's speech bubble steps aside while a dialog is open (it sat on top of modal buttons). */
+html:has(.modal-overlay:not([data-rehearsal])) .ai-hint,
+html:has(.custom-modal-overlay) .ai-hint { opacity: 0; pointer-events: none; transition: opacity 0.2s ease; }

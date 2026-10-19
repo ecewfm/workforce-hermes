@@ -1,0 +1,263 @@
+/* ============================================================
+   NOTIFICATIONS — motion layer (NotificationBell.jsx, TaskNotificationPopup.jsx)
+   ------------------------------------------------------------
+   The big moves (bell ring/press, badge pop + number roll, the dropdown
+   growing out of the bell, the "see all" modal, row cascade, click
+   acknowledgement, mark-all sweep) are Web Animations in NotificationBell.jsx.
+   This file holds the CSS half: hover/press physics, the one-shot unread
+   shimmer + click flash, the badge's ping, skeleton + empty-state loops.
+   Everything moves on transform/opacity only (compositor), no blurs.
+
+   Load order: this file is imported from components that App.jsx pulls in
+   BEFORE main.jsx imports index.css, so index.css wins ties — every override
+   here is deliberately one notch more specific than the rule it replaces.
+   Dropdown + modal roots carry .notif-motion to scope it.
+   ============================================================ */
+
+/* ---- Bell button ---- */
+/* The bell hangs from its top: ring, press and the hover swing pivot there. */
+.notif-bell-btn .notif-bell-icon { transform-origin: 50% 12%; }
+.notif-bell-btn .notif-bell-clapper { transform-box: fill-box; transform-origin: 50% 0; }
+
+/* Badge: the endless scale pulse is replaced by a calm radar ping behind the
+   number (the badge itself only moves when the count changes). */
+.notif-bell-btn .notif-badge-count {
+  animation: none;
+  isolation: isolate;
+}
+.notif-bell-btn .notif-badge-count::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background: #ef4444;
+  opacity: 0;
+  pointer-events: none;
+  animation: notifBadgePing 3.4s cubic-bezier(0, 0, 0.2, 1) 1.2s infinite;
+}
+@keyframes notifBadgePing {
+  0%        { transform: scale(1);   opacity: 0.55; }
+  42%, 100% { transform: scale(2.1); opacity: 0; }
+}
+.notif-badge-num { display: inline-block; }
+
+/* ---- Dropdown + modal: JS owns the entrance/exit ---- */
+.notif-dropdown.notif-motion { animation: none; }
+.notif-modal-overlay.notif-motion,
+.notif-modal-overlay.notif-motion .notif-modal-content { animation: none; }
+/* A closing surface is on its way out — clicks go through to the page. */
+.notif-dropdown.notif-motion.is-closing,
+.notif-modal-overlay.notif-motion.is-closing { pointer-events: none; }
+
+/* Rows never push the lists sideways (entrances slide in from the left). */
+.notif-motion .notif-dropdown-list,
+.notif-motion .notif-modal-list { overflow-x: hidden; }
+
+/* "N new" pill re-pops whenever the count changes (it's keyed on it). */
+.notif-motion .notif-new-pill {
+  display: inline-block;
+  animation: notifPillPop 0.42s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+@keyframes notifPillPop {
+  from { opacity: 0; transform: scale(0.4); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* ---- Rows: hover, press, flash, shimmer ---- */
+.notif-motion .notif-item {
+  overflow: hidden;   /* clips the shimmer + flash layers */
+  isolation: isolate; /* ...and keeps them above the row's tint, below its text */
+  transition: transform 0.42s var(--ease-spring, cubic-bezier(0.34, 1.56, 0.64, 1)), background 0.15s ease;
+}
+.notif-motion .notif-item:active {
+  transform: scale(0.975);
+  transition: transform 0.08s ease-out, background 0.15s ease;
+}
+.notif-motion .notif-item-icon,
+.notif-motion .notif-item-content {
+  transition: transform 0.42s var(--ease-spring, cubic-bezier(0.34, 1.56, 0.64, 1));
+}
+@media (hover: hover) and (prefers-reduced-motion: no-preference) {
+  .notif-motion .notif-item:hover .notif-item-icon { transform: scale(1.1) rotate(-6deg); }
+  .notif-motion .notif-item:hover .notif-item-content { transform: translateX(3px); }
+}
+
+/* Click acknowledgement (row[data-ack], set from JS): an accent wash sweeps
+   across the row and fades. */
+.notif-motion .notif-item::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: color-mix(in srgb, var(--color-accent) 20%, transparent);
+  transform-origin: left center;
+  opacity: 0;
+  pointer-events: none;
+}
+.notif-motion .notif-item[data-ack]::before {
+  animation: notifAckFlash 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) var(--notif-ack-delay, 0ms) both;
+}
+@keyframes notifAckFlash {
+  0%   { opacity: 0; transform: scaleX(0.35); }
+  28%  { opacity: 1; transform: scaleX(1); }
+  100% { opacity: 0; transform: scaleX(1); }
+}
+
+/* Unread rows catch the light once as they arrive (row[data-shimmer]). */
+.notif-motion .notif-item::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 55%;
+  z-index: -1;
+  background: linear-gradient(100deg, transparent, color-mix(in srgb, var(--color-accent) 16%, transparent) 50%, transparent);
+  transform: translateX(-110%);
+  pointer-events: none;
+}
+.notif-motion .notif-item[data-shimmer]::after {
+  animation: notifShimmer 0.95s cubic-bezier(0.45, 0, 0.25, 1) var(--notif-delay, 0ms) both;
+}
+@keyframes notifShimmer {
+  from { transform: translateX(-110%); }
+  to   { transform: translateX(200%); }
+}
+
+/* ---- Loading: skeleton rows with a travelling sheen ---- */
+.notif-motion { --notif-skel: color-mix(in srgb, var(--color-text-primary) 8%, transparent); }
+.notif-skeleton { padding: 0; }
+.notif-skel-row {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 20px;
+}
+.notif-skel-icon {
+  flex: none;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: var(--notif-skel);
+}
+.notif-skel-lines {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding-top: 5px;
+}
+.notif-skel-lines > span {
+  display: block;
+  height: 9px;
+  border-radius: 5px;
+  background: var(--notif-skel);
+}
+.notif-skel-lines > span:first-child { width: 86%; }
+.notif-skel-lines > span:last-child { width: 36%; }
+.notif-skel-row::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 50%;
+  background: linear-gradient(100deg, transparent, color-mix(in srgb, var(--color-card-bg) 75%, transparent), transparent);
+  transform: translateX(-100%);
+  animation: notifSkelSweep 1.3s ease-in-out infinite;
+  animation-delay: calc(var(--i, 0) * 120ms);
+  pointer-events: none;
+}
+@keyframes notifSkelSweep { to { transform: translateX(300%); } }
+
+/* ---- Empty state: a bell idly swaying, sparkles winking ---- */
+.notif-motion .notif-empty { animation: notifEmptyIn 0.42s cubic-bezier(0.2, 0.9, 0.3, 1.1) both; }
+@keyframes notifEmptyIn {
+  from { opacity: 0; transform: translateY(8px) scale(0.97); }
+  to   { opacity: 1; transform: none; }
+}
+.notif-empty-art {
+  position: relative;
+  width: 60px;
+  height: 58px;
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.notif-empty-bell {
+  color: var(--color-accent);
+  opacity: 0.8;
+  transform-origin: 50% 10%;
+  animation: notifEmptyBob 3.2s ease-in-out infinite;
+}
+.notif-empty-shadow {
+  position: absolute;
+  bottom: 1px;
+  left: 50%;
+  width: 26px;
+  height: 5px;
+  margin-left: -13px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.2;
+  animation: notifEmptyShadow 3.2s ease-in-out infinite;
+}
+.notif-empty-spark {
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-accent);
+  opacity: 0;
+  animation: notifSpark 2.8s ease-in-out infinite;
+}
+.notif-empty-spark.s1 { top: 4px; right: 4px; }
+.notif-empty-spark.s2 { top: 20px; left: 2px; width: 4px; height: 4px; animation-delay: 1.1s; }
+.notif-empty-spark.s3 { top: 0; left: 16px; width: 3px; height: 3px; animation-delay: 1.9s; }
+@keyframes notifEmptyBob {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  25%      { transform: translateY(-4px) rotate(-7deg); }
+  50%      { transform: translateY(-6px) rotate(0deg); }
+  75%      { transform: translateY(-4px) rotate(7deg); }
+}
+@keyframes notifEmptyShadow {
+  0%, 100% { transform: scaleX(1); opacity: 0.2; }
+  50%      { transform: scaleX(0.68); opacity: 0.1; }
+}
+@keyframes notifSpark {
+  0%, 100% { transform: scale(0); opacity: 0; }
+  40%      { transform: scale(1); opacity: 0.9; }
+  70%      { transform: scale(0.4); opacity: 0; }
+}
+
+/* ---- Login "Task updates" popup: its rows deal in one after another ---- */
+.task-notif-list > .task-notif-item {
+  animation: notifRowIn 0.4s cubic-bezier(0.2, 0.9, 0.3, 1.1) backwards;
+  animation-delay: calc(160ms + var(--i, 0) * 30ms);
+}
+@keyframes notifRowIn {
+  from { opacity: 0; transform: translate3d(-14px, -4px, 0); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* ---- Reduced motion: everything lands in place ---- */
+@media (prefers-reduced-motion: reduce) {
+  .notif-bell-btn .notif-badge-count::after,
+  .notif-motion .notif-new-pill,
+  .notif-motion .notif-item::before,
+  .notif-motion .notif-item::after,
+  .notif-motion .notif-empty,
+  .notif-empty-bell,
+  .notif-empty-shadow,
+  .notif-empty-spark,
+  .notif-skel-row::after,
+  .task-notif-list > .task-notif-item { animation: none !important; }
+  .notif-motion .notif-item,
+  .notif-motion .notif-item-icon,
+  .notif-motion .notif-item-content { transition: background 0.15s ease !important; }
+  .notif-motion .notif-item:active { transform: none; }
+}

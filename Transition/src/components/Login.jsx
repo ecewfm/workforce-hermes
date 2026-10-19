@@ -120,7 +120,7 @@ export default function Login({ onLogin, externalError = "", onResetSuccess, onN
         <img src="https://i.imgur.com/BRd5lrB.png" alt="ECE Logo" className="header-logo" />
         <div className="header-text-content">
           <h1>WORKFORCE HERMES</h1>
-          <p>Workforce Programming Project Database</p>
+          <p>ECE Project Database · Workforce · Operations · Executives</p>
         </div>
         <img src="https://i.imgur.com/ycmU6oP.png" alt="WFM Logo" className="header-logo" />
       </div>

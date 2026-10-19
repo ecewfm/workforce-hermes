@@ -3,6 +3,8 @@ import { runAssistant } from "../utils/geminiClient";
 import { isTaskRequest } from "../utils/aiConfig";
 import { useAiActions } from "../utils/aiTools";
 import { loadChats, saveChat, deleteChat, newSessionId } from "../utils/caddyChats";
+import { useWorkspace } from "../utils/workspaceContext";
+import { isTechWorkspace } from "../utils/workspaceTerms";
 
 // Friendly stand-ins shown instead of raw API errors (rate limits, outages, …).
 const COFFEE_LINES = [
@@ -102,6 +104,8 @@ function Markdown({ text }) {
 
 export default function AIAssistant({ open, onClose, userName, userEmail, actualRole, uiActions }) {
   const { tools, executeTool, systemInstruction } = useAiActions({ userName, userEmail, actualRole, uiActions });
+  // Workforce files bugs; Operations/Executives flag roadblocks.
+  const tech = isTechWorkspace(useWorkspace());
   const [messages, setMessages] = useState([]); // { role: "user"|"assistant", text, error? }
   const [input, setInput] = useState("");
   const [status, setStatus] = useState(null); // { phase, label }
@@ -112,16 +116,32 @@ export default function AIAssistant({ open, onClose, userName, userEmail, actual
   const historyRef = useRef([]); // Gemini `contents` across turns
   const coffeeIdx = useRef(0);
   const scrollRef = useRef(null);
+  // Whose chats these are — history is stored per person (see caddyChats).
+  const ownerRef = useRef(userEmail);
 
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [messages, status]);
 
+  // Someone else signed in on this browser: drop the open chat so they never
+  // see the previous person's conversation; their own history loads from
+  // their own storage.
+  useEffect(() => {
+    if (ownerRef.current === userEmail) return;
+    ownerRef.current = userEmail;
+    setMessages([]);
+    historyRef.current = [];
+    setSessionId(newSessionId());
+    setShowHistory(false);
+    setChats([]);
+    setInput("");
+  }, [userEmail]);
+
   // Auto-persist the current session whenever it gains messages.
   useEffect(() => {
     if (messages.length === 0) return;
     const title = (messages.find((m) => m.role === "user")?.text || "New chat").slice(0, 48);
-    saveChat({ id: sessionId, title, ts: Date.now(), messages, contents: historyRef.current });
+    saveChat({ id: sessionId, title, ts: Date.now(), messages, contents: historyRef.current }, ownerRef.current);
   }, [messages, sessionId]);
 
   function newChat() {
@@ -133,7 +153,7 @@ export default function AIAssistant({ open, onClose, userName, userEmail, actual
   }
 
   function openHistory() {
-    setChats(loadChats());
+    setChats(loadChats(ownerRef.current));
     setShowHistory((v) => !v);
   }
 
@@ -146,8 +166,8 @@ export default function AIAssistant({ open, onClose, userName, userEmail, actual
 
   function removeChat(e, id) {
     e.stopPropagation();
-    deleteChat(id);
-    setChats(loadChats());
+    deleteChat(id, ownerRef.current);
+    setChats(loadChats(ownerRef.current));
   }
 
   async function send(text) {
@@ -166,8 +186,9 @@ export default function AIAssistant({ open, onClose, userName, userEmail, actual
         systemInstruction,
         executeTool,
         onStatus: (phase) => setStatus({ phase, label: sassLine(phase) }),
-        // Route action requests (create/edit a project, feature, bug…) to the
-        // stronger task model; plain questions stay on the lighter model.
+        // Route action requests (create/edit a project, feature, bug,
+        // roadblock…) to the stronger task model; plain questions stay on the
+        // lighter model.
         taskMode: isTaskRequest(msg),
       });
       historyRef.current = contents;
@@ -176,12 +197,16 @@ export default function AIAssistant({ open, onClose, userName, userEmail, actual
       // Keep the real reason in the console; show the user a gentle stand-in.
       console.warn("[Caddy] error:", err);
       const raw = err?.message || "";
-      // Config/deploy problems get a clear, actionable message; genuine
-      // rate-limits / transient errors get the playful "coffee" line.
+      // The proxy's own refusals (not signed in, your rate limit — flagged
+      // userFacing by geminiClient) are shown as-is; config/deploy problems get
+      // a clear, actionable message; other rate-limits / transient errors get
+      // the playful "coffee" line.
       const isSetupIssue = /api key|not configured|not deployed|\/api\/gemini|endpoint|404/i.test(raw);
-      const friendly = isSetupIssue
-        ? `⚠️ ${raw}`
-        : COFFEE_LINES[coffeeIdx.current++ % COFFEE_LINES.length];
+      const friendly = err?.userFacing && raw
+        ? raw
+        : isSetupIssue
+          ? `⚠️ ${raw}`
+          : COFFEE_LINES[coffeeIdx.current++ % COFFEE_LINES.length];
       setMessages((m) => [...m, { role: "assistant", text: friendly, error: true }]);
     } finally {
       setBusy(false);
@@ -232,7 +257,7 @@ export default function AIAssistant({ open, onClose, userName, userEmail, actual
             {messages.length === 0 && !busy && (
               <div className="ai-empty">
                 <p className="ai-empty-title">Hi, I'm Caddy 👋</p>
-                <p className="ai-empty-sub">Ask about a project's updates, log a new task, jot an idea, or file a bug — just say it in plain language.</p>
+                <p className="ai-empty-sub">Ask about a project's updates, log a new task, jot an idea, or {tech ? "file a bug" : "flag a roadblock"} — just say it in plain language.</p>
               </div>
             )}
 

@@ -146,7 +146,7 @@ export function applyOptimistic(update, args) {
 const LIVE_TABLES = [
   "tasks", "task_milestones", "task_notes", "note_replies", "note_reactions", "task_features",
   "feature_images", "notebook_ideas", "announcements", "announcement_views", "handbooks",
-  "workspace_settings", "notifications", "staff",
+  "workspace_settings", "notifications", "staff", "workspace_accounts", "staff_accounts",
 ];
 let channel = null;
 let live = false;

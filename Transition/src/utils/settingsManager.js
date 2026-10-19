@@ -115,11 +115,8 @@ export const DEFAULT_SETTINGS = {
   accentColor: "#10b981",
   fontSize: "Standard",
   defaultView: "Dashboard",
-  openOnStartup: false,
-  startMinimized: false,
   notificationsEnabled: true,
-  notifyErrors: true,
-  notifyUpdates: true,
+  // Local fallbacks for your own profile pop-up (the server copy wins).
   avatarUrl: null,
   bio: "",
 };

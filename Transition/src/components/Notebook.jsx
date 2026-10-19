@@ -1,13 +1,28 @@
 import { useQuery, useMutation } from "../data/react";
 import { api } from "../data/api";
 import { useWorkspace } from "../utils/workspaceContext";
+import { resolveColumns, taskInColumn } from "../utils/columns";
+import { isTechWorkspace } from "../utils/workspaceTerms";
+
+// A taken idea becomes a new project, which starts with this status.
+const NEW_PROJECT_STATUS = "todo";
 
 export default function Notebook({ userRole, userName, showModal }) {
   const workspace = useWorkspace();
   const ideas = useQuery(api.notebook.getIdeas, { workspace });
+  const appConfig = useQuery(api.appConfig.getAppConfig, { workspace });
   const addIdea = useMutation(api.notebook.addIdea);
   const deleteIdeaMut = useMutation(api.notebook.deleteIdea);
   const takeIdeaMut = useMutation(api.notebook.takeIdea);
+
+  // Workforce: only programmers take ideas (unchanged). Operations/Executives:
+  // any signed-in member of the workspace can.
+  const canTakeIdeas = isTechWorkspace(workspace) ? userRole === "Programmer" : true;
+
+  // The board column a new project lands in — the column matching its status,
+  // else the first column (the same fallback the board uses).
+  const boardColumns = resolveColumns(appConfig?.columns, workspace);
+  const landingColumn = boardColumns.find((c) => taskInColumn(NEW_PROJECT_STATUS, c.id)) || boardColumns[0];
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -50,7 +65,7 @@ export default function Notebook({ userRole, userName, showModal }) {
           await takeIdeaMut({ ideaId: id, takerName: userName, workspace });
           showModal({
             title: "Added to Projects",
-            message: "This idea is now a project assigned to you. Find it in the Dashboard (To Do).",
+            message: `This idea is now a project assigned to you. Find it in the Dashboard${landingColumn ? ` (${landingColumn.label})` : ""}.`,
             type: "success"
           });
         } catch (err) {
@@ -88,7 +103,7 @@ export default function Notebook({ userRole, userName, showModal }) {
                     Open for takers
                   </span>
                 );
-                if (userRole === "Programmer") {
+                if (canTakeIdeas) {
                   actions.push(
                     <button key="take" className="btn-primary" style={{ marginRight: 10, padding: "6px 12px", width: "auto", fontSize: "0.75rem" }} onClick={() => handleTake(i._id)}>
                       Take Idea

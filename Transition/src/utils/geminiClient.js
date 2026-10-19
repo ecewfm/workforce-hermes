@@ -1,4 +1,5 @@
 import { getGeminiModels, TASK_MODEL, ENABLE_WEB_SEARCH } from "./aiConfig";
+import { supabase } from "../data/supabase";
 
 // Safety cap on how many tool-call rounds a single request may take.
 const MAX_TURNS = 10;
@@ -23,9 +24,21 @@ function firstAvailableIdx(models) {
 // through the /api/gemini proxy. Don't set VITE_GEMINI_API_KEY on Vercel.
 const DEV_KEY = import.meta.env.DEV ? (import.meta.env.VITE_GEMINI_API_KEY || "").trim() : "";
 
+// The proxy only serves signed-in staff: send the current Supabase session
+// (getSession refreshes an expired token first).
+async function sessionHeader() {
+  try {
+    const { data } = await supabase.auth.getSession();
+    const token = data.session?.access_token;
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  } catch {
+    return {};
+  }
+}
+
 // POST one Gemini call — straight to Google in local dev, via our proxy in prod.
 // `stream` switches to streamGenerateContent (server-sent events).
-function postGemini({ model, body, stream = false, signal }) {
+async function postGemini({ model, body, stream = false, signal }) {
   if (DEV_KEY) {
     const method = stream ? "streamGenerateContent?alt=sse&" : "generateContent?";
     return fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:${method}key=${encodeURIComponent(DEV_KEY)}`, {
@@ -37,7 +50,7 @@ function postGemini({ model, body, stream = false, signal }) {
   }
   return fetch("/api/gemini", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...(await sessionHeader()) },
     body: JSON.stringify({ model, body, stream }),
     signal,
   });
@@ -49,6 +62,22 @@ function postGemini({ model, body, stream = false, signal }) {
 function proxyRouteMissing(status, errText) {
   if (DEV_KEY || status !== 404) return false;
   try { JSON.parse(errText); return false; } catch { return true; }
+}
+
+// The proxy's OWN refusals — not signed in (401) or this user's Caddy rate
+// limit (429) — come back as { error: "<message>" }; Gemini's errors are
+// { error: { message } }. Another model won't help, so these end the request
+// with the server's message. The Error carries `userFacing` so the UI can show
+// it as-is.
+function proxyRefusal(status, errText) {
+  if (DEV_KEY || (status !== 401 && status !== 429)) return null;
+  let msg = null;
+  try { msg = JSON.parse(errText)?.error; } catch { /* not json */ }
+  if (typeof msg !== "string" || !msg) return null;
+  const err = new Error(msg);
+  err.userFacing = true;
+  err.status = status;
+  return err;
 }
 
 /**
@@ -88,6 +117,8 @@ export async function streamGenerate({ models, buildBody, onThought, onText, onR
       if (proxyRouteMissing(res.status, errText)) {
         throw new Error("The AI endpoint /api/gemini returned 404 — the server function isn't deployed yet. Redeploy the latest build to Vercel.");
       }
+      const refusal = proxyRefusal(res.status, errText);
+      if (refusal) throw refusal;
       if (res.status === 429) rateLimitedUntil[model] = Date.now() + COOLDOWN_MS;
       // A 400 is usually this model rejecting a config option (e.g. thinking) —
       // worth one more model before giving up.
@@ -184,6 +215,8 @@ export async function runAssistant({ history = [], userText, tools = [], systemI
       if (proxyRouteMissing(res.status, errText)) {
         throw new Error("The AI endpoint /api/gemini returned 404 — the server function isn't deployed yet. Redeploy the latest build to Vercel.");
       }
+      const refusal = proxyRefusal(res.status, errText);
+      if (refusal) throw refusal;
       // Put a rate-limited model on cooldown so later messages skip it.
       if (res.status === 429) rateLimitedUntil[model] = Date.now() + COOLDOWN_MS;
       if (modelIdx < models.length - 1 && isRetryable(res.status)) {
@@ -250,6 +283,7 @@ function toolStatusLabel(name) {
     add_notebook_idea: "Saving to the notebook…",
     add_feature: "Adding the feature…",
     add_bug: "Logging the bug…",
+    add_roadblock: "Flagging the roadblock…",
     set_project_status: "Moving the project…",
     set_production_deadline: "Setting the deadline…",
     open_project: "Opening the project…",
