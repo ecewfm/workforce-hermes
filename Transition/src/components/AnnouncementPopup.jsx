@@ -4,7 +4,7 @@ import { useWorkspace } from "../utils/workspaceContext";
 
 /**
  * AnnouncementPopup — shows one unseen announcement at a time as a modal overlay.
- * Convex reactivity means this will auto-appear when an Admin+ posts a new one.
+ * Live updates (Supabase Realtime) make this appear as soon as an Admin+ posts one.
  * Scoped to the active workspace.
  */
 export default function AnnouncementPopup() {

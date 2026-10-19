@@ -1,14 +1,14 @@
 /**
  * Built-in fallback milestone templates, PER WORKSPACE.
  *
- * The live milestone template is stored in Convex (appConfig.defaultMilestones,
+ * The live milestone template is stored in Supabase (workspace_settings.default_milestones,
  * editable by Admin+ under Settings → Workspace Defaults). These constants are
  * the fallback used before the config loads or when a workspace hasn't saved
  * one yet — and what "Restore Original" resets to. Use fallbackMilestonesFor()
  * rather than picking a constant directly.
  *
- * Mirrored server-side in convex/notebook.ts (used when a notebook idea is
- * turned into a project) — keep the two in sync.
+ * Mirrored server-side in private.fallback_milestones() (supabase/migrations;
+ * used when a notebook idea is turned into a project) — keep the two in sync.
  */
 
 // Workforce (WFM web developers) — software delivery lifecycle, 180 days.

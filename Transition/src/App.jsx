@@ -73,7 +73,7 @@ export default function App() {
   const [loginError, setLoginError] = useState("");     // error passed back to Login
 
   // --- Workspace state (department RBAC / data isolation) ---
-  // The active workspace scopes every workspace-filtered Convex query. Persisted
+  // The active workspace scopes every workspace-filtered query. Persisted
   // under wf_workspace and validated against the user's department access on
   // every auth resolve. userDepartments feeds the post-login workspace picker.
   const [activeWorkspace, setActiveWorkspace] = useState(() => localStorage.getItem("wf_workspace") || null);

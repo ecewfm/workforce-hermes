@@ -190,7 +190,7 @@ export default function Settings({ userName, userEmail, onClose, showModal, onLo
     }
   };
 
-  // --- Workspace Defaults state (Admin+ — per-workspace via Convex appConfig) ---
+  // --- Workspace Defaults state (Admin+ — per-workspace settings in Supabase) ---
   const appConfig = useQuery(api.appConfig.getAppConfig, { workspace });
   const saveAppConfigMut = useMutation(api.appConfig.saveAppConfig);
   const [templateRows, setTemplateRows] = useState(() => fallbackMilestonesFor(workspace).map(({ name, days }) => ({ name, days })));
