@@ -10,8 +10,7 @@ import DatePicker from "./ui/DatePicker";
 import { useOutsideClose } from "./ui/Popover";
 import { isCaddyEnabled } from "../utils/aiConfig";
 import { termsFor } from "../utils/workspaceTerms";
-import { isAdminPlusOrAbove } from "../utils/roles";
-import { useAccountScope } from "../utils/accountScope";
+import { useAccountUi } from "../utils/accountScope";
 
 export default function TaskEntry({ staff, userRole, actualRole, userName, onCreated, showModal, plannerSeed, onPlannerSeedUsed }) {
   const workspace = useWorkspace();
@@ -26,11 +25,15 @@ export default function TaskEntry({ staff, userRole, actualRole, userName, onCre
     } catch { return ""; }
   };
   const [accountId, setAccountId] = useState(boardAccount);
-  // Tied to client accounts? Then a project must go in one of them (one → picked for you).
-  const scope = useAccountScope(workspace, actualRole);
+  // Account picker: Admin+ choose any account; others only see it when they
+  // have several accounts (one account → it's used automatically).
+  const accUi = useAccountUi(workspace, actualRole, userRole);
   useEffect(() => {
-    if (scope.scoped && !accountId && scope.accountIds.length === 1) setAccountId(scope.accountIds[0]);
-  }, [scope.scoped, scope.accountIds.join(), accountId]);
+    if (!accUi.on || accUi.full) return;
+    const mine = accUi.accountIds;
+    if (mine.length === 1 && accountId !== mine[0]) setAccountId(mine[0]);
+    else if (mine.length !== 1 && accountId && !mine.includes(accountId)) setAccountId("");
+  }, [accUi.on, accUi.full, accUi.accountIds.join(), accountId]);
   const [newAccountName, setNewAccountName] = useState(null); // null = closed
   useEffect(() => {
     if (accountId && Array.isArray(accounts) && !accounts.some((a) => a._id === accountId)) setAccountId("");
@@ -333,7 +336,7 @@ export default function TaskEntry({ staff, userRole, actualRole, userName, onCre
                     </div>
                   </div>
                 </div>
-                {terms.accounts && (
+                {accUi.show && (
                   <div className="form-group">
                     <label className="form-label">Account</label>
                     {newAccountName === null ? (
@@ -343,9 +346,9 @@ export default function TaskEntry({ staff, userRole, actualRole, userName, onCre
                         ariaLabel="Account"
                         placeholder="Pick an account"
                         options={[
-                          ...(scope.scoped ? [] : [{ value: "", label: "No account" }]),
-                          ...(accounts || []).map((a) => ({ value: a._id, label: a.name, hint: a.projects ? `${a.projects} project${a.projects === 1 ? "" : "s"}` : undefined })),
-                          ...(isAdminPlusOrAbove(actualRole) ? [{ value: "__new", label: "+ New account…", action: true }] : []),
+                          ...(accUi.full ? [{ value: "", label: "No account" }] : []),
+                          ...accUi.limit(accounts).map((a) => ({ value: a._id, label: a.name, hint: a.projects ? `${a.projects} project${a.projects === 1 ? "" : "s"}` : undefined })),
+                          ...(accUi.full ? [{ value: "__new", label: "+ New account…", action: true }] : []),
                         ]}
                       />
                     ) : (

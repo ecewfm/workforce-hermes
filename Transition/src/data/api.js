@@ -157,7 +157,7 @@ export const api = {
 
   // ── Accounts (client accounts a workspace's projects belong to — Operations) ─
   accounts: {
-    getAccounts: query("accounts.getAccounts", ["workspace_accounts", "tasks"], ({ workspace }) => rpc("get_accounts", { p_workspace: WS(workspace) })),
+    getAccounts: query("accounts.getAccounts", ["workspace_accounts", "tasks", "staff_accounts"], ({ workspace }) => rpc("get_accounts", { p_workspace: WS(workspace) })),
     addAccount: mutation("accounts.addAccount", ["workspace_accounts"], (a) => rpc("add_account", { p_workspace: WS(a.workspace), p_name: a.name })),
     renameAccount: mutation("accounts.renameAccount", ["workspace_accounts", "tasks"], (a) => rpc("rename_account", { p_account_id: a.accountId, p_name: a.name })),
     deleteAccount: mutation("accounts.deleteAccount", ["workspace_accounts", "tasks"], (a) => rpc("delete_account", { p_account_id: a.accountId })),

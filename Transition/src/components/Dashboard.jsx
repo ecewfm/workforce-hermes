@@ -8,6 +8,7 @@ import { useWorkspace } from "../utils/workspaceContext";
 import { morphOriginFrom } from "../utils/modalOrigin";
 import { resolveColumns, isArchivedStatus, taskInColumn } from "../utils/columns";
 import { termsFor } from "../utils/workspaceTerms";
+import { useAccountUi } from "../utils/accountScope";
 import "../styles/overview-extra.css";
 
 // Which stage of the journey a board column stands for. Read off the
@@ -40,10 +41,13 @@ export default function Dashboard({ onShowAllLinks, actualRole, userName, openTa
   const workspace = useWorkspace();
   const terms = termsFor(workspace);
   const tech = terms.tech;
-  const showAccounts = terms.accounts;
+  // Accounts on the Overview: Admin+ see every account; an Admin only when they have several (just theirs).
+  const accUi = useAccountUi(workspace, actualRole);
+  const showAccounts = accUi.show;
   const tasks = useQuery(api.tasks.getTasksLight, { workspace });
   const appConfig = useQuery(api.appConfig.getAppConfig, { workspace });
-  const accounts = useQuery(api.accounts.getAccounts, showAccounts ? { workspace } : "skip");
+  const accountsAll = useQuery(api.accounts.getAccounts, terms.accounts ? { workspace } : "skip");
+  const accounts = accountsAll === undefined ? undefined : accUi.limit(accountsAll);
   const saveAppConfigMut = useMutation(api.appConfig.saveAppConfig);
 
   const isAdminPlus = isAdminPlusOrAbove(actualRole);
@@ -138,7 +142,10 @@ export default function Dashboard({ onShowAllLinks, actualRole, userName, openTa
     for (const t of liveTasks) {
       let row = unassigned;
       if (t.accountId) {
-        if (!byId.has(t.accountId)) byId.set(t.accountId, { key: t.accountId, name: t.account || "Unknown account", tasks: [] });
+        if (!byId.has(t.accountId)) {
+          if (!accUi.full) continue; // only your own accounts are listed
+          byId.set(t.accountId, { key: t.accountId, name: t.account || "Unknown account", tasks: [] });
+        }
         row = byId.get(t.accountId);
       }
       row.tasks.push(t);
@@ -150,7 +157,7 @@ export default function Dashboard({ onShowAllLinks, actualRole, userName, openTa
       return { ...row, total: row.tasks.length, tally, pct };
     };
     accountRows.push(...[...byId.values()].map(summarize).sort((a, b) => b.total - a.total || a.name.localeCompare(b.name)));
-    if (unassigned.tasks.length > 0) accountRows.push(summarize(unassigned));
+    if (unassigned.tasks.length > 0 && accUi.full) accountRows.push(summarize(unassigned));
   }
 
   function openProject(e, t, closeModal) {

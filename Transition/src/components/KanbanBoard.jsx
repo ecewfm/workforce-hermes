@@ -7,7 +7,7 @@ import { notifyTaskUpdated, notifyMilestoneCompleted, notifyNoteAdded } from "..
 import { useWorkspace } from "../utils/workspaceContext";
 import { resolveColumns, taskInColumn, isArchivedStatus } from "../utils/columns";
 import { termsFor } from "../utils/workspaceTerms";
-import { isAdminPlusOrAbove } from "../utils/roles";
+import { useAccountUi } from "../utils/accountScope";
 import { morphOriginFrom } from "../utils/modalOrigin";
 import ColumnGather from "./ColumnGather";
 
@@ -86,14 +86,15 @@ function untiltTotalCard(e) {
   el.style.setProperty("--tc-ry", "0deg");
 }
 
-// How far the hover surface must stretch above/below: the height of the
-// top and bottom info strips (their content varies per card).
+// Hover stretch: how tall the move strip is (varies per card) and which side
+// the info column opens on.
 function measureStretch(e) {
   const shell = e.currentTarget;
-  const top = shell.querySelector(".tf-wing-top")?.offsetHeight;
   const bottom = shell.querySelector(".tf-wing-bottom")?.offsetHeight;
-  if (top) shell.style.setProperty("--tf-t", `${top}px`);
   if (bottom) shell.style.setProperty("--tf-b", `${bottom}px`);
+  // Open the info column to the right, or to the left when the card is near the right edge.
+  const r = shell.getBoundingClientRect();
+  shell.dataset.side = r.right + 200 > window.innerWidth ? "left" : "right";
 }
 
 export default function KanbanBoard({ userRole, actualRole, userName, openTaskModal, openNotesModal, onContextMenu, showModal, staff, searchQuery, filterStaff, onOpenProfile, onClearFilter }) {
@@ -103,6 +104,8 @@ export default function KanbanBoard({ userRole, actualRole, userName, openTaskMo
   const terms = termsFor(workspace);
   // Operations: projects belong to client accounts; the board can show one.
   const accounts = useQuery(api.accounts.getAccounts, terms.accounts ? { workspace } : "skip");
+  // Account bar/pills: Admin+ see every account; others only when they have several.
+  const accUi = useAccountUi(workspace, actualRole, userRole);
   const addAccount = useMutation(api.accounts.addAccount);
   const accountKey = `wf_account_filter_${workspace}`;
   const [accountFilter, setAccountFilterState] = useState(() => {
@@ -327,8 +330,9 @@ export default function KanbanBoard({ userRole, actualRole, userName, openTaskMo
 
   // Account filter (Operations). A remembered account that was deleted since
   // falls back to "All accounts".
-  const accountView = accountFilter === "all" || accountFilter === "none" || !Array.isArray(accounts) || accounts.some((a) => a._id === accountFilter)
-    ? accountFilter : "all";
+  const accountView = !accUi.show ? "all"
+    : accountFilter === "all" || (accountFilter === "none" && accUi.full) || !Array.isArray(accounts) || accUi.limit(accounts).some((a) => a._id === accountFilter)
+      ? accountFilter : "all";
   const accountCounts = { all: filtered.length, none: 0 };
   if (terms.accounts) {
     for (const t of filtered) {
@@ -604,7 +608,7 @@ export default function KanbanBoard({ userRole, actualRole, userName, openTaskMo
               ) : (
                 <span>#{(t._id || "").slice(-4).toUpperCase()}</span>
               )}
-              {terms.accounts && t.account && <span className="card-account-pill" title="Account">{t.account}</span>}
+              {accUi.show && t.account && <span className="card-account-pill" title="Account">{t.account}</span>}
               {completionDue && (
                 <span
                   className={`card-completion-chip ${completionTone}`}
@@ -776,62 +780,60 @@ export default function KanbanBoard({ userRole, actualRole, userName, openTaskMo
 
     if (!isDefaultCard) return cardEl;
 
-    // Default board card: on hover it STRETCHES — one surface grows out from
-    // behind it on every side and the extra info slides out with it (dots
-    // left, latest note right, time left above, current milestone + moves
-    // below). See .tf-surface in index.css.
+    // Default board card: on hover it STRETCHES into a two-column panel — an
+    // info column (time left, milestones, latest note) opens beside it and the
+    // move buttons slide out below. See .tf-surface in index.css.
     return (
       <div className="tf-shell" key={t._id} onPointerEnter={measureStretch}>
         <div className="tf-surface" aria-hidden="true" />
-        <div className="tf-wing tf-wing-top">
-          <span className="tf-wing-cap">Time left</span>
-          <span className={`tf-days ${completionTone || ""}`}>
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></svg>
-            {wDaysLabel}
-          </span>
-        </div>
-        <div className="tf-wing tf-wing-left" aria-hidden="true">
-          <span className="tf-wing-cap">Milestones</span>
-          <div className="tf-wing-dots">
-            {Array.from({ length: totalM }, (_, i) => (
-              <div key={i} className={`milestone-dot ${i < doneM ? "active" : ""} ${i === wCurrentDotIdx ? "current" : ""}`}>
-                {i + 1}
-              </div>
-            ))}
+        <div className="tf-wing tf-wing-side">
+          <div className="tf-side-sec">
+            <span className="tf-wing-cap">Time left</span>
+            <span className={`tf-days ${completionTone || ""}`}>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></svg>
+              {wDaysLabel}
+            </span>
           </div>
-        </div>
-        <div
-          className="tf-wing tf-wing-right"
-          title="Open notes"
-          onClick={(e) => { e.stopPropagation(); openNotesModal(t._id); }}
-        >
-          <span className="tf-wing-cap">Latest note</span>
-          <div className="tf-note-body">
-            {wNoteText ? (
-              <>
-                <p className="tf-note-text">{wNoteText}</p>
-                {wNoteWriter && <span className="tf-note-writer">— {wNoteWriter}</span>}
-              </>
-            ) : wNotesCount > 0 ? (
-              <p className="tf-note-text">{wNotesCount} note{wNotesCount === 1 ? "" : "s"} — click to view</p>
-            ) : (
-              <p className="tf-note-empty">No notes yet</p>
-            )}
+          <div className="tf-side-sec" aria-hidden="true">
+            <span className="tf-wing-cap">Milestones <b>{doneM}/{totalM}</b></span>
+            <div className="tf-wing-dots">
+              {Array.from({ length: totalM }, (_, i) => (
+                <div key={i} className={`milestone-dot ${i < doneM ? "active" : ""} ${i === wCurrentDotIdx ? "current" : ""}`}>
+                  {i + 1}
+                </div>
+              ))}
+            </div>
           </div>
-          <div className="tf-note-add">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
-            Add note
+          <div
+            className="tf-side-note"
+            title="Open notes"
+            onClick={(e) => { e.stopPropagation(); openNotesModal(t._id); }}
+          >
+            <span className="tf-wing-cap">Latest note</span>
+            <div className="tf-note-body">
+              {wNoteText ? (
+                <>
+                  <p className="tf-note-text">{wNoteText}</p>
+                  {wNoteWriter && <span className="tf-note-writer">— {wNoteWriter}</span>}
+                </>
+              ) : wNotesCount > 0 ? (
+                <p className="tf-note-text">{wNotesCount} note{wNotesCount === 1 ? "" : "s"} — click to view</p>
+              ) : (
+                <p className="tf-note-empty">No notes yet</p>
+              )}
+            </div>
+            <div className="tf-note-add">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
+              Add note
+            </div>
           </div>
         </div>
         <div className="tf-wing tf-wing-bottom">
-          <div className="tf-bottom-block">
-            <span className="tf-wing-cap">Current milestone</span>
-            <span className="tf-bottom-current">{wCurrentM ? wCurrentM.name : "All milestones done"}</span>
-          </div>
+          <span className="tf-wing-cap">Move to</span>
           <div className="card-actions" onClick={(e) => e.stopPropagation()}>
-            {W_MOVES.map((s) => (
-              <div key={s} className="action-btn" title={`Move to ${wMoveLabel(s)}`} onClick={(e) => { e.stopPropagation(); handleMoveTask(t._id, s); }}>
-                {wMoveLabel(s)}
+            {W_MOVES.map((st) => (
+              <div key={st} className="action-btn" title={`Move to ${wMoveLabel(st)}`} onClick={(e) => { e.stopPropagation(); handleMoveTask(t._id, st); }}>
+                {wMoveLabel(st)}
               </div>
             ))}
           </div>
@@ -885,13 +887,13 @@ export default function KanbanBoard({ userRole, actualRole, userName, openTaskMo
           <span>No projects assigned to {filterStaff.name}.</span>
         </div>
       )}
-      {terms.accounts && (
+      {accUi.show && (
         <div className="account-bar" role="toolbar" aria-label="Filter by account">
           <span className="account-bar-label">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden="true"><path d="M3 21h18M5 21V7l7-4 7 4v14M9 9h1m4 0h1M9 13h1m4 0h1M9 17h1m4 0h1" /></svg>
             Account
           </span>
-          {[{ _id: "all", name: "All accounts" }, ...(accounts || []), { _id: "none", name: "No account" }].map((a, i) => (
+          {[{ _id: "all", name: accUi.full ? "All accounts" : "All my accounts" }, ...accUi.limit(accounts), ...(accUi.full ? [{ _id: "none", name: "No account" }] : [])].map((a, i) => (
             <button
               key={a._id}
               type="button"
@@ -903,7 +905,7 @@ export default function KanbanBoard({ userRole, actualRole, userName, openTaskMo
               <span className="account-chip-count">{accountCounts[a._id] || 0}</span>
             </button>
           ))}
-          {isAdminPlusOrAbove(actualRole) && (newAccountOpen ? (
+          {accUi.full && (newAccountOpen ? (
             <form
               className="account-new-form"
               onSubmit={async (e) => {

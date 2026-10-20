@@ -137,7 +137,6 @@
 }
 
 /* ── Client accounts per person (Operations) ── */
-.staff-mgmt-role { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
 .ui-select.staff-acc-select { max-width: 210px; }
 .staff-acc-all {
   display: inline-flex; align-items: center; max-width: 210px; padding: 3px 10px; border-radius: 999px;
@@ -145,3 +144,35 @@
   background: var(--color-bg-subtle); border: 1px dashed var(--glass-border, #e2e8f0);
 }
 .staff-acc-hint { margin-top: 6px; padding: 9px 12px; border-radius: 10px; background: color-mix(in srgb, var(--color-accent) 7%, transparent); }
+
+/* ── Workspaces (Department Membership) chips on each person's row ── */
+.staff-dept-row { display: flex; flex-wrap: wrap; gap: 5px; }
+.staff-dept-chip {
+  display: inline-flex; align-items: center; gap: 4px; padding: 3px 9px; border-radius: 999px; cursor: pointer;
+  font: inherit; font-size: 0.64rem; font-weight: 800; letter-spacing: 0.2px;
+  color: var(--color-text-secondary); background: var(--color-bg-subtle); border: 1px dashed color-mix(in srgb, var(--color-text-secondary) 35%, transparent);
+  transition: background-color 0.18s ease, color 0.18s ease, border-color 0.18s ease, transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1), scale 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.staff-dept-chip.on { color: #fff; background: var(--color-accent); border: 1px solid var(--color-accent); }
+.staff-dept-chip:hover:not(:disabled) { transform: translateY(-1px); border-color: var(--color-accent); }
+.staff-dept-chip:not(.on):hover:not(:disabled) { color: var(--color-accent); }
+.staff-dept-chip:active:not(:disabled) { scale: 0.94; }
+.staff-dept-chip:disabled { cursor: default; opacity: 0.75; }
+.staff-dept-chip:disabled:not(.on) { opacity: 0.45; }
+
+/* ── One row per person: identity + actions on top, an access strip below ── */
+.staff-mgmt-row.staff-row-merged { flex-wrap: wrap; row-gap: 0; }
+.staff-access-strip {
+  flex-basis: 100%;
+  display: flex; flex-wrap: wrap; align-items: center; gap: 10px 22px;
+  margin-top: 10px; padding: 10px 0 2px 52px;
+  border-top: 1px dashed var(--glass-border, #e2e8f0);
+}
+.staff-access-group { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.staff-access-cap {
+  font-size: 0.56rem; font-weight: 900; letter-spacing: 0.8px; text-transform: uppercase;
+  color: var(--color-text-secondary); white-space: nowrap;
+}
+@media (max-width: 640px) {
+  .staff-access-strip { padding-left: 0; }
+}

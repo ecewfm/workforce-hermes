@@ -123,4 +123,4 @@
 
 /* Caddy's speech bubble steps aside while a dialog is open (it sat on top of modal buttons). */
 html:has(.modal-overlay:not([data-rehearsal])) .ai-hint,
-html:has(.custom-modal-overlay) .ai-hint { opacity: 0; pointer-events: none; transition: opacity 0.2s ease; }
+html:has(.custom-modal-overlay) .ai-hint { visibility: hidden; pointer-events: none; } /* (its entrance animation holds opacity, so hide with visibility) */

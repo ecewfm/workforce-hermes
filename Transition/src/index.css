@@ -491,15 +491,15 @@ header {
 
 /* ─── Task-card hover: the card STRETCHES (default board card) ────────────────
    Rest = the original card design. On hover one surface (.tf-surface) grows
-   out from behind the card on every side — no pop, no scale — and the extra
-   info slides out with it: milestone dots left, the latest note right, time
-   left above, the current milestone + move buttons below. The wings carry no
-   background/border of their own, so there are no corners or seams poking out:
-   it reads as the same card, stretched. KanbanBoard measures the top/bottom
-   wings on pointer-enter (--tf-t / --tf-b); side widths are fixed. */
+   out from behind the card — no pop, no scale — into a tidy two-column panel:
+   the card stays on the left (with the move buttons under it) and an info
+   column opens beside it (time left, milestones, latest note). It opens to the
+   right, or to the left when there's no room (data-side="left", set by
+   KanbanBoard on pointer-enter, which also measures the move strip: --tf-b).
+   The strips have no background/border of their own — no seams or corners. */
 .tf-shell {
-  --tf-l: 76px;
-  --tf-r: 146px;
+  --tf-side: 186px;
+  --tf-pad: 7px;
   --tf-stretch: cubic-bezier(0.22, 1.16, 0.36, 1);
   position: relative;
   margin-bottom: 10px;
@@ -515,8 +515,8 @@ header {
 .tf-shell > .task-card:hover { transform: none; }
 
 /* While stretched the card is an opaque inner panel of the surface: soft
-   border, no shadow, and it clips its own content so nothing spills into the
-   side strips (glass/liquid skins are see-through at rest). */
+   border, no shadow, and it clips its own content (glass/liquid skins are
+   see-through at rest). */
 .tf-shell:hover > .task-card {
   background: var(--color-card-bg) !important;
   border-color: var(--glass-border, #e2e8f0) !important;
@@ -539,16 +539,20 @@ header {
               border-radius 0.44s ease, box-shadow 0.44s ease, opacity 0s linear 0.44s;
 }
 .tf-shell:hover .tf-surface {
-  top: calc(-1 * var(--tf-t, 34px));
-  right: calc(-1 * var(--tf-r));
-  bottom: calc(-1 * var(--tf-b, 96px));
-  left: calc(-1 * var(--tf-l));
+  top: calc(-1 * var(--tf-pad));
+  left: calc(-1 * var(--tf-pad));
+  right: calc(-1 * var(--tf-side));
+  bottom: calc(-1 * var(--tf-b, 64px));
   border-radius: 18px;
   opacity: 1;
   pointer-events: auto;
   box-shadow: 0 30px 60px -26px rgba(15, 23, 42, 0.45), 0 2px 6px rgba(15, 23, 42, 0.06);
   transition: top 0.44s var(--tf-stretch), right 0.44s var(--tf-stretch), bottom 0.44s var(--tf-stretch), left 0.44s var(--tf-stretch),
               border-radius 0.44s ease, box-shadow 0.44s ease, opacity 0s;
+}
+.tf-shell[data-side="left"]:hover .tf-surface {
+  left: calc(-1 * var(--tf-side));
+  right: calc(-1 * var(--tf-pad));
 }
 
 /* Click-to-open is a container transform: the modal box starts ON the card's
@@ -714,8 +718,6 @@ header {
   z-index: 2;
   display: flex;
   flex-direction: column;
-  gap: 3px;
-  padding: 7px 9px;
   box-sizing: border-box;
   /* Hidden at rest; visibility (binary) is delayed out so the slide-back plays. */
   visibility: hidden;
@@ -728,90 +730,97 @@ header {
   transition: transform 0.44s var(--tf-stretch, ease), opacity 0.3s ease 0.06s, visibility 0s;
 }
 
-.tf-wing-left { top: 0; bottom: 0; left: 0; width: var(--tf-l); padding: 10px 10px 10px 12px; align-items: flex-start; }
-.tf-shell:hover .tf-wing-left { transform: translateX(-100%); }
+/* Info column beside the card (full height, down to the move strip). */
+.tf-wing-side { top: 0; bottom: 0; right: 0; width: var(--tf-side); gap: 12px; padding: 2px 12px 10px 16px; }
+.tf-shell:hover .tf-wing-side { bottom: calc(-1 * var(--tf-b, 64px)); transform: translateX(100%); }
+.tf-shell[data-side="left"] .tf-wing-side { right: auto; left: 0; padding: 2px 16px 10px 12px; }
+.tf-shell[data-side="left"]:hover .tf-wing-side { transform: translateX(-100%); }
+.tf-side-sec { display: flex; flex-direction: column; align-items: flex-start; gap: 5px; }
 
-.tf-wing-right { top: 0; bottom: 0; right: 0; width: var(--tf-r); padding: 10px 12px 10px 14px; border-radius: 12px; }
-.tf-shell:hover .tf-wing-right { transform: translateX(100%); }
-
-.tf-wing-bottom { left: 0; right: 0; bottom: 0; gap: 8px; padding: 10px 4px 12px; }
+/* Move strip under the card. */
+.tf-wing-bottom { left: 0; right: 0; bottom: 0; gap: 6px; padding: 10px 0 10px; }
 .tf-shell:hover .tf-wing-bottom { transform: translateY(100%); }
 
-.tf-wing-top {
-  left: 0; right: 0; top: 0;
-  flex-direction: row; align-items: center; justify-content: space-between;
-  gap: 8px; padding: 10px 4px 8px;
-}
-.tf-wing-top .tf-wing-cap { white-space: nowrap; }
-.tf-wing-left .tf-wing-dots { gap: 4px; }
-.tf-shell:hover .tf-wing-top { transform: translateY(-100%); }
-
 .tf-wing-cap {
-  font-size: 0.46rem;
-  font-weight: 800;
-  letter-spacing: 0.6px;
+  font-size: 0.5rem;
+  font-weight: 900;
+  letter-spacing: 0.8px;
   text-transform: uppercase;
   color: #94a3b8;
 }
+.tf-wing-cap b { color: var(--color-text-secondary); font-weight: 900; }
 
-.tf-wing-dots { display: flex; flex-wrap: wrap; gap: 3px; }
-.tf-wing-dots .milestone-dot { width: 14px; height: 14px; font-size: 0.44rem; }
+.tf-wing-dots { display: flex; flex-wrap: wrap; gap: 5px; }
+.tf-wing-dots .milestone-dot { width: 16px; height: 16px; font-size: 0.46rem; }
 .milestone-dot.current {
   background: var(--color-accent);
   color: #fff;
   border-color: var(--color-accent-hover);
-  transform: scale(1.35);
+  transform: scale(1.25);
   box-shadow: 0 0 0 3px var(--color-accent-lighter), 0 0 10px var(--color-accent);
 }
 
 .tf-note-text {
   margin: 0;
-  font-size: 0.62rem;
-  line-height: 1.3;
+  font-size: 0.64rem;
+  line-height: 1.35;
   font-weight: 600;
   color: var(--color-text-primary);
   display: -webkit-box;
-  -webkit-line-clamp: 5;
-  line-clamp: 5;
+  -webkit-line-clamp: 4;
+  line-clamp: 4;
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
-.tf-note-writer { font-size: 0.54rem; font-weight: 800; color: #94a3b8; }
-.tf-note-empty { margin: 0; font-size: 0.58rem; font-style: italic; color: #94a3b8; }
+.tf-note-writer { font-size: 0.56rem; font-weight: 800; color: #94a3b8; }
+.tf-note-empty { margin: 0; font-size: 0.62rem; font-style: italic; color: #94a3b8; }
 
-.tf-bottom-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .tf-days {
   display: inline-flex; align-items: center; gap: 4px;
-  padding: 3px 7px; border-radius: 7px;
-  font-size: 0.56rem; font-weight: 800; white-space: nowrap;
+  padding: 4px 8px; border-radius: 8px;
+  font-size: 0.6rem; font-weight: 800; white-space: nowrap;
   background: var(--color-bg-subtle); color: var(--color-text-secondary);
 }
 .tf-days.soon { background: #fef9c3; color: #854d0e; }
 .tf-days.urgent { background: #ffedd5; color: #c2410c; }
 .tf-days.overdue { background: #fee2e2; color: #b91c1c; }
-.tf-bottom-current {
-  font-size: 0.62rem; font-weight: 800; color: var(--color-text-primary); line-height: 1.2;
-  display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
-}
-.tf-bottom-block { display: flex; flex-direction: column; gap: 2px; }
-.tf-wing-bottom .card-actions { margin: 0; padding-top: 6px; gap: 4px; grid-template-columns: repeat(4, 1fr); }
-.tf-wing-bottom .action-btn { padding: 4px 2px; font-size: 0.5rem; border-radius: 5px; }
+.tf-wing-bottom .card-actions { margin: 0; gap: 5px; grid-template-columns: repeat(auto-fill, minmax(68px, 1fr)); }
+.tf-wing-bottom .action-btn { padding: 5px 4px; font-size: 0.52rem; border-radius: 7px; }
 
-/* Note wing: hovering it blurs the note + reveals an Add-note prompt; a click
-   opens the expanded notes modal. */
-.tf-wing-right { cursor: pointer; transition: transform 0.44s var(--tf-stretch, ease), opacity 0.16s ease, visibility 0s linear 0.44s, background-color 0.2s ease; }
-.tf-shell:hover .tf-wing-right:hover { background: color-mix(in srgb, var(--color-accent) 7%, transparent); }
-.tf-note-body { flex: 1; min-height: 0; transition: filter 0.2s ease, opacity 0.2s ease; }
-.tf-wing-right:hover .tf-note-body { filter: blur(3px); opacity: 0.4; }
+/* Latest note: a soft tile; hovering it blurs the note + shows "Add note";
+   a click opens the expanded notes modal. */
+.tf-side-note {
+  position: relative; align-self: stretch; flex: 0 1 auto; min-height: 64px;
+  display: flex; flex-direction: column; gap: 4px; padding: 9px 10px; border-radius: 12px; cursor: pointer;
+  background: var(--color-bg-subtle); border: 1px solid transparent;
+  transition: border-color 0.2s ease, background-color 0.2s ease, scale 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.tf-side-note:hover { border-color: color-mix(in srgb, var(--color-accent) 45%, transparent); background: color-mix(in srgb, var(--color-accent) 7%, var(--color-card-bg)); }
+.tf-side-note:active { scale: 0.97; }
+.tf-note-body { min-height: 0; overflow: hidden; transition: filter 0.2s ease, opacity 0.2s ease; }
+.tf-side-note:hover .tf-note-body { filter: blur(3px); opacity: 0.4; }
 .tf-note-add {
   position: absolute; inset: 0;
   display: flex; align-items: center; justify-content: center; gap: 6px;
   font-size: 0.72rem; font-weight: 900; color: var(--color-accent);
   opacity: 0; pointer-events: none; transition: opacity 0.2s ease;
 }
-.tf-wing-right:hover .tf-note-add { opacity: 1; }
+.tf-side-note:hover .tf-note-add { opacity: 1; }
 
 [data-theme="dark"] .tf-surface { border-color: #334155; }
+/* The stretched surface wears each skin. */
+[data-skin="cubic"] .tf-shell:hover .tf-surface { border: 2.5px solid var(--color-text-primary); border-radius: 8px; box-shadow: 6px 6px 0 0 var(--color-text-primary); }
+[data-skin="cubic"] .tf-shell:hover > .task-card { transform: none !important; box-shadow: none !important; }
+[data-skin="cubic"] .tf-side-note { border: 2px solid var(--color-text-primary); border-radius: 6px; }
+[data-skin="aurora"] .tf-shell:hover .tf-surface {
+  background: linear-gradient(135deg, color-mix(in srgb, var(--color-card-bg) 86%, var(--color-accent)), var(--color-card-bg) 55%, color-mix(in srgb, var(--color-card-bg) 90%, var(--color-nav-bg)));
+  border-color: color-mix(in srgb, var(--color-accent) 28%, transparent);
+  box-shadow: 0 26px 56px -24px color-mix(in srgb, var(--color-accent) 45%, transparent);
+}
+[data-skin="glass"] .tf-shell:hover .tf-surface,
+[data-skin="liquid"] .tf-shell:hover .tf-surface { border-color: color-mix(in srgb, var(--color-text-primary) 12%, transparent); border-radius: 22px; }
+[data-skin="minimal"] .tf-shell:hover .tf-surface { border-radius: 12px; box-shadow: 0 14px 30px -20px rgba(15, 23, 42, 0.4); }
+[data-skin="minimal"] .tf-side-note { border-radius: 8px; }
 
 /* Hover swap: the detailed body scales down + collapses while the focused
    current-milestone pill scales up in its place. Pure scale + height, no fade. */

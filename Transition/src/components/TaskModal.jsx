@@ -12,7 +12,7 @@ import { termsFor, itemWords } from "../utils/workspaceTerms";
 import { authApi } from "../data/auth";
 import Select from "./ui/Select";
 import { useOutsideClose } from "./ui/Popover";
-import { useAccountScope } from "../utils/accountScope";
+import { useAccountUi } from "../utils/accountScope";
 
 function deobfuscate(str) {
   if (!str || typeof str !== "string") return str;
@@ -100,7 +100,7 @@ export default function TaskModal({ taskId, isEditMode, initialNotesOpen, userRo
   // it's idle, so the first real open doesn't pay the browser's one-time
   // warm-up (style/layout caches, text shaping, GPU shaders) — see App.jsx.
   const workspace = useWorkspace();
-  const accountScope = useAccountScope(workspace, actualRole);
+  const accUi = useAccountUi(workspace, actualRole, userRole);
   const terms = termsFor(workspace);
   const liveTask = useQuery(api.tasks.getTaskById, rehearsal ? "skip" : { taskId });
   // The board hands us its (light) copy of the task so the modal can render —
@@ -1254,7 +1254,7 @@ export default function TaskModal({ taskId, isEditMode, initialNotesOpen, userRo
                 )}
               </div>
 
-              {terms.accounts && (
+              {accUi.show && (
                 <div className="tm-account-row">
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden="true">
                     <path d="M3 21h18M5 21V7l7-4 7 4v14M9 9h1m4 0h1M9 13h1m4 0h1M9 17h1m4 0h1" />
@@ -1269,10 +1269,10 @@ export default function TaskModal({ taskId, isEditMode, initialNotesOpen, userRo
                       ariaLabel="Account"
                       menuWidth={220}
                       options={[
-                        ...(accountScope.scoped ? [] : [{ value: "", label: "No account" }]),
-                        ...(accounts || []).map((a) => ({ value: a._id, label: a.name })),
+                        ...(accUi.full ? [{ value: "", label: "No account" }] : []),
+                        ...accUi.limit(accounts).map((a) => ({ value: a._id, label: a.name })),
                         ...(task.accountId && !(accounts || []).some((a) => a._id === task.accountId) ? [{ value: task.accountId, label: task.account || "…" }] : []),
-                        ...(isAdminPlus ? [{ value: "__new", label: "+ New account…", action: true }] : []),
+                        ...(accUi.full ? [{ value: "__new", label: "+ New account…", action: true }] : []),
                       ]}
                     />
                   ) : (

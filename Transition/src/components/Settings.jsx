@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useMemo } from "react";
 import DatePicker from "./ui/DatePicker";
 import Select from "./ui/Select";
 import MultiSelect from "./ui/MultiSelect";
+import { useAccountUi } from "../utils/accountScope";
 import { useQuery, useMutation } from "../data/react";
 import { api } from "../data/api";
 import { loadSettings, saveSettings, applySettings, DEFAULT_SETTINGS, SKINS } from "../utils/settingsManager";
@@ -85,9 +86,10 @@ export default function Settings({ userName, userEmail, onClose, showModal, onLo
   const showDefaultView = isAdminLevel(actualRole) || isMainAdmin;
   // Permanent delete from the archive is Admin-level only (enforced server-side)
   const canDeleteArchived = isAdminLevel(actualRole) || isMainAdmin;
+  // Client Accounts tab: Admin+ manage every account; others only see it when they have several.
+  const accUi = useAccountUi(workspace, actualRole);
   const SECTIONS = useMemo(() => {
-    // Client Accounts (Operations): everyone can see the list, Admin+ manage it
-    const accountsSection = hasAccounts ? [{ id: "accounts", label: "Client Accounts", icon: "briefcase" }] : [];
+    const accountsSection = hasAccounts && (isAdminPlus || accUi.show) ? [{ id: "accounts", label: "Client Accounts", icon: "briefcase" }] : [];
     return isAdminPlus
       ? [
           ...BASE_SECTIONS.filter(s => s.id !== "archive"),
@@ -97,7 +99,7 @@ export default function Settings({ userName, userEmail, onClose, showModal, onLo
           { id: "archive", label: "Archived Projects", icon: "archive" },
         ]
       : [...BASE_SECTIONS.filter(s => s.id !== "archive"), ...accountsSection, ...BASE_SECTIONS.filter(s => s.id === "archive")];
-  }, [isAdminPlus, hasAccounts]);
+  }, [isAdminPlus, hasAccounts, accUi.show]);
 
   const contentRef = useRef(null);
   const savedRef = useRef(null); // snapshot of settings before edits
@@ -192,7 +194,6 @@ export default function Settings({ userName, userEmail, onClose, showModal, onLo
   const [changingPassword, setChangingPassword] = useState(false);
   const updateStaffDepartmentMut = useMutation(api.staff.updateStaffDepartment);
   // Staff Management sub-tab: "access" (role) | "department" (workspace access)
-  const [staffSubTab, setStaffSubTab] = useState("access");
   // Workspace entry password (per-workspace appConfig.workspacePasswordHash).
   const [wsPwInput, setWsPwInput] = useState("");
   const [savingWsPw, setSavingWsPw] = useState(false);
@@ -1262,26 +1263,6 @@ export default function Settings({ userName, userEmail, onClose, showModal, onLo
                 <div className="settings-section-header"><SectionIcon icon="shield" size={20} /><h3>Staff Management</h3></div>
                 <p className="settings-section-desc">Manage team members, approve access requests, and reset credentials.</p>
 
-                {/* Sub-tabs: Access Type (role) vs Department Membership (workspace access) */}
-                <div className="staff-subtab-bar" style={{ display: "flex", gap: 8, marginBottom: 20 }}>
-                  {[{ id: "access", label: "Access Type" }, { id: "department", label: "Department Membership" }].map((t) => (
-                    <button
-                      key={t.id}
-                      onClick={() => setStaffSubTab(t.id)}
-                      style={{
-                        padding: "8px 16px", borderRadius: 10, border: "1px solid var(--glass-border)", cursor: "pointer",
-                        fontSize: "0.72rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.5px",
-                        background: staffSubTab === t.id ? "var(--color-accent)" : "var(--color-card-bg)",
-                        color: staffSubTab === t.id ? "white" : "var(--color-text-secondary)",
-                      }}
-                    >
-                      {t.label}
-                    </button>
-                  ))}
-                </div>
-
-                {staffSubTab === "access" && (
-                <>
                 {/* Pending Access Requests */}
                 <div className="settings-card">
                   <label className="settings-field-label" style={{ display: "flex", alignItems: "center", gap: "8px" }}>
@@ -1347,8 +1328,12 @@ export default function Settings({ userName, userEmail, onClose, showModal, onLo
 
                 {/* Active Staff */}
                 <div className="settings-card">
-                  <label className="settings-field-label">Active Team Members</label>
-                  <p className="settings-field-hint">Manage roles, reset passwords, or revoke access for current team members.</p>
+                  <label className="settings-field-label">Team Members</label>
+                  <p className="settings-field-hint">
+                    Everyone's access in one place: their <b>role</b> (Access Type), the <b>workspaces</b> they can open (Department Membership — exactly what's lit up)
+                    {hasAccounts ? <>, and their <b>client accounts</b></> : null}. Reset passwords or revoke access from the same row.
+                    {!canEditDepartments && " Workspaces are view-only for you — only Managers can change them."}
+                  </p>
                   {hasAccounts && (
                     <p className="settings-field-hint staff-acc-hint">
                       <b>Client accounts:</b> tie someone to one or more accounts and they'll only see those accounts' projects (plus any project they're assigned to). "All accounts" = no restriction. Admin+ and Managers always see every account.
@@ -1356,7 +1341,7 @@ export default function Settings({ userName, userEmail, onClose, showModal, onLo
                   )}
                   <div className="staff-management-list">
                     {activeStaff.map((s) => (
-                      <div key={s.email} className="staff-mgmt-row">
+                      <div key={s.email} className="staff-mgmt-row staff-row-merged">
                         <div className="staff-mgmt-avatar" onClick={() => onViewProfile && onViewProfile(s)} style={{ cursor: "pointer" }}>
                           {s.avatarUrl ? <img src={s.avatarUrl} alt={s.name} /> : (
                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>
@@ -1371,60 +1356,6 @@ export default function Settings({ userName, userEmail, onClose, showModal, onLo
                               Pass: <span style={{ color: s.password ? "var(--color-accent)" : "#94a3b8" }}>{s.password || "None"}</span>
                             </span>
                           </div>
-                        </div>
-                        <div className="staff-mgmt-role">
-                          {(() => {
-                            const isSelf = s.email.toLowerCase() === (userEmail || "").toLowerCase();
-                            return (
-                              <Select
-                                size="sm"
-                                className="staff-role-select-ui"
-                                value={s.role}
-                                disabled={isSelf}
-                                ariaLabel={isSelf ? "You can't change your own role" : `Role for ${s.name}`}
-                                options={ASSIGNABLE_ROLES.map((r) => ({ value: r, label: roleLabel(r, workspace) }))}
-                                onChange={async (newRole) => {
-                                  try {
-                                    await updateStaffRole({ staffEmail: s.email, newRole, actorEmail: userEmail });
-                                    showModal({ title: "Role Updated", message: `${s.name}'s role has been changed to ${roleLabel(newRole, workspace)}.`, type: "success" });
-                                  } catch (err) {
-                                    showModal({ title: "Action Blocked", message: err.message || "Could not change role.", type: "alert" });
-                                  }
-                                }}
-                              />
-                            );
-                          })()}
-                          {hasAccounts && (() => {
-                            const dept = WORKSPACE_META[workspace]?.department;
-                            const here = !dept || (Array.isArray(s.departments) && s.departments.includes(dept));
-                            if (!here) return null;
-                            if (s.role === "Admin+" || s.role === "Manager") {
-                              return <span className="staff-acc-all" title="Admin+ and Managers always see every account">All accounts</span>;
-                            }
-                            const mine = accountsByEmail[s.email] || [];
-                            if (!isAdminPlus) {
-                              const names = (accounts || []).filter((a) => mine.includes(a._id)).map((a) => a.name);
-                              return <span className="staff-acc-all">{names.length ? names.join(", ") : "All accounts"}</span>;
-                            }
-                            return (
-                              <MultiSelect
-                                size="sm"
-                                className="staff-acc-select"
-                                values={mine}
-                                options={(accounts || []).map((a) => ({ value: a._id, label: a.name }))}
-                                allLabel="All accounts"
-                                emptyText="No client accounts yet — add one under Client Accounts."
-                                ariaLabel={`Client accounts for ${s.name}`}
-                                onChange={async (ids) => {
-                                  try {
-                                    await setStaffAccountsMut({ email: s.email, workspace, accountIds: ids });
-                                  } catch (err) {
-                                    showModal({ title: "Couldn't change accounts", message: err.message || "Please try again.", type: "alert" });
-                                  }
-                                }}
-                              />
-                            );
-                          })()}
                         </div>
                         <div className="staff-mgmt-actions">
                           <button
@@ -1471,6 +1402,106 @@ export default function Settings({ userName, userEmail, onClose, showModal, onLo
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></svg>
                             Revoke
                           </button>
+                        </div>
+                        {/* Everything this person can do, in one strip: role, workspaces, client accounts. */}
+                        <div className="staff-access-strip">
+                          <div className="staff-access-group staff-mgmt-role">
+                            <span className="staff-access-cap">Role</span>
+                              {(() => {
+                                const isSelf = s.email.toLowerCase() === (userEmail || "").toLowerCase();
+                                return (
+                                  <Select
+                                    size="sm"
+                                    className="staff-role-select-ui"
+                                    value={s.role}
+                                    disabled={isSelf}
+                                    ariaLabel={isSelf ? "You can't change your own role" : `Role for ${s.name}`}
+                                    options={ASSIGNABLE_ROLES.map((r) => ({ value: r, label: roleLabel(r, workspace) }))}
+                                    onChange={async (newRole) => {
+                                      try {
+                                        await updateStaffRole({ staffEmail: s.email, newRole, actorEmail: userEmail });
+                                        showModal({ title: "Role Updated", message: `${s.name}'s role has been changed to ${roleLabel(newRole, workspace)}.`, type: "success" });
+                                      } catch (err) {
+                                        showModal({ title: "Action Blocked", message: err.message || "Could not change role.", type: "alert" });
+                                      }
+                                    }}
+                                  />
+                                );
+                              })()}
+                          </div>
+                          <div className="staff-access-group">
+                            <span className="staff-access-cap">Workspaces</span>
+                              {/* Workspaces (Department Membership): Managers toggle, never their own. */}
+                              {(() => {
+                                const isSelf = s.email.toLowerCase() === (userEmail || "").toLowerCase();
+                                const current = Array.isArray(s.departments) ? s.departments : [];
+                                const locked = isSelf || !canEditDepartments;
+                                return (
+                                  <div className="staff-dept-row" role="group" aria-label={`Workspaces for ${s.name}`}>
+                                    {DEPARTMENTS.map((dept) => {
+                                      const on = current.includes(dept);
+                                      return (
+                                        <button
+                                          key={dept}
+                                          type="button"
+                                          className={`staff-dept-chip ${on ? "on" : ""}`}
+                                          aria-pressed={on}
+                                          disabled={locked}
+                                          title={isSelf ? "You can't change your own workspaces" : (!canEditDepartments ? "Only Managers can change workspaces" : on ? `Remove ${dept}` : `Give access to ${dept}`)}
+                                          onClick={async () => {
+                                            const next = on ? current.filter((d) => d !== dept) : [...current, dept];
+                                            try {
+                                              await updateStaffDepartmentMut({ staffEmail: s.email, departments: next, actorEmail: userEmail });
+                                            } catch (err) {
+                                              showModal({ title: "Action Blocked", message: err.message || "Could not update workspaces.", type: "alert" });
+                                            }
+                                          }}
+                                        >
+                                          {on && <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4" aria-hidden="true"><polyline points="20 6 9 17 4 12" /></svg>}
+                                          {dept}
+                                        </button>
+                                      );
+                                    })}
+                                  </div>
+                                );
+                              })()}
+                          </div>
+                          {hasAccounts && (
+                            <div className="staff-access-group">
+                              <span className="staff-access-cap">Client accounts</span>
+                              {hasAccounts && (() => {
+                                const dept = WORKSPACE_META[workspace]?.department;
+                                const here = !dept || (Array.isArray(s.departments) && s.departments.includes(dept));
+                                if (!here) return <span className="staff-acc-all" title={`No access to ${terms.label} yet`}>No {terms.label} access</span>;
+                                if (s.role === "Admin+" || s.role === "Manager") {
+                                  return <span className="staff-acc-all" title="Admin+ and Managers always see every account">All accounts</span>;
+                                }
+                                const mine = accountsByEmail[s.email] || [];
+                                if (!isAdminPlus) {
+                                  const names = (accounts || []).filter((a) => mine.includes(a._id)).map((a) => a.name);
+                                  return <span className="staff-acc-all">{names.length ? names.join(", ") : "All accounts"}</span>;
+                                }
+                                return (
+                                  <MultiSelect
+                                    size="sm"
+                                    className="staff-acc-select"
+                                    values={mine}
+                                    options={(accounts || []).map((a) => ({ value: a._id, label: a.name }))}
+                                    allLabel="All accounts"
+                                    emptyText="No client accounts yet — add one under Client Accounts."
+                                    ariaLabel={`Client accounts for ${s.name}`}
+                                    onChange={async (ids) => {
+                                      try {
+                                        await setStaffAccountsMut({ email: s.email, workspace, accountIds: ids });
+                                      } catch (err) {
+                                        showModal({ title: "Couldn't change accounts", message: err.message || "Please try again.", type: "alert" });
+                                      }
+                                    }}
+                                  />
+                                );
+                              })()}
+                            </div>
+                          )}
                         </div>
                       </div>
                     ))}
@@ -1546,70 +1577,6 @@ export default function Settings({ userName, userEmail, onClose, showModal, onLo
                     </button>
                   </div>
                 </div>
-                </>
-                )}
-
-                {staffSubTab === "department" && (
-                  <div className="settings-card">
-                    <label className="settings-field-label">Department Membership</label>
-                    <p className="settings-field-hint">
-                      Tick the workspaces each member can access — access is exactly what's ticked.
-                      Operations only means Operations only; tick Operations &amp; Workforce for both.
-                      (The Main Admin always has all access.)
-                      {!canEditDepartments && " View only — only Managers can change department membership."}
-                    </p>
-                    <div className="staff-management-list">
-                      {activeStaff.map((s) => {
-                        const isSelf = s.email.toLowerCase() === (userEmail || "").toLowerCase();
-                        const current = Array.isArray(s.departments) ? s.departments : [];
-                        const locked = isSelf || !canEditDepartments; // managers (or Main Admin) only, never self
-                        return (
-                          <div key={s.email} className="staff-mgmt-row">
-                            <div className="staff-mgmt-avatar" onClick={() => onViewProfile && onViewProfile(s)} style={{ cursor: "pointer" }}>
-                              {s.avatarUrl ? <img src={s.avatarUrl} alt={s.name} /> : (
-                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>
-                              )}
-                            </div>
-                            <div className="staff-mgmt-info">
-                              <span className="staff-mgmt-name">{s.name}</span>
-                              <span className="staff-mgmt-email">{s.email}</span>
-                            </div>
-                            <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
-                              {DEPARTMENTS.map((dept) => {
-                                const checked = current.includes(dept);
-                                return (
-                                  <label
-                                    key={dept}
-                                    title={isSelf ? "You can't change your own departments" : (!canEditDepartments ? "Only Managers can change department membership" : "")}
-                                    style={{ display: "flex", alignItems: "center", gap: 5, fontSize: "0.75rem", fontWeight: 700, color: "var(--color-text-primary)", opacity: locked ? 0.55 : 1, cursor: locked ? "not-allowed" : "pointer" }}
-                                  >
-                                    <input
-                                      type="checkbox"
-                                      checked={checked}
-                                      disabled={locked}
-                                      onChange={async (e) => {
-                                        const next = e.target.checked
-                                          ? [...current, dept]
-                                          : current.filter((d) => d !== dept);
-                                        try {
-                                          await updateStaffDepartmentMut({ staffEmail: s.email, departments: next, actorEmail: userEmail });
-                                          showModal({ title: "Departments Updated", message: `${s.name}'s workspace access has been updated.`, type: "success" });
-                                        } catch (err) {
-                                          showModal({ title: "Action Blocked", message: err.message || "Could not update departments.", type: "alert" });
-                                        }
-                                      }}
-                                    />
-                                    {dept}
-                                  </label>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
               </section>
             )}
 
