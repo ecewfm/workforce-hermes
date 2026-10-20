@@ -1336,7 +1336,7 @@ export default function Settings({ userName, userEmail, onClose, showModal, onLo
                   </p>
                   {hasAccounts && (
                     <p className="settings-field-hint staff-acc-hint">
-                      <b>Client accounts:</b> Users and Admins only see the projects of the accounts they're on (plus any project they're assigned to). With <b>no account they're locked out</b> of {terms.label} projects until you add them to one. Admin+ and Managers always see every account.
+                      <b>Client accounts:</b> Users and Admins only see the projects of the accounts they're on — being assigned to a project in another account doesn't open it. With <b>no account they're locked out</b> of {terms.label} projects until you add them to one. Admin+ and Managers always see every account.
                     </p>
                   )}
                   <div className="staff-management-list">

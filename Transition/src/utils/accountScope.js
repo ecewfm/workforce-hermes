@@ -1,6 +1,6 @@
 // Client-account access (Operations): everyone below Admin+ only sees their
-// own accounts' projects (plus projects they're assigned to). With NO account
-// they're locked out until an Admin+ or Manager adds them to one. The
+// own accounts' projects. With NO account they're locked out of Operations
+// (other workspaces are unaffected) until an Admin+ or Manager adds them to one. The
 // database enforces it; this just lets screens match.
 import { useQuery } from "../data/react";
 import { api } from "../data/api";

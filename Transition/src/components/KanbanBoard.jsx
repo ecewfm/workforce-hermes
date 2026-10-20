@@ -852,7 +852,7 @@ export default function KanbanBoard({ userRole, actualRole, userName, openTaskMo
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></svg>
           <div>
             <b>You're not on a client account yet.</b>
-            <span>{terms.label} projects show up here once an Admin+ or Manager adds you to an account (in the meantime you'll only see projects you're assigned to).</span>
+            <span>{terms.label} projects show up here once an Admin+ or Manager adds you to an account. Your other workspaces aren't affected.</span>
           </div>
         </div>
       )}
