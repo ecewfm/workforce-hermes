@@ -48,6 +48,22 @@ const SESSION_EXPIRY_MS = 7 * 60 * 60 * 1000;
 // Don't rewrite localStorage on every mousemove — at most once per minute.
 const ACTIVITY_WRITE_THROTTLE_MS = 60 * 1000;
 
+// A link to one project (?project=<id>&ws=<workspace>, e.g. from a Cliq
+// reminder) opens it once the person is in. It's kept for the session so it
+// survives the sign-in screen, and taken off the address bar right away.
+const OPEN_PROJECT_KEY = "hermes_open_project";
+try {
+  const params = new URLSearchParams(window.location.search);
+  if (params.get("project")) {
+    sessionStorage.setItem(OPEN_PROJECT_KEY, JSON.stringify({ project: params.get("project"), ws: params.get("ws") || "" }));
+    params.delete("project");
+    params.delete("ws");
+    const rest = params.toString();
+    window.history.replaceState(null, "", window.location.pathname + (rest ? `?${rest}` : "") + window.location.hash);
+  }
+} catch { /* storage blocked: the link just opens Hermes */ }
+const linkedProject = () => { try { return JSON.parse(sessionStorage.getItem(OPEN_PROJECT_KEY) || "null"); } catch { return null; } };
+
 export default function App() {
   // --- Refs ---
   const hasSetInitialView = useRef(false);
@@ -432,8 +448,10 @@ export default function App() {
     }
 
     const storedWs = localStorage.getItem("wf_workspace");
+    const linkWs = linkedProject()?.ws;
     let resolvedWs = null;
-    if (storedWs && accessible.includes(storedWs)) resolvedWs = storedWs;
+    if (linkWs && accessible.includes(linkWs)) resolvedWs = linkWs; // a project link picks its workspace
+    else if (storedWs && accessible.includes(storedWs)) resolvedWs = storedWs;
     else if (accessible.length === 1) resolvedWs = accessible[0];
 
     if (!resolvedWs) {
@@ -476,6 +494,16 @@ export default function App() {
     }
     setLoading(false);
   }, [staff, authStage, showSettings]);
+
+  // --- A project link: open that project on the board, once ---
+  useEffect(() => {
+    if (authStage !== "authenticated" || !activeWorkspace) return;
+    const link = linkedProject();
+    if (!link?.project || (link.ws && link.ws !== activeWorkspace)) return;
+    try { sessionStorage.removeItem(OPEN_PROJECT_KEY); } catch { /* ignore */ }
+    setCurrentView("kanban");
+    openTaskModal(link.project);
+  }, [authStage, activeWorkspace]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // --- Initialize notifications on authentication ---
   useEffect(() => {
