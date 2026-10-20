@@ -30,7 +30,6 @@ import SetPassword from "./components/SetPassword";
 import CustomModal from "./components/CustomModal";
 import InputModal from "./components/InputModal";
 import AnnouncementPopup from "./components/AnnouncementPopup";
-import AnnouncementComposer from "./components/AnnouncementComposer";
 import TaskNotificationPopup from "./components/TaskNotificationPopup";
 import Settings from "./components/Settings";
 import NotificationBell from "./components/NotificationBell";
@@ -137,6 +136,7 @@ export default function App() {
   }, [showAI, caddyOn, activeWorkspace]);
   const [contextMenu, setContextMenu] = useState({ visible: false, x: 0, y: 0, task: null });
   const [showSettings, setShowSettings] = useState(false);
+  const [settingsSection, setSettingsSection] = useState(null); // tab Settings opens on (Caddy)
   const [showHandbook, setShowHandbook] = useState(false);
   const [viewingStaff, setViewingStaff] = useState(null);
   // When set, the Kanban board is filtered to this person's projects (chosen from search)
@@ -761,7 +761,7 @@ export default function App() {
   }
 
   function switchView(viewId) {
-    const adminViews = ["admin", "dashboard", "announcements"];
+    const adminViews = ["admin", "dashboard"];
     if (userRole === "Programmer" && adminViews.includes(viewId)) return;
     setCurrentView(viewId);
   }
@@ -800,13 +800,14 @@ export default function App() {
       switchView("entry");
     },
     goTo: (place) => {
-      const adminOnly = { overview: "dashboard", announcements: "announcements" };
-      const views = { board: "kanban", new_task: "entry", notebook: "notebook", ...adminOnly };
+      const views = { board: "kanban", new_task: "entry", notebook: "notebook", overview: "dashboard" };
       if (place === "overview" && userRole === "Programmer") return { error: "The Overview is only in the Admin view." };
       if (place === "announcements" && !isAdminPlusOrAbove(actualRole)) return { error: "Announcements are for Admin+ and Managers only." };
       if (views[place]) { setShowAI(false); switchView(views[place]); return { done: true, place }; }
       if (place === "handbook") { setShowAI(false); setShowHandbook(true); return { done: true, place }; }
-      if (place === "settings") { setShowAI(false); setShowSettings(true); return { done: true, place }; }
+      // Announcements live in Settings → Announcements.
+      if (place === "announcements") { setShowAI(false); setSettingsSection("announcements"); setShowSettings(true); return { done: true, place: "Settings → Announcements" }; }
+      if (place === "settings") { setShowAI(false); setSettingsSection(null); setShowSettings(true); return { done: true, place }; }
       if (place === "project_links") { setShowAI(false); setShowAllProjects(true); return { done: true, place }; }
       return { error: `Unknown place "${place}".` };
     },
@@ -1204,19 +1205,6 @@ export default function App() {
               NOTEBOOK
             </div>
 
-            {isAdminPlusOrAbove(actualRole) && (
-              <div
-                className={`nav-btn ${currentView === "announcements" ? "active" : ""}`}
-                onClick={() => switchView("announcements")}
-                style={{ display: "flex", alignItems: "center", gap: 5 }}
-              >
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                  <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
-                  <path d="M13.73 21a2 2 0 0 1-3.46 0" />
-                </svg>
-                ANNOUNCEMENTS
-              </div>
-            )}
 
           </div>
         </div>
@@ -1262,9 +1250,6 @@ export default function App() {
         )}
         {currentView === "notebook" && (
           <Notebook userRole={userRole} userName={userName} showModal={showModal} showInputModal={showInputModal} />
-        )}
-        {currentView === "announcements" && isAdminPlusOrAbove(actualRole) && (
-          <AnnouncementComposer userName={userName} showModal={showModal} />
         )}
       </main>
 
@@ -1632,11 +1617,12 @@ export default function App() {
         <Settings
           userName={userName}
           userEmail={localStorage.getItem("wf_email") || ""}
-          onClose={() => setShowSettings(false)}
+          onClose={() => { setShowSettings(false); setSettingsSection(null); }}
           showModal={showModal}
           onLogout={logout}
           actualRole={actualRole}
           onViewProfile={(s) => setViewingStaff(s)}
+          initialSection={settingsSection}
         />
       )}
 

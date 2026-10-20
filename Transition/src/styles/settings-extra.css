@@ -176,3 +176,75 @@
 @media (max-width: 640px) {
   .staff-access-strip { padding-left: 0; }
 }
+
+/* ── Settings → Announcements (AnnouncementComposer.jsx) ── */
+.settings-panel .ann-panel { display: flex; flex-direction: column; gap: 12px; }
+.settings-panel .ann-composer { margin-bottom: 6px; }
+.settings-panel .ann-title { font-size: 0.95rem; font-weight: 700; }
+.settings-panel .ann-editor { border-radius: 10px; }
+.settings-panel .ann-editor .composer-editor { background: var(--color-card-bg, #fff); }
+.settings-panel .ann-toolbar-sep { width: 1px; height: 18px; margin: 0 4px; background: var(--glass-border, #e2e8f0); }
+.settings-panel .ann-editor .toolbar-btn { transition: background-color 0.15s, border-color 0.15s, color 0.15s, scale 0.2s cubic-bezier(0.34, 1.56, 0.64, 1); }
+.settings-panel .ann-editor .toolbar-btn:active { scale: 0.88; }
+.settings-panel .ann-compose-foot { display: flex; align-items: center; gap: 10px; margin-top: 14px; flex-wrap: wrap; }
+.settings-panel .ann-compose-foot .settings-btn-primary,
+.settings-panel .ann-compose-foot .settings-btn-outline { transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), scale 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.2s, background-color 0.2s, box-shadow 0.2s; }
+.settings-panel .ann-compose-foot button:active:not(:disabled) { scale: 0.95; }
+.settings-panel .ann-compose-foot button:disabled { opacity: 0.45; cursor: not-allowed; transform: none; box-shadow: none; }
+.settings-panel .ann-reach { flex: 1 1 240px; font-size: 0.76rem; line-height: 1.45; color: var(--color-text-secondary); }
+.settings-panel .ann-reach.posted { color: var(--color-accent); font-weight: 800; animation: annPosted 0.5s cubic-bezier(0.34, 1.4, 0.64, 1) both; }
+@keyframes annPosted { from { opacity: 0; transform: translateY(4px); } }
+
+.settings-panel .ann-history-head { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+.settings-panel .ann-count { font-size: 0.7rem; font-weight: 800; padding: 1px 8px; border-radius: 999px; color: #fff; background: var(--color-accent); }
+.settings-panel .ann-list { display: flex; flex-direction: column; gap: 10px; }
+.settings-panel .ann-row {
+  position: relative; display: flex; flex-direction: column; gap: 6px; padding: 14px 16px; cursor: pointer; border-radius: 14px;
+  animation: annRowIn 0.45s cubic-bezier(0.2, 0, 0, 1) backwards; animation-delay: calc(var(--i, 0) * 45ms);
+}
+.settings-panel .ann-row:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+@keyframes annRowIn { from { opacity: 0; transform: translateY(10px); } }
+.settings-panel .ann-row-top { display: flex; align-items: flex-start; gap: 10px; }
+.settings-panel .ann-row-title { flex: 1; min-width: 0; font-size: 0.92rem; font-weight: 800; color: var(--color-text-primary); overflow-wrap: anywhere; }
+.settings-panel .ann-row-delete {
+  flex-shrink: 0; width: 30px; height: 30px; border-radius: 9px; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center;
+  color: #94a3b8; background: transparent; opacity: 0.6;
+  transition: opacity 0.2s, color 0.2s, background-color 0.2s, scale 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.settings-panel .ann-row:hover .ann-row-delete { opacity: 1; }
+.settings-panel .ann-row-delete:hover { color: #e11d48; background: color-mix(in srgb, #f43f5e 12%, transparent); }
+.settings-panel .ann-row-delete:active { scale: 0.88; }
+.settings-panel .ann-row-meta { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 0.7rem; font-weight: 700; color: #94a3b8; }
+.settings-panel .ann-seen { margin-left: auto; padding: 2px 9px; border-radius: 999px; cursor: help; color: var(--color-accent); background: color-mix(in srgb, var(--color-accent) 12%, transparent); }
+.settings-panel .ann-row-body {
+  font-size: 0.8rem; line-height: 1.5; color: var(--color-text-secondary);
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.settings-panel .ann-row-body * { margin: 0; font-size: inherit; }
+.settings-panel .ann-row--loading {
+  height: 92px; border-radius: 14px; border: 1px solid var(--glass-border, #e2e8f0);
+  background: linear-gradient(90deg, var(--color-bg-subtle) 25%, color-mix(in srgb, var(--color-text-secondary) 10%, var(--color-bg-subtle)) 50%, var(--color-bg-subtle) 75%);
+  background-size: 200% 100%; animation: annShimmer 1.2s linear infinite;
+}
+@keyframes annShimmer { to { background-position: -200% 0; } }
+.settings-panel .ann-empty {
+  padding: 22px; text-align: center; font-size: 0.85rem; font-style: italic; color: var(--color-text-secondary);
+  background: var(--color-bg-subtle); border: 1px dashed var(--glass-border, #e2e8f0); border-radius: var(--radius-md, 12px);
+}
+
+/* The announcement / draft preview (rendered on <body>, above Settings) */
+.ann-view-overlay .ann-view { width: 92%; max-width: 760px; max-height: 88vh; display: flex; flex-direction: column; }
+.ann-view .announcement-popup-body { overflow-y: auto; min-height: 120px; font-size: 0.92rem; }
+.ann-view .announcement-popup-title { font-size: 1.35rem; }
+.ann-view .announcement-popup-footer { gap: 12px; flex-wrap: wrap; }
+.ann-view .announcement-popup-meta { font-size: 0.72rem; }
+.ann-view .announcement-dismiss-btn:disabled { opacity: 0.6; cursor: progress; }
+.ann-seen-by { display: grid; gap: 8px; padding: 12px 20px 16px; border-top: 1px solid var(--glass-border, #f1f5f9); }
+.ann-seen-by-label { font-size: 0.62rem; font-weight: 900; letter-spacing: 1px; text-transform: uppercase; color: var(--color-text-secondary); }
+.ann-seen-chips { display: flex; flex-wrap: wrap; gap: 6px; max-height: 96px; overflow-y: auto; }
+.ann-seen-chip { font-size: 0.72rem; font-weight: 700; padding: 3px 10px; border-radius: 999px; color: var(--color-text-primary); background: var(--color-bg-subtle); border: 1px solid var(--glass-border, #e2e8f0); }
+.ann-seen-none { font-size: 0.8rem; color: #94a3b8; font-style: italic; }
+
+@media (prefers-reduced-motion: reduce) {
+  .settings-panel .ann-row, .settings-panel .ann-reach.posted, .settings-panel .ann-row--loading { animation: none; }
+}

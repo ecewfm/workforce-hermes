@@ -15,6 +15,7 @@ import { COLUMN_COLOR_PRESETS, ARCHIVED_STATUS, defaultColumnsFor, resolveColumn
 import { getGeminiModels, isCaddyEnabled, setCaddyEnabled } from "../utils/aiConfig";
 import { getFxPrefs, setFxPref } from "../utils/fxPrefs";
 import { termsFor, usesAccounts, roleLabel } from "../utils/workspaceTerms";
+import AnnouncementComposer from "./AnnouncementComposer";
 import "../styles/settings-extra.css";
 
 const ACCENT_COLORS = [
@@ -60,14 +61,17 @@ function SectionIcon({ icon, size = 18 }) {
       return (<svg viewBox="0 0 24 24" {...s}><polyline points="21 8 21 21 3 21 3 8" /><rect x="1" y="3" width="22" height="5" /><line x1="10" y1="12" x2="14" y2="12" /></svg>);
     case "target":
       return (<svg viewBox="0 0 24 24" {...s}><circle cx="12" cy="12" r="10" /><circle cx="12" cy="12" r="6" /><circle cx="12" cy="12" r="2" /></svg>);
+    case "megaphone":
+      return (<svg viewBox="0 0 24 24" {...s}><path d="M3 11v2a1 1 0 0 0 1 1h2l5 4V6L6 10H4a1 1 0 0 0-1 1z" /><path d="M15.5 8.5a5 5 0 0 1 0 7" /><path d="M18.5 5.5a9 9 0 0 1 0 13" /></svg>);
     case "briefcase":
       return (<svg viewBox="0 0 24 24" {...s}><rect x="2" y="7" width="20" height="14" rx="2" ry="2" /><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" /></svg>);
     default: return null;
   }
 }
 
-export default function Settings({ userName, userEmail, onClose, showModal, onLogout, actualRole, onViewProfile }) {
-  const [activeSection, setActiveSection] = useState("appearance");
+export default function Settings({ userName, userEmail, onClose, showModal, onLogout, actualRole, onViewProfile, initialSection }) {
+  // Caddy can open Settings on a given tab (e.g. Announcements).
+  const [activeSection, setActiveSection] = useState(initialSection || "appearance");
   const [hasChanges, setHasChanges] = useState(false);
   // Admin+ and Manager share the elevated settings (workspace defaults, staff management)
   const isAdminPlus = isAdminPlusOrAbove(actualRole);
@@ -93,6 +97,7 @@ export default function Settings({ userName, userEmail, onClose, showModal, onLo
     return isAdminPlus
       ? [
           ...BASE_SECTIONS.filter(s => s.id !== "archive"),
+          { id: "announcements", label: "Announcements", icon: "megaphone" },
           { id: "workspace", label: "Workspace Defaults", icon: "target" },
           ...accountsSection,
           { id: "staff", label: "Staff Management", icon: "shield" },
@@ -561,7 +566,7 @@ export default function Settings({ userName, userEmail, onClose, showModal, onLo
   useEffect(() => {
     const onKey = (e) => {
       if (e.key !== "Escape" || e.defaultPrevented) return;
-      if (document.querySelector(".custom-modal-overlay, .ui-popover, .profile-popover-overlay")) return;
+      if (document.querySelector(".custom-modal-overlay, .ui-popover, .profile-popover-overlay, .announcement-overlay")) return;
       cancelRef.current();
     };
     window.addEventListener("keydown", onKey);
@@ -906,6 +911,18 @@ export default function Settings({ userName, userEmail, onClose, showModal, onLo
                 </div>
               </div>
             </section>
+
+            {/* ─── ANNOUNCEMENTS (Admin+ only) ─── */}
+            {isAdminPlus && (
+              <section id="settings-section-announcements" className="settings-section" style={{ display: activeSection === "announcements" ? undefined : "none" }}>
+                <div className="settings-section-header"><SectionIcon icon="megaphone" size={20} /><h3>Announcements</h3></div>
+                <p className="settings-section-desc">
+                  Post a message to everyone in {terms.label}. It pops up once for each person, and you can see who has read it.
+                  Other workspaces keep their own announcements.
+                </p>
+                <AnnouncementComposer showModal={showModal} staff={allStaff || []} />
+              </section>
+            )}
 
             {/* ─── WORKSPACE DEFAULTS (Admin+ only) ─── */}
             {isAdminPlus && (
