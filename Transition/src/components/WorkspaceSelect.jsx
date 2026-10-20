@@ -187,10 +187,9 @@ export default function WorkspaceSelect({ workspaces = [], userName = "", onSele
       <div className="header-box" style={{ marginBottom: 30, opacity: transitioningTo ? 0 : 1, transition: "opacity 0.4s ease" }}>
         <img src="https://i.imgur.com/BRd5lrB.png" alt="ECE Logo" className="header-logo" />
         <div className="header-text-content">
-          <h1>WORKFORCE HERMES</h1>
+          <h1>HERMES</h1>
           <p>ECE Project Database · Workforce · Operations · Executives</p>
         </div>
-        <img src="https://i.imgur.com/ycmU6oP.png" alt="WFM Logo" className="header-logo" />
       </div>
 
       {/* No wrapper card — the title and cards float directly on the background. */}

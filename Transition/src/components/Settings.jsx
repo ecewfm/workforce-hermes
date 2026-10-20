@@ -607,7 +607,7 @@ export default function Settings({ userName, userEmail, onClose, showModal, onLo
                 <SectionIcon icon={sec.icon} size={18} /><span>{sec.label}</span>
               </button>
             ))}
-            <div className="settings-sidebar-footer"><div className="settings-sidebar-version">Workforce Hermes v1.0</div></div>
+            <div className="settings-sidebar-footer"><div className="settings-sidebar-version">Hermes v1.0</div></div>
           </nav>
 
           {/* Content */}
@@ -990,7 +990,7 @@ export default function Settings({ userName, userEmail, onClose, showModal, onLo
                   <label className="settings-field-label">{terms.tech ? "Full Production Deadline" : "Key Target Date"}</label>
                   <p className="settings-field-hint">
                     {terms.tech
-                      ? "The target date for Workforce Hermes to be deployed in full production."
+                      ? "The target date for Hermes to be deployed in full production."
                       : `The date the ${terms.label} team is working toward.`}
                     {" "}Shown at the top of the Overview.
                   </p>

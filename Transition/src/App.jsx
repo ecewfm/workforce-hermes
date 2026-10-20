@@ -207,7 +207,7 @@ export default function App() {
         { duration: 380, delay: 170 + i * 45, easing: "cubic-bezier(0.2, 0, 0, 1)", fill: "backwards" },
       ));
   }, [profileOpen]);
-  // Workspace picker (click the WORKFORCE HERMES title): the cards deal out of
+  // Workspace picker (click the HERMES title): the cards deal out of
   // the title, spinning into place, and fly back into it when it closes.
   const wsTitleRef = useRef(null);
   const wsPickerRef = useRef(null);
@@ -892,10 +892,9 @@ export default function App() {
         <div className="header-box" style={{ marginBottom: 30 }}>
           <img src="https://i.imgur.com/BRd5lrB.png" alt="ECE Logo" className="header-logo" />
           <div className="header-text-content">
-            <h1>WORKFORCE HERMES</h1>
+            <h1>HERMES</h1>
             <p>ECE Project Database · Workforce · Operations · Executives</p>
           </div>
-          <img src="https://i.imgur.com/ycmU6oP.png" alt="WFM Logo" className="header-logo" />
         </div>
         <div style={{ background: "white", padding: 40, borderRadius: 24, boxShadow: "0 10px 25px rgba(0,0,0,0.1)", maxWidth: 420, textAlign: "center" }}>
           <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="var(--color-accent)" strokeWidth="2" style={{ marginBottom: 20 }}>
@@ -1114,10 +1113,11 @@ export default function App() {
               onClick={openWorkspacePicker}
               title={myWorkspaces.length > 1 ? "Switch workspace" : ""}
             >
-              <h1 style={{ fontSize: "1.6rem", letterSpacing: "-1.2px" }}>WORKFORCE HERMES</h1>
+              <h1 style={{ fontSize: "1.6rem", letterSpacing: "-1.2px" }}>HERMES</h1>
               <p style={{ fontSize: "0.75rem", letterSpacing: "0.8px", color: "var(--color-text-secondary)", fontWeight: 700 }}>{terms.appSubtitle}</p>
             </div>
-            <img src="https://i.imgur.com/ycmU6oP.png" alt="WFM Logo" className="header-logo" style={{ height: "45px" }} />
+            {/* Workforce Management's own logo — only inside the Workforce workspace */}
+            {terms.tech && <img src="https://i.imgur.com/ycmU6oP.png" alt="WFM Logo" className="header-logo" style={{ height: "45px" }} />}
             <div style={{ width: "1px", height: "30px", background: "var(--glass-border)", margin: "0 10px" }}></div>
             <button
               className="btn-project-consolidation"
@@ -1956,7 +1956,7 @@ export default function App() {
         </div>
       )}
 
-      {/* Workspace Picker — opened by clicking the WORKFORCE HERMES title.
+      {/* Workspace Picker — opened by clicking the HERMES title.
           Big cards float on a hard-blurred, dimmed backdrop (no wrapper card). */}
       {showWorkspacePicker && (
         <div

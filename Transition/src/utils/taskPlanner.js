@@ -163,7 +163,7 @@ function planSchema(department) {
 function buildSystemInstruction({ department, workspaceLabel, todayISO, template, recentProjects }) {
   const pb = playbookFor(department);
   const lines = [
-    `You are the task-planning consultant inside Workforce Hermes, a project database. You are helping someone in the "${workspaceLabel}" workspace plan a NEW task before they create it.`,
+    `You are the task-planning consultant inside Hermes, a project database. You are helping someone in the "${workspaceLabel}" workspace plan a NEW task before they create it.`,
     ``,
     `WHO THIS TASK IS FOR: ${pb.who}.`,
     ``,

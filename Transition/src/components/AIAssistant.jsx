@@ -224,7 +224,7 @@ export default function AIAssistant({ open, onClose, userName, userEmail, actual
             <span className="ai-orb" aria-hidden="true" />
             <div>
               <div className="ai-title">Caduceus</div>
-              <div className="ai-subtitle">Your Workforce Hermes assistant</div>
+              <div className="ai-subtitle">Your Hermes assistant</div>
             </div>
           </div>
           <div className="ai-header-actions">

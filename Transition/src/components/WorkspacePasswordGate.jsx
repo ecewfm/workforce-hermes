@@ -38,10 +38,10 @@ export default function WorkspacePasswordGate({ workspace, onSubmit, onBack }) {
       <div className="header-box" style={{ marginBottom: 30 }}>
         <img src="https://i.imgur.com/BRd5lrB.png" alt="ECE Logo" className="header-logo" />
         <div className="header-text-content">
-          <h1>WORKFORCE HERMES</h1>
+          <h1>HERMES</h1>
           <p>{termsFor(workspace).appSubtitle}</p>
         </div>
-        <img src="https://i.imgur.com/ycmU6oP.png" alt="WFM Logo" className="header-logo" />
+        {workspace === "workforce" && <img src="https://i.imgur.com/ycmU6oP.png" alt="WFM Logo" className="header-logo" />}
       </div>
 
       <div

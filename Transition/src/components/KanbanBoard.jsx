@@ -28,7 +28,7 @@ const isTaskOverdue = (t) => {
   const m = milestones[firstIncompleteIdx];
   if (!m || !m.days) return false;
   const anchor = milestoneAnchor(t, firstIncompleteIdx);
-  if (!anchor) return false; // not started (To Do) → never overdue
+  if (!anchor) return false; // never started (still in To Do) → never overdue
   const elapsedDays = (Date.now() - anchor) / DAY_MS;
   return elapsedDays > m.days;
 };
@@ -477,7 +477,7 @@ export default function KanbanBoard({ userRole, actualRole, userName, openTaskMo
     // at index `doneM` is the current one in progress.
     const wCurrentDotIdx = doneM < totalM ? doneM : -1;
     const wDaysLabel =
-      (t.status || "").toLowerCase() === "todo" ? "Starts when work begins"
+      (t.status || "").toLowerCase() === "todo" && !t.pendingStartedAt ? "Starts when work begins"
       : completionLeft === null ? "No deadline set"
       : completionLeft < 0 ? `${Math.abs(completionLeft)} days overdue`
       : completionLeft === 0 ? "Due today"
@@ -706,7 +706,7 @@ export default function KanbanBoard({ userRole, actualRole, userName, openTaskMo
                   if (m.completed) status = "completed";
                   else if (idx === firstIncompleteIdx) status = "active";
 
-                  // Check if overdue (no countdown until the project leaves To Do)
+                  // Check if overdue (no countdown until the project first leaves To Do)
                   let isOverdue = false;
                   if (status === "active" && m.days > 0) {
                     const anchor = milestoneAnchor(t, idx);

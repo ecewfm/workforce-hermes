@@ -119,10 +119,9 @@ export default function Login({ onLogin, externalError = "", onResetSuccess, onN
       <div className="header-box" style={{ marginBottom: 30 }}>
         <img src="https://i.imgur.com/BRd5lrB.png" alt="ECE Logo" className="header-logo" />
         <div className="header-text-content">
-          <h1>WORKFORCE HERMES</h1>
+          <h1>HERMES</h1>
           <p>ECE Project Database · Workforce · Operations · Executives</p>
         </div>
-        <img src="https://i.imgur.com/ycmU6oP.png" alt="WFM Logo" className="header-logo" />
       </div>
       <div className="login-box">
         {mode === "email" && (

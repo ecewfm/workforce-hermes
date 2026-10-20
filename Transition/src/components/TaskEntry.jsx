@@ -84,6 +84,11 @@ export default function TaskEntry({ staff, userRole, actualRole, userName, onCre
   const [draftTitle, setDraftTitle] = useState("");
   const [draftDesc, setDraftDesc] = useState("");
   const [draftStart, setDraftStart] = useState("");
+  // The review panel mirrors the title/description as they're typed.
+  const [titlePreview, setTitlePreview] = useState("");
+  const [descPreview, setDescPreview] = useState("");
+  useEffect(() => { setTitlePreview(draftTitle); }, [draftTitle]);
+  useEffect(() => { setDescPreview(draftDesc); }, [draftDesc]);
   const formRef = useRef(null);
   const milestonesTouched = useRef(false);
 
@@ -158,6 +163,8 @@ export default function TaskEntry({ staff, userRole, actualRole, userName, onCre
 
   function resetForm() {
     formRef.current?.reset();
+    setTitlePreview("");
+    setDescPreview("");
     milestonesTouched.current = false;
     setMilestones(templateMilestones.map((m) => ({ ...m })));
     setSelectedAssignees(new Set());
@@ -262,8 +269,26 @@ export default function TaskEntry({ staff, userRole, actualRole, userName, onCre
     });
   }
 
-  const totalDays = milestones.reduce((sum, m) => sum + m.days, 0);
+  const totalDays = milestones.reduce((sum, m) => sum + (Number(m.days) || 0), 0);
   const months = (totalDays / 30).toFixed(1);
+  // Expected deadline = start date + every milestone's days (if work starts that day).
+  const startAt = /^\d{4}-\d{2}-\d{2}$/.test(draftStart) ? new Date(`${draftStart}T00:00:00`) : null;
+  const plusDays = (d, n) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
+  const expectedDeadline = startAt ? plusDays(startAt, totalDays) : null;
+  const fmtLong = (d) => d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric" });
+  const fmtShort = (d) => d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  let runningDays = 0;
+  const milestoneDue = milestones.map((m) => {
+    runningDays += Number(m.days) || 0;
+    return startAt ? plusDays(startAt, runningDays) : null;
+  });
+  const accountName = (accounts || []).find((a) => a._id === accountId)?.name || "";
+  const docCount = documents.filter((d) => (d.url || "").trim()).length;
+  const stillNeeded = [
+    !titlePreview.trim() && "a title",
+    selectedAssignees.size === 0 && "an assignee",
+    !startAt && "a start date",
+  ].filter(Boolean);
 
   if (step === "consult") {
     return (
@@ -297,17 +322,17 @@ export default function TaskEntry({ staff, userRole, actualRole, userName, onCre
                 </button>
               )}
               <h1 style={{ fontWeight: 900, margin: 0, fontSize: "2rem", color: "var(--color-text-primary)" }}>Final touches</h1>
-              <p style={{ color: "var(--color-text-secondary)", fontSize: "0.9rem", marginTop: 5 }}>Set assignees and a start date, tweak anything, then create the task</p>
+              <p style={{ color: "var(--color-text-secondary)", fontSize: "0.9rem", marginTop: 5 }}>Set assignees and a start date, tweak anything, then check the review and create it</p>
             </div>
 
-            <form ref={formRef} onSubmit={handleSubmit}>
+            <form ref={formRef} id="task-entry-form" onSubmit={handleSubmit}>
               <div style={{ marginBottom: 30 }}>
                 <h3 style={{ fontWeight: 800, textTransform: "uppercase", fontSize: "0.85rem", color: "var(--color-text-secondary)", borderBottom: "1px solid var(--color-bg-primary)", paddingBottom: 10, marginBottom: 20 }}>
                   Task Information
                 </h3>
                 <div className="form-group">
                   <label className="form-label">Task Title *</label>
-                  <input type="text" id="task-title" className="form-input" placeholder="Project Name" defaultValue={draftTitle} required />
+                  <input type="text" id="task-title" className="form-input" placeholder="Project Name" defaultValue={draftTitle} required onInput={(e) => setTitlePreview(e.target.value)} />
                 </div>
                 <div className="form-group">
                   <label className="form-label">Assignees *</label>
@@ -374,10 +399,16 @@ export default function TaskEntry({ staff, userRole, actualRole, userName, onCre
                 <div className="form-group">
                   <label className="form-label">Start Date *</label>
                   <DatePicker id="task-date" value={draftStart} onChange={setDraftStart} placeholder="Pick a start date" required />
+                  <div className={`entry-start-deadline ${expectedDeadline ? "" : "empty"}`}>
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6" /></svg>
+                    {expectedDeadline
+                      ? <>Expected deadline <b>{fmtLong(expectedDeadline)}</b> · {totalDays} days</>
+                      : <>Pick a start date to see the expected deadline ({totalDays} days of work)</>}
+                  </div>
                 </div>
                 <div className="form-group">
                   <label className="form-label">Description</label>
-                  <textarea id="task-desc" className="form-input" style={{ height: 80 }} placeholder="Details..." defaultValue={draftDesc}></textarea>
+                  <textarea id="task-desc" className="form-input" style={{ height: 80 }} placeholder="Details..." defaultValue={draftDesc} onInput={(e) => setDescPreview(e.target.value)}></textarea>
                 </div>
                 {!terms.tech && (
                   <div className="form-group">
@@ -409,6 +440,9 @@ export default function TaskEntry({ staff, userRole, actualRole, userName, onCre
                     <div key={idx} className="milestone-row">
                       <input type="text" className="form-input" value={m.name} onChange={(e) => updateMilestone(idx, "name", e.target.value)} placeholder="Milestone Name" />
                       <input type="number" className="form-input" value={m.days} onChange={(e) => updateMilestone(idx, "days", e.target.value)} placeholder="Days" />
+                      <span className={`milestone-row-due ${milestoneDue[idx] ? "" : "empty"}`} title={milestoneDue[idx] ? "Due if work starts on the start date" : "Pick a start date"}>
+                        {milestoneDue[idx] ? fmtShort(milestoneDue[idx]) : "—"}
+                      </span>
                       <button type="button" className="btn-remove-milestone" onClick={() => removeMilestoneRow(idx)}>×</button>
                     </div>
                   ))}
@@ -418,34 +452,55 @@ export default function TaskEntry({ staff, userRole, actualRole, userName, onCre
 
               <div style={{ display: "flex", justifyContent: "center", gap: 15, marginTop: 40 }}>
                 <button type="button" className="btn-secondary" onClick={resetForm}>Clear</button>
-                {accUi.locked && (
-                  <p className="account-locked-inline">You're not on a client account yet, so you can't start a {terms.label} project. Ask an Admin+ or Manager to add you to one.</p>
-                )}
-                <button type="submit" className="btn-primary" style={{ width: "auto", padding: "12px 40px" }} disabled={submitting || accUi.locked}>
-                  {submitting ? "CREATING..." : "Create Task"}
-                </button>
+                <span className="entry-review-pointer">Review &amp; create on the right →</span>
               </div>
             </form>
           </div>
 
-          {/* Right: Guide */}
-          <div className="section-card">
-            <h2 style={{ fontWeight: 900, marginTop: 0, textTransform: "uppercase", fontSize: "1.2rem", marginBottom: 10 }}>Milestone Overview</h2>
-            <p style={{ fontSize: "0.72rem", color: "var(--color-text-secondary)", margin: "0 0 12px 0" }}>
-              This task's milestones and total timeline. Edit any of them on the left before creating.
-            </p>
-            <div style={{ height: 2, background: "linear-gradient(to right, var(--color-accent), transparent)", marginBottom: 25 }}></div>
-            <div className="guide-list">
+          {/* Right: Review — everything about the project at a glance, then Create */}
+          <div className="section-card entry-review">
+            <div className="entry-review-eyebrow">Review</div>
+            <h2 className={`entry-review-title ${titlePreview.trim() ? "" : "empty"}`}>{titlePreview.trim() || "Untitled project"}</h2>
+            {descPreview.trim() && <p className="entry-review-desc">{descPreview.trim()}</p>}
+
+            <div className={`entry-deadline ${expectedDeadline ? "" : "empty"}`}>
+              <div className="entry-deadline-cap">Expected deadline</div>
+              <div className="entry-deadline-date" key={expectedDeadline ? expectedDeadline.getTime() : "none"}>{expectedDeadline ? fmtLong(expectedDeadline) : "Pick a start date"}</div>
+              <div className="entry-deadline-sub">
+                {startAt ? <>Starts {fmtLong(startAt)} · </> : null}{totalDays} days (~{months} months)
+              </div>
+            </div>
+
+            <dl className="entry-review-facts">
+              <div>
+                <dt>{selectedAssignees.size === 1 ? "Assignee" : "Assignees"}</dt>
+                <dd>{selectedAssignees.size ? Array.from(selectedAssignees).join(", ") : <em>None yet</em>}</dd>
+              </div>
+              {accUi.show && (
+                <div><dt>Account</dt><dd>{accountName || <em>No account</em>}</dd></div>
+              )}
+              {!terms.tech && (
+                <div><dt>Documents</dt><dd>{docCount ? `${docCount} attached` : <em>None</em>}</dd></div>
+              )}
+            </dl>
+
+            <div className="entry-review-cap">Milestones · {milestones.length}</div>
+            <ol className="guide-list entry-review-ms">
               {milestones.map((m, idx) => (
-                <div key={idx} className="guide-item">
+                <li key={idx} className="guide-item">
+                  <span className="entry-ms-num">{idx + 1}</span>
                   <div className="guide-label">
-                    M{idx + 1}: {m.name || "Unnamed Milestone"}
+                    {m.name || "Unnamed Milestone"}
                     {m.hint && <div className="guide-hint">{m.hint}</div>}
                   </div>
-                  <div className="guide-days">({m.days} days)</div>
-                </div>
+                  <div className="entry-ms-when">
+                    <span className="guide-days">{m.days}d</span>
+                    {milestoneDue[idx] && <span className="entry-ms-due">{fmtShort(milestoneDue[idx])}</span>}
+                  </div>
+                </li>
               ))}
-            </div>
+            </ol>
+
             {(planNotes.watchOuts.length > 0 || planNotes.assumptions.length > 0) && (
               <div className="entry-plan-notes">
                 {planNotes.watchOuts.length > 0 && (
@@ -457,16 +512,24 @@ export default function TaskEntry({ staff, userRole, actualRole, userName, onCre
                 {planNotes.assumptions.length > 0 && (
                   <div className="entry-plan-block assume">
                     <div className="entry-plan-title">Assumptions</div>
-                    <ul>{planNotes.assumptions.map((a, i) => <li key={i}>{a}</li>)}</ul>
+                    <ul>{planNotes.assumptions.map((x, i) => <li key={i}>{x}</li>)}</ul>
                   </div>
                 )}
                 <div className="entry-plan-foot">Saved with the project — you'll find them in its task view.</div>
               </div>
             )}
-            <div className="timeline-summary-box">
-              <div style={{ fontWeight: 800, color: "var(--color-accent)", fontSize: "0.9rem" }}>
-                Total Guided Timeline: {totalDays} Days (~{months} Months)
-              </div>
+
+            <div className="entry-review-foot">
+              {accUi.locked ? (
+                <p className="account-locked-inline">You're not on a client account yet, so you can't start a {terms.label} project. Ask an Admin+ or Manager to add you to one.</p>
+              ) : stillNeeded.length > 0 ? (
+                <p className="entry-still-needed">Still needed: {stillNeeded.join(", ")}.</p>
+              ) : (
+                <p className="entry-ready">Looks good — ready to create.</p>
+              )}
+              <button type="submit" form="task-entry-form" className="btn-primary entry-create" disabled={submitting || accUi.locked}>
+                {submitting ? "CREATING..." : "Create Task"}
+              </button>
             </div>
           </div>
         </div>

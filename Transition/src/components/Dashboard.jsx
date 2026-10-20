@@ -291,7 +291,7 @@ export default function Dashboard({ onShowAllLinks, actualRole, userName, openTa
               <div className="deadline-hero-date">{fmtDate(prodDeadline)}</div>
               <div className="deadline-hero-sub">
                 {tech
-                  ? "Target date for Workforce Hermes to be fully deployed in production."
+                  ? "Target date for Hermes to be fully deployed in production."
                   : `The date the ${terms.label} team is working toward.`}
               </div>
             </div>
@@ -590,7 +590,7 @@ export default function Dashboard({ onShowAllLinks, actualRole, userName, openTa
           {tech ? (
             <div style={{ color: "var(--color-text-secondary)", fontSize: "0.9rem", lineHeight: 1.6 }}>
               <p style={{ marginBottom: 10 }}>
-                <strong>Workforce Hermes</strong> is the central hub for managing team workload, monitoring project development phases, and maintaining administrative control.
+                <strong>Hermes</strong> is the central hub for managing team workload, monitoring project development phases, and maintaining administrative control.
               </p>
               <p>
                 Use the navigation above to switch between tracking active engineering <strong>Tasks</strong>, managing <strong>Staff</strong> roles and access, taking notes in the <strong>Notebook</strong>, or broadcasting updates via <strong>Announcements</strong>.

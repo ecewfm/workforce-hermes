@@ -19,8 +19,10 @@ export function fmtDate(ts) {
 
 /**
  * The timestamp a milestone's countdown starts from:
- *   • While the project is still in "To Do" → null (the clock hasn't started;
- *     project creation must NOT begin the countdown).
+ *   • A project that has never left "To Do" → null (the clock hasn't started;
+ *     project creation must NOT begin the countdown). Once it has been moved to
+ *     Pending (t.pendingStartedAt is set), the clock keeps running even if it's
+ *     moved back to To Do.
  *   • First milestone → when the project entered "Pending" (t.pendingStartedAt);
  *     legacy projects with no such stamp fall back to t.lastUpdated.
  *   • Later milestones → when the PREVIOUS milestone was completed (so each
@@ -28,7 +30,7 @@ export function fmtDate(ts) {
  * Returns null when no start time is known.
  */
 export function milestoneAnchor(t, idx) {
-  if ((t.status || "").toLowerCase() === "todo") return null;
+  if ((t.status || "").toLowerCase() === "todo" && !t.pendingStartedAt) return null;
   const ms = t.milestones || [];
   const projectStart = t.pendingStartedAt || t.lastUpdated || null;
   if (idx <= 0) return projectStart;

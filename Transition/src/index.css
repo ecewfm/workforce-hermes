@@ -1,5 +1,5 @@
 /* ============================================================
-   WORKFORCE HERMES — Full CSS (ported from AppScript CSS.html)
+   HERMES — Full CSS (ported from AppScript CSS.html)
    ============================================================ */
 
 :root {
@@ -8746,7 +8746,7 @@ header .header-box .btn-project-consolidation { white-space: nowrap; }
   header .header-box img[alt="ECE Logo"] { display: none; }
 }
 
-/* The WORKFORCE HERMES title opens the workspace picker — it reacts like a button. */
+/* The HERMES title opens the workspace picker — it reacts like a button. */
 .header-text-content.can-switch { position: relative; transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1); }
 .header-text-content.can-switch h1 { transition: color 0.2s ease, letter-spacing 0.35s cubic-bezier(0.34, 1.56, 0.64, 1); }
 .header-text-content.can-switch::after {
