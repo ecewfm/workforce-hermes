@@ -248,3 +248,14 @@
 @media (prefers-reduced-motion: reduce) {
   .settings-panel .ann-row, .settings-panel .ann-reach.posted, .settings-panel .ann-row--loading { animation: none; }
 }
+
+/* ── Settings → Notifications: the Cliq reminders switch ── */
+.settings-panel .cliq-reminders-card .cliq-status {
+  display: inline-flex; align-items: center; gap: 7px; margin-top: 8px; font-size: 0.74rem; font-weight: 700;
+  color: var(--color-text-secondary);
+}
+.settings-panel .cliq-reminders-card .cliq-status::before { content: ""; width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; background: #94a3b8; }
+.settings-panel .cliq-reminders-card .cliq-status.on::before { background: var(--color-accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 22%, transparent); }
+.settings-panel .cliq-reminders-card .cliq-status.off { color: #b45309; }
+.settings-panel .cliq-reminders-card .cliq-status.off::before { background: #f59e0b; }
+.settings-panel .cliq-reminders-card .toggle-switch input:disabled + .toggle-slider { opacity: 0.6; cursor: progress; }

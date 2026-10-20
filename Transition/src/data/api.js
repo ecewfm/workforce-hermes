@@ -229,6 +229,12 @@ export const api = {
     takeIdea: mutation("notebook.takeIdea", ["notebook_ideas", ...TASK_TABLES], (a) => rpc("take_idea", { p_idea_id: a.ideaId, p_taker_name: a.takerName || null, p_start_date: a.startDate || null })),
   },
 
+  // ── Cliq reminders (Admin+ / Managers) ───────────────────────────────────
+  cliq: {
+    getReminders: query("cliq.getReminders", ["cliq_settings"], () => rpc("get_cliq_reminders", {})),
+    setReminders: mutation("cliq.setReminders", ["cliq_settings"], ({ enabled }) => rpc("set_cliq_reminders", { p_enabled: !!enabled })),
+  },
+
   // ── Announcements ─────────────────────────────────────────────────────────
   announcements: {
     getAnnouncements: query("announcements.getAnnouncements", ["announcements", "announcement_views"], ({ workspace }) =>

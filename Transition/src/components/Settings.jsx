@@ -486,6 +486,29 @@ export default function Settings({ userName, userEmail, onClose, showModal, onLo
 
   // --- Notifications state ---
   const [notificationsEnabled, setNotificationsEnabled] = useState(saved.notificationsEnabled);
+  // Cliq reminders (Admin+ / Managers): one server-side switch for every workspace, saved on click.
+  const cliqReminders = useQuery(api.cliq.getReminders, isAdminPlus ? {} : "skip");
+  const setCliqReminders = useMutation(api.cliq.setReminders);
+  const [cliqSaving, setCliqSaving] = useState(false);
+  async function toggleCliqReminders(enabled) {
+    setCliqSaving(true);
+    try {
+      await setCliqReminders({ enabled });
+      showModal({
+        title: enabled ? "Cliq reminders are on" : "Cliq reminders are off",
+        message: enabled
+          ? "Owners and Managers get their late-project reminders on Cliq again, starting the next weekday at 9:00 AM."
+          : "Nobody gets Cliq reminders until this is turned back on. The in-app notifications aren't affected.",
+        type: "success",
+      });
+    } catch (err) {
+      showModal({ title: "Couldn't change it", message: err.message || "Please try again.", type: "alert" });
+    } finally {
+      setCliqSaving(false);
+    }
+  }
+  const fmtDay = (ms) => new Date(ms).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+  const fmtTime = (ms) => new Date(ms).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
 
   const avatarInputRef = useRef(null);
   const markChanged = () => setHasChanges(true);
@@ -910,6 +933,40 @@ export default function Settings({ userName, userEmail, onClose, showModal, onLo
                   <label className="toggle-switch large"><input type="checkbox" checked={notificationsEnabled} onChange={(e) => { setNotificationsEnabled(e.target.checked); markChanged(); }} /><span className="toggle-slider" /></label>
                 </div>
               </div>
+
+              {isAdminPlus && (
+                <div className="settings-card cliq-reminders-card">
+                  <div className="settings-toggle-row">
+                    <div className="toggle-info">
+                      <span className="toggle-label master">Cliq reminders for late projects</span>
+                      <span className="toggle-desc">
+                        Weekdays at 9:00 AM (Manila), Hermes messages people on Zoho Cliq: each project owner about their projects that are
+                        overdue or due in the next 3 days, and each Manager about every overdue project. One switch for every workspace;
+                        it saves as soon as you flip it.
+                      </span>
+                      {cliqReminders && (
+                        <span className={`cliq-status ${cliqReminders.enabled ? "on" : "off"}`}>
+                          {!cliqReminders.enabled
+                            ? `Off${cliqReminders.updatedBy ? ` since ${fmtDay(cliqReminders.updatedAt)} (${cliqReminders.updatedBy})` : ""}. Nobody gets Cliq reminders until it's turned back on.`
+                            : cliqReminders.lastRun
+                              ? `Last sent ${fmtDay(cliqReminders.lastRun.at)} at ${fmtTime(cliqReminders.lastRun.at)} to ${cliqReminders.lastRun.sent} ${cliqReminders.lastRun.sent === 1 ? "person" : "people"}${cliqReminders.lastRun.failed ? ` (${cliqReminders.lastRun.failed} couldn't be reached on Cliq)` : ""}.`
+                              : "On. The first reminders go out the next weekday at 9:00 AM."}
+                        </span>
+                      )}
+                    </div>
+                    <label className="toggle-switch large">
+                      <input
+                        type="checkbox"
+                        aria-label="Cliq reminders for late projects"
+                        checked={cliqReminders?.enabled ?? true}
+                        disabled={cliqReminders === undefined || cliqSaving}
+                        onChange={(e) => toggleCliqReminders(e.target.checked)}
+                      />
+                      <span className="toggle-slider" />
+                    </label>
+                  </div>
+                </div>
+              )}
             </section>
 
             {/* ─── ANNOUNCEMENTS (Admin+ only) ─── */}
