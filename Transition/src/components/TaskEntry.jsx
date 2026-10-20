@@ -7,6 +7,7 @@ import { WORKSPACE_META, isInDepartment } from "../utils/departments";
 import ConsultPanel from "./ConsultPanel";
 import Select from "./ui/Select";
 import DatePicker from "./ui/DatePicker";
+import MultiSelect from "./ui/MultiSelect";
 import { useOutsideClose } from "./ui/Popover";
 import { isCaddyEnabled } from "../utils/aiConfig";
 import { termsFor } from "../utils/workspaceTerms";
@@ -59,7 +60,8 @@ export default function TaskEntry({ staff, userRole, actualRole, userName, onCre
       const newTask = {
         _id: "optimistic-task-" + Date.now(),
         ...args,
-        status: "todo",
+        // Starting today (or earlier) → it goes straight to Pending (the server decides for real).
+        status: args.startDate && args.startDate <= new Date().toLocaleDateString("en-CA") ? "pending" : "todo",
         completedMilestones: 0,
         notesCount: 0,
         featuresCount: 0,
@@ -80,7 +82,11 @@ export default function TaskEntry({ staff, userRole, actualRole, userName, onCre
   const [submitting, setSubmitting] = useState(false);
   // Two-step wizard: AI plans first ("consult"), then the prefilled details
   // form ("form"). If Caddy is off, jump straight to the manual form.
+  // "consult" (AI plan) → "review" → create.  Skip AI → "form" (with a review column).
   const [step, setStep] = useState(() => (isCaddyEnabled() ? "consult" : "form"));
+  // The planner stays mounted behind the review/form so "Back to the plan"
+  // keeps it; bumping this key gives a fresh planner after a reset.
+  const [consultKey, setConsultKey] = useState(0);
   const [draftTitle, setDraftTitle] = useState("");
   const [draftDesc, setDraftDesc] = useState("");
   const [draftStart, setDraftStart] = useState("");
@@ -163,6 +169,7 @@ export default function TaskEntry({ staff, userRole, actualRole, userName, onCre
 
   function resetForm() {
     formRef.current?.reset();
+    setConsultKey((k) => k + 1);
     setTitlePreview("");
     setDescPreview("");
     milestonesTouched.current = false;
@@ -180,7 +187,7 @@ export default function TaskEntry({ staff, userRole, actualRole, userName, onCre
   // AI plan accepted → prefill milestones + title/description drafts (the form
   // inputs read these as defaultValue when the form step mounts) and advance
   // to the details step for final touches.
-  function applyPlan(plan, startDate) {
+  function applyPlan(plan, startDate, assignees) {
     milestonesTouched.current = true;
     // doneWhen becomes the milestone's meaning (saved, shown in the task modal).
     setMilestones(plan.milestones.map((m) => ({ name: m.name, days: m.days, ...(m.doneWhen ? { hint: `Done when: ${m.doneWhen}` } : {}) })));
@@ -188,6 +195,14 @@ export default function TaskEntry({ staff, userRole, actualRole, userName, onCre
     setDraftTitle(plan.title || "");
     setDraftDesc([plan.description, plan.successMeasure && `Goal: ${plan.successMeasure}`].filter(Boolean).join("\n\n"));
     setDraftStart(startDate || "");
+    if (Array.isArray(assignees)) setSelectedAssignees(new Set(assignees));
+    setStep("review");
+  }
+
+  // Review → the full form (the form's inputs start from the latest title/description).
+  function openForm() {
+    setDraftTitle(titlePreview);
+    setDraftDesc(descPreview);
     setStep("form");
   }
 
@@ -214,8 +229,22 @@ export default function TaskEntry({ staff, userRole, actualRole, userName, onCre
     }
   }
 
-  async function handleSubmit(e) {
+  function handleSubmit(e) {
     e.preventDefault();
+    createProject();
+  }
+
+  async function createProject() {
+    // Title, at least one assignee and a start date are required.
+    const missing = [
+      !titlePreview.trim() && "a title",
+      selectedAssignees.size === 0 && "an assignee",
+      !/^\d{4}-\d{2}-\d{2}$/.test(draftStart) && "a start date",
+    ].filter(Boolean);
+    if (missing.length) {
+      showModal({ title: "Almost there", message: `Add ${missing.join(", ")} before creating the project.`, type: "alert" });
+      return;
+    }
     setSubmitting(true);
 
     const milestonesData = milestones.map((m) => ({
@@ -232,10 +261,10 @@ export default function TaskEntry({ staff, userRole, actualRole, userName, onCre
     // We don't await here to make it feel INSTANT because we have an optimistic update
     addTask({
       workspace,
-      title: document.getElementById("task-title").value,
+      title: titlePreview.trim(),
       assignee: Array.from(selectedAssignees).join(", "),
       startDate: draftStart,
-      description: document.getElementById("task-desc").value,
+      description: descPreview,
       milestones: milestonesData,
       ...(terms.accounts && accountId ? { accountId } : {}),
       ...(docs.length ? { documents: docs } : {}),
@@ -258,9 +287,12 @@ export default function TaskEntry({ staff, userRole, actualRole, userName, onCre
       });
 
     // Show success modal INSTANTLY
+    const startsNow = draftStart <= new Date().toLocaleDateString("en-CA");
     showModal({
       title: "Project Created",
-      message: "Your project has been added to the board and is syncing.",
+      message: startsNow
+        ? "It's on the board in Pending — its start date has arrived, so its clock is running."
+        : `It's on the board in To Do and moves to Pending by itself on ${new Date(`${draftStart}T00:00:00`).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}.`,
       type: "success",
       onConfirm: () => {
         resetForm();
@@ -283,6 +315,7 @@ export default function TaskEntry({ staff, userRole, actualRole, userName, onCre
     return startAt ? plusDays(startAt, runningDays) : null;
   });
   const accountName = (accounts || []).find((a) => a._id === accountId)?.name || "";
+  const startsNow = !!startAt && draftStart <= new Date().toLocaleDateString("en-CA");
   const docCount = documents.filter((d) => (d.url || "").trim()).length;
   const stillNeeded = [
     !titlePreview.trim() && "a title",
@@ -290,28 +323,182 @@ export default function TaskEntry({ staff, userRole, actualRole, userName, onCre
     !startAt && "a start date",
   ].filter(Boolean);
 
-  if (step === "consult") {
-    return (
-      <div id="entry-view" className="view-section">
-        <div className="container">
-          <ConsultPanel
-            department={workspaceDept}
-            workspace={workspace}
-            workspaceLabel={WORKSPACE_META[workspace]?.label || "this workspace"}
-            template={templateMilestones}
-            onApply={applyPlan}
-            onSkip={startBlank}
-            seed={plannerSeed}
-            onSeedUsed={onPlannerSeedUsed}
-          />
+  const assigneeOptions = assignableStaff.map((st) => ({ value: st.name, label: st.name }));
+  const milestoneList = (
+    <ol className="guide-list entry-review-ms">
+      {milestones.map((m, idx) => (
+        <li key={idx} className="guide-item">
+          <span className="entry-ms-num">{idx + 1}</span>
+          <div className="guide-label">
+            {m.name || "Unnamed Milestone"}
+            {m.hint && <div className="guide-hint">{m.hint}</div>}
+          </div>
+          <div className="entry-ms-when">
+            <span className="guide-days">{m.days}d</span>
+            {milestoneDue[idx] && <span className="entry-ms-due">{fmtShort(milestoneDue[idx])}</span>}
+          </div>
+        </li>
+      ))}
+    </ol>
+  );
+  const planNotesBlock = (planNotes.watchOuts.length > 0 || planNotes.assumptions.length > 0) && (
+    <div className="entry-plan-notes">
+      {planNotes.watchOuts.length > 0 && (
+        <div className="entry-plan-block watch">
+          <div className="entry-plan-title">Watch out for</div>
+          <ul>{planNotes.watchOuts.map((w, i) => <li key={i}>{w}</li>)}</ul>
+        </div>
+      )}
+      {planNotes.assumptions.length > 0 && (
+        <div className="entry-plan-block assume">
+          <div className="entry-plan-title">Assumptions</div>
+          <ul>{planNotes.assumptions.map((x, i) => <li key={i}>{x}</li>)}</ul>
+        </div>
+      )}
+      <div className="entry-plan-foot">Saved with the project — you'll find them in its task view.</div>
+    </div>
+  );
+  const deadlineCard = (
+    <>
+      <div className={`entry-deadline ${expectedDeadline ? "" : "empty"}`}>
+        <div className="entry-deadline-cap">Expected deadline</div>
+        <div className="entry-deadline-date" key={expectedDeadline ? expectedDeadline.getTime() : "none"}>{expectedDeadline ? fmtLong(expectedDeadline) : "Pick a start date"}</div>
+        <div className="entry-deadline-sub">
+          {startAt ? <>Starts {fmtLong(startAt)} · </> : null}{totalDays} days (~{months} months)
         </div>
       </div>
-    );
-  }
+      {startAt && (
+        <div className={`entry-start-note ${startsNow ? "now" : ""}`}>
+          {startsNow
+            ? "Starts today or earlier — it goes straight to Pending and its clock starts."
+            : `Waits in To Do, then moves to Pending by itself on ${fmtLong(startAt)}.`}
+        </div>
+      )}
+    </>
+  );
+  const createFoot = (
+    <div className="entry-review-foot">
+      {accUi.locked ? (
+        <p className="account-locked-inline">You're not on a client account yet, so you can't start a {terms.label} project. Ask an Admin+ or Manager to add you to one.</p>
+      ) : stillNeeded.length > 0 ? (
+        <p className="entry-still-needed">Still needed: {stillNeeded.join(", ")}.</p>
+      ) : (
+        <p className="entry-ready">Looks good — ready to create.</p>
+      )}
+      <button type="button" className="btn-primary entry-create" onClick={createProject} disabled={submitting || accUi.locked || stillNeeded.length > 0}>
+        {submitting ? "CREATING..." : "Create Task"}
+      </button>
+    </div>
+  );
 
   return (
     <div id="entry-view" className="view-section">
       <div className="container">
+        {isCaddyEnabled() && (
+          <div hidden={step !== "consult"}>
+            <ConsultPanel
+              key={consultKey}
+              department={workspaceDept}
+              workspace={workspace}
+              workspaceLabel={WORKSPACE_META[workspace]?.label || "this workspace"}
+              template={templateMilestones}
+              onApply={applyPlan}
+              onSkip={startBlank}
+              seed={plannerSeed}
+              onSeedUsed={onPlannerSeedUsed}
+              startDate={draftStart}
+              onStartDateChange={setDraftStart}
+              assignees={Array.from(selectedAssignees)}
+              onAssigneesChange={(names) => setSelectedAssignees(new Set(names))}
+              staffOptions={assignableStaff.map((st) => st.name)}
+            />
+          </div>
+        )}
+
+        {/* ── Review page (after the AI plan) ── */}
+        {step === "review" && (
+          <div className="entry-review-page">
+            <div className="section-card entry-review-main">
+              <div className="entry-review-top">
+                <span className="entry-review-eyebrow">Review</span>
+                <div className="entry-review-nav">
+                  {isCaddyEnabled() && <button type="button" className="btn-back-consult" onClick={() => setStep("consult")}>← Back to the plan</button>}
+                  <button type="button" className="entry-edit-link" onClick={openForm}>Edit milestones &amp; all details</button>
+                </div>
+              </div>
+              <input
+                className="entry-review-title-input"
+                value={titlePreview}
+                onChange={(e) => setTitlePreview(e.target.value)}
+                placeholder="Project title"
+                aria-label="Project title"
+              />
+              <textarea
+                className="entry-review-desc-input"
+                value={descPreview}
+                onChange={(e) => setDescPreview(e.target.value)}
+                placeholder="What is this project about?"
+                aria-label="Description"
+              />
+              <div className="entry-review-fields">
+                <div className="entry-review-field">
+                  <label htmlFor="review-start">Start date <b>*</b></label>
+                  <DatePicker id="review-start" value={draftStart} onChange={setDraftStart} placeholder="Pick a start date" required />
+                </div>
+                <div className="entry-review-field">
+                  <label>Assignees <b>*</b></label>
+                  <MultiSelect
+                    values={Array.from(selectedAssignees)}
+                    onChange={(names) => setSelectedAssignees(new Set(names))}
+                    options={assigneeOptions}
+                    placeholder="Pick who's working on it"
+                    allLabel="Clear"
+                    menuWidth={280}
+                    ariaLabel="Assignees"
+                  />
+                </div>
+                {accUi.show && (
+                  <div className="entry-review-field">
+                    <label>Account</label>
+                    <Select
+                      value={accountId}
+                      onChange={(v) => setAccountId(v)}
+                      ariaLabel="Account"
+                      placeholder="Pick an account"
+                      options={[
+                        ...(accUi.full ? [{ value: "", label: "No account" }] : []),
+                        ...accUi.limit(accounts).map((a) => ({ value: a._id, label: a.name })),
+                      ]}
+                    />
+                  </div>
+                )}
+                {!terms.tech && (
+                  <div className="entry-review-field">
+                    <label>Documents</label>
+                    <button type="button" className="entry-docs-link" onClick={openForm}>{docCount ? `${docCount} attached — edit` : "+ Add documents"}</button>
+                  </div>
+                )}
+              </div>
+              <div className="entry-review-cap">Milestones · {milestones.length}</div>
+              {milestoneList}
+              {planNotesBlock}
+            </div>
+            <aside className="section-card entry-review entry-review-side">
+              {deadlineCard}
+              <dl className="entry-review-facts">
+                <div>
+                  <dt>{selectedAssignees.size === 1 ? "Assignee" : "Assignees"}</dt>
+                  <dd>{selectedAssignees.size ? Array.from(selectedAssignees).join(", ") : <em>None yet</em>}</dd>
+                </div>
+                {accUi.show && <div><dt>Account</dt><dd>{accountName || <em>No account</em>}</dd></div>}
+                <div><dt>Milestones</dt><dd>{milestones.length} · {totalDays} days</dd></div>
+              </dl>
+              {createFoot}
+            </aside>
+          </div>
+        )}
+
+        {step === "form" && (
         <div className="entry-grid">
           {/* Left: Form */}
           <div className="section-card">
@@ -463,7 +650,14 @@ export default function TaskEntry({ staff, userRole, actualRole, userName, onCre
             <h2 className={`entry-review-title ${titlePreview.trim() ? "" : "empty"}`}>{titlePreview.trim() || "Untitled project"}</h2>
             {descPreview.trim() && <p className="entry-review-desc">{descPreview.trim()}</p>}
 
-            <div className={`entry-deadline ${expectedDeadline ? "" : "empty"}`}>
+            {startAt && (
+              <div className={`entry-start-note ${startsNow ? "now" : ""}`}>
+                {startsNow
+                  ? "Starts today or earlier — it goes straight to Pending and its clock starts."
+                  : `Waits in To Do, then moves to Pending by itself on ${fmtLong(startAt)}.`}
+              </div>
+            )}
+            <div className={`entry-deadline entry-deadline-form ${expectedDeadline ? "" : "empty"}`}>
               <div className="entry-deadline-cap">Expected deadline</div>
               <div className="entry-deadline-date" key={expectedDeadline ? expectedDeadline.getTime() : "none"}>{expectedDeadline ? fmtLong(expectedDeadline) : "Pick a start date"}</div>
               <div className="entry-deadline-sub">
@@ -527,12 +721,13 @@ export default function TaskEntry({ staff, userRole, actualRole, userName, onCre
               ) : (
                 <p className="entry-ready">Looks good — ready to create.</p>
               )}
-              <button type="submit" form="task-entry-form" className="btn-primary entry-create" disabled={submitting || accUi.locked}>
+              <button type="submit" form="task-entry-form" className="btn-primary entry-create" disabled={submitting || accUi.locked || stillNeeded.length > 0}>
                 {submitting ? "CREATING..." : "Create Task"}
               </button>
             </div>
           </div>
         </div>
+        )}
       </div>
     </div>
   );

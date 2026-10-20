@@ -1261,7 +1261,7 @@ export default function App() {
           />
         )}
         {currentView === "notebook" && (
-          <Notebook userRole={userRole} userName={userName} showModal={showModal} />
+          <Notebook userRole={userRole} userName={userName} showModal={showModal} showInputModal={showInputModal} />
         )}
         {currentView === "announcements" && isAdminPlusOrAbove(actualRole) && (
           <AnnouncementComposer userName={userName} showModal={showModal} />

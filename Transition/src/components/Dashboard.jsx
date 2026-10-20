@@ -374,7 +374,7 @@ export default function Dashboard({ onShowAllLinks, actualRole, userName, openTa
         {/* All deadlines modal */}
         {showAllDeadlines && (
           <div className="modal-overlay" style={{ alignItems: "center", zIndex: 4000 }} onClick={() => setShowAllDeadlines(false)}>
-            <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 880, height: "auto", maxHeight: "85vh" }}>
+            <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 1100, height: "auto", maxHeight: "85vh" }}>
               <button className="modal-close" onClick={() => setShowAllDeadlines(false)}>×</button>
               <h2 style={{ fontWeight: 900, textTransform: "uppercase", margin: "0 0 6px 0", fontSize: "1.15rem", display: "flex", alignItems: "center", gap: 10, color: "var(--color-text-primary)" }}>
                 <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
@@ -499,7 +499,7 @@ export default function Dashboard({ onShowAllLinks, actualRole, userName, openTa
         {/* All project documents modal (Operations / Executives) */}
         {showAllDocs && (
           <div className="modal-overlay" style={{ alignItems: "center", zIndex: 4000 }} onClick={() => setShowAllDocs(false)}>
-            <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 1200, height: "auto", maxHeight: "85vh" }}>
+            <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 1400, height: "auto", maxHeight: "85vh" }}>
               <button className="modal-close" onClick={() => setShowAllDocs(false)}>×</button>
               <h2 style={{ fontWeight: 900, textTransform: "uppercase", margin: "0 0 6px 0", fontSize: "1.15rem", display: "flex", alignItems: "center", gap: 10, color: "var(--color-text-primary)" }}>
                 <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">{docsIcon}</svg>

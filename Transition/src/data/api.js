@@ -213,7 +213,7 @@ export const api = {
       p_workspace: WS(a.workspace), p_name: a.name, p_description: a.description || "", p_pros: a.pros || "", p_cons: a.cons || "", p_details: a.details || "",
     })),
     deleteIdea: mutation("notebook.deleteIdea", ["notebook_ideas"], (a) => rpc("delete_idea", { p_idea_id: a.ideaId })),
-    takeIdea: mutation("notebook.takeIdea", ["notebook_ideas", ...TASK_TABLES], (a) => rpc("take_idea", { p_idea_id: a.ideaId, p_taker_name: a.takerName || null })),
+    takeIdea: mutation("notebook.takeIdea", ["notebook_ideas", ...TASK_TABLES], (a) => rpc("take_idea", { p_idea_id: a.ideaId, p_taker_name: a.takerName || null, p_start_date: a.startDate || null })),
   },
 
   // ── Announcements ─────────────────────────────────────────────────────────

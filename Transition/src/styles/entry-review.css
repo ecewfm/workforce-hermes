@@ -98,3 +98,70 @@
 
 /* Caddy's bubble would sit on the Create button here. */
 html:has(.entry-review) .ai-hint { visibility: hidden; pointer-events: none; }
+
+/* When it starts: straight to Pending, or waits in To Do until the date */
+.entry-start-note {
+  margin-top: 12px; padding: 8px 12px; border-radius: 10px;
+  font-size: 0.76rem; font-weight: 700; line-height: 1.4;
+  color: var(--color-text-secondary); background: var(--color-bg-subtle);
+}
+.entry-start-note.now { color: #b45309; background: color-mix(in srgb, #f59e0b 13%, transparent); }
+
+/* ── AI planner: full width, with the setup panel beside the plan ── */
+.consult-panel-wrap { display: block; }
+.consult-panel { max-width: none !important; box-sizing: border-box; }
+.consult-result .consult-plan-head { margin-top: 18px; }
+.consult-panel-wrap.with-setup { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 24px; align-items: start; }
+.consult-setup { position: sticky; top: 186px; display: flex; flex-direction: column; gap: 8px; box-sizing: border-box; animation: entryFadeUp 0.4s cubic-bezier(0.2, 0, 0, 1) both; }
+.consult-setup-cap, .entry-review-eyebrow {
+  align-self: flex-start; padding: 3px 10px; border-radius: 999px;
+  font-size: 0.6rem; font-weight: 900; letter-spacing: 1.2px; text-transform: uppercase;
+  color: var(--color-accent); background: color-mix(in srgb, var(--color-accent) 12%, transparent);
+}
+.consult-setup-label { margin-top: 8px; font-size: 0.62rem; font-weight: 900; letter-spacing: 0.8px; text-transform: uppercase; color: var(--color-text-secondary); }
+.consult-setup-label b, .entry-review-field label b { color: #ef4444; }
+.consult-setup .entry-deadline { margin: 10px 0 4px; }
+.btn-primary.consult-review-btn { width: 100%; margin-top: 8px; padding: 13px 18px; }
+.consult-setup-foot { margin: 2px 0 0; font-size: 0.72rem; text-align: center; color: var(--color-text-secondary); }
+
+/* ── Review page (after the AI plan) ── */
+.entry-review-page { display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 24px; align-items: start; animation: entryFadeUp 0.4s cubic-bezier(0.2, 0, 0, 1) both; }
+.entry-review-main { display: flex; flex-direction: column; }
+.entry-review-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.entry-review-nav { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.entry-review-nav .btn-back-consult { position: static; }
+.entry-edit-link, .entry-docs-link {
+  border: none; background: none; padding: 4px 2px; cursor: pointer; font: inherit; font-size: 0.8rem; font-weight: 800;
+  color: var(--color-accent); text-decoration: underline transparent; text-underline-offset: 3px;
+  transition: text-decoration-color 0.2s ease, translate 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.entry-edit-link:hover, .entry-docs-link:hover { text-decoration-color: currentColor; translate: 2px 0; }
+.entry-review-title-input {
+  box-sizing: border-box; width: 100%; margin-top: 14px; padding: 8px 2px 10px; border: none; border-bottom: 2px solid var(--glass-border, #e2e8f0);
+  background: transparent; outline: none; font: inherit; font-size: 1.7rem; font-weight: 900; letter-spacing: -0.4px; color: var(--color-text-primary);
+  transition: border-color 0.25s ease;
+}
+.entry-review-title-input:focus { border-bottom-color: var(--color-accent); }
+.entry-review-desc-input {
+  box-sizing: border-box; width: 100%; min-height: 84px; margin-top: 12px; padding: 12px 14px; resize: vertical; border-radius: 12px;
+  font: inherit; font-size: 0.9rem; line-height: 1.55; color: var(--color-text-primary);
+  background: var(--color-bg-subtle); border: 1.5px solid var(--glass-border, #e2e8f0); outline: none;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+.entry-review-desc-input:focus { border-color: var(--color-accent); box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-accent) 14%, transparent); }
+.entry-review-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; margin: 18px 0 10px; }
+.entry-review-field label { display: block; margin-bottom: 6px; font-size: 0.62rem; font-weight: 900; letter-spacing: 0.8px; text-transform: uppercase; color: var(--color-text-secondary); }
+.entry-review-main .entry-review-ms { max-height: none; overflow: visible; }
+.entry-review-side .entry-deadline { margin-top: 0; }
+.entry-review-side .entry-start-note { margin: 0 0 14px; }
+
+@media (max-width: 1000px) {
+  .consult-panel-wrap.with-setup, .entry-review-page { grid-template-columns: 1fr; }
+  .consult-setup { position: static; }
+}
+
+/* ── Wider dialogs ── */
+.custom-modal-content { max-width: 540px; }
+.announcement-popup { max-width: 640px; }
+.notif-modal-content { max-width: 760px; }
+.settings-panel { max-width: 1180px; }

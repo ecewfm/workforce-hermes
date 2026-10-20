@@ -7,7 +7,7 @@ import { isTechWorkspace } from "../utils/workspaceTerms";
 // A taken idea becomes a new project, which starts with this status.
 const NEW_PROJECT_STATUS = "todo";
 
-export default function Notebook({ userRole, userName, showModal }) {
+export default function Notebook({ userRole, userName, showModal, showInputModal }) {
   const workspace = useWorkspace();
   const ideas = useQuery(api.notebook.getIdeas, { workspace });
   const appConfig = useQuery(api.appConfig.getAppConfig, { workspace });
@@ -55,17 +55,28 @@ export default function Notebook({ userRole, userName, showModal }) {
     });
   }
 
+  // Taking an idea makes it a project assigned to you — every project needs a
+  // start date (today or earlier → it starts right away in Pending).
   function handleTake(id) {
-    showModal({
+    const today = new Date().toLocaleDateString("en-CA");
+    showInputModal({
       title: "Take Idea",
-      message: "Take this idea? It will be removed from the notebook and added to your projects (assigned to you).",
-      type: "confirm",
-      onConfirm: async () => {
+      message: "It will leave the notebook and become a project assigned to you. When does it start? If it's today (or earlier) it goes straight to Pending; otherwise it moves there on its start date.",
+      fields: [{ name: "start", label: "Start date", type: "date", initialValue: today }],
+      onConfirm: async (d) => {
+        const start = (d.start || "").trim();
+        if (!start) {
+          showModal({ title: "Start date needed", message: "Pick a start date to take this idea.", type: "alert" });
+          return;
+        }
         try {
-          await takeIdeaMut({ ideaId: id, takerName: userName, workspace });
+          await takeIdeaMut({ ideaId: id, takerName: userName, workspace, startDate: start });
+          const startsNow = start <= today;
           showModal({
             title: "Added to Projects",
-            message: `This idea is now a project assigned to you. Find it in the Dashboard${landingColumn ? ` (${landingColumn.label})` : ""}.`,
+            message: startsNow
+              ? "This idea is now a project assigned to you. It's in Pending — its start date has arrived, so its clock is running."
+              : `This idea is now a project assigned to you. It's in ${landingColumn ? landingColumn.label : "To Do"} and moves to Pending by itself on ${new Date(`${start}T00:00:00`).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}.`,
             type: "success"
           });
         } catch (err) {

@@ -44,7 +44,7 @@ export default function NotesModal({ taskId, userName, onClose, showModal }) {
       <div
         className="notes-fullscreen-card"
         onClick={(e) => e.stopPropagation()}
-        style={{ display: "flex", flexDirection: "column", width: "92%", maxWidth: 620, maxHeight: "82vh" }}
+        style={{ display: "flex", flexDirection: "column", width: "92%", maxWidth: 900, maxHeight: "82vh" }}
       >
         <div className="notes-fullscreen-header">
           <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>

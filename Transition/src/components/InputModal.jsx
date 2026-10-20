@@ -28,7 +28,7 @@ export default function InputModal({ isOpen, title, message, fields, onConfirm, 
 
   return (
     <div className="custom-modal-overlay" onClick={onCancel}>
-      <div className="custom-modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 450 }}>
+      <div className="custom-modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 600 }}>
         <h2 className="custom-modal-title" style={{ marginBottom: 10 }}>{title}</h2>
         {message && <p className="custom-modal-message" style={{ marginBottom: 20 }}>{message}</p>}
         

@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import DatePicker from "./ui/DatePicker";
+import MultiSelect from "./ui/MultiSelect";
 import { useQuery } from "../data/react";
 import { api } from "../data/api";
 import { planTask } from "../utils/taskPlanner";
@@ -14,16 +15,24 @@ import { DAY_MS } from "../utils/deadlines";
  *  3. The plan is fully editable here (rename, re-time, add, remove, reorder),
  *     with the timeline, assumptions and risks laid out. "Refine" re-plans
  *     from the CURRENT (edited) plan + their feedback.
- *  4. "Use this plan" hands everything to the details form. "Skip AI" goes
- *     straight to the manual form on the workspace's default template.
+ *  4. Beside the plan, a setup panel takes the start date and assignees
+ *     (both required) and shows the expected deadline; "Review" hands
+ *     everything to the review page. "Skip AI" goes straight to the manual
+ *     form on the workspace's default template.
+ *
+ * Start date and assignees live in the owner (TaskEntry) so the review page
+ * and the form share them.
  *
  * `seed` ({ brief, nonce }) lets Caddy open the planner with a brief and start
  * planning automatically; onSeedUsed tells the owner to clear it so it doesn't
  * re-fire the next time New Task opens.
  */
-export default function ConsultPanel({ department, workspace, workspaceLabel, template, onApply, onSkip, seed, onSeedUsed }) {
+export default function ConsultPanel({
+  department, workspace, workspaceLabel, template, onApply, onSkip, seed, onSeedUsed,
+  startDate = "", onStartDateChange, assignees = [], onAssigneesChange, staffOptions = [],
+}) {
   const [brief, setBrief] = useState(seed?.brief || "");
-  const [startDate, setStartDate] = useState("");
+  const setStartDate = (v) => onStartDateChange?.(v);
   const [phase, setPhase] = useState("idle"); // "idle" | "thinking" | "ready"
   const [busyLabel, setBusyLabel] = useState("Planning");
   const [steps, setSteps] = useState([]); // live thought steps
@@ -152,15 +161,26 @@ export default function ConsultPanel({ department, workspace, workspaceLabel, te
       setError("Add at least one named milestone first.");
       return;
     }
-    onApply({ ...plan, milestones }, startDate);
+    if (!startDate) {
+      setError("Pick a start date first — every project needs one.");
+      return;
+    }
+    if (!assignees.length) {
+      setError("Pick who's working on it first.");
+      return;
+    }
+    onApply({ ...plan, milestones }, startDate, assignees);
   }
 
   const totalDays = plan ? plan.milestones.reduce((s, m) => s + (m.days || 0), 0) : 0;
-  const finish = startDate && totalDays ? new Date(new Date(`${startDate}T00:00:00`).getTime() + totalDays * DAY_MS) : null;
+  // Calendar days (not 24h blocks), so a daylight-saving change can't shift the date.
+  const finish = startDate && totalDays ? (() => { const [y, m, d] = startDate.split("-").map(Number); return new Date(y, m - 1, d + totalDays); })() : null;
   const busy = phase === "thinking";
 
+  const ready = phase === "ready" && !!plan;
+  const fmtDay = (d) => d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric" });
   return (
-    <div className="consult-panel-wrap">
+    <div className={`consult-panel-wrap ${ready ? "with-setup" : ""}`}>
       <div className="section-card consult-panel">
         <div className="consult-head">
           <div className="consult-badge">✦ AI</div>
@@ -200,8 +220,8 @@ export default function ConsultPanel({ department, workspace, workspaceLabel, te
                 </div>
               )}
               <div className="consult-start-row">
-                <label htmlFor="consult-start">Start date <span>(optional)</span></label>
-                <DatePicker id="consult-start" size="sm" className="consult-date-picker" value={startDate} onChange={setStartDate} disabled={busy} allowClear placeholder="Any time" />
+                <label htmlFor="consult-start">Start date <span>(required before you use the plan)</span></label>
+                <DatePicker id="consult-start" size="sm" className="consult-date-picker" value={startDate} onChange={setStartDate} disabled={busy} allowClear placeholder="Pick a date" />
               </div>
               {phase === "idle" && (
                 <button className="consult-generate" onClick={() => run()} disabled={!brief.trim()}>
@@ -242,16 +262,6 @@ export default function ConsultPanel({ department, workspace, workspaceLabel, te
               )}
 
               <TimelineBar milestones={plan.milestones} total={totalDays} />
-              <div className="consult-dates">
-                <label htmlFor="consult-start-2">Start</label>
-                <DatePicker id="consult-start-2" size="sm" className="consult-date-picker" value={startDate} onChange={setStartDate} allowClear placeholder="Pick a date" />
-                <span className="consult-dates-arrow">→</span>
-                <span className="consult-finish">
-                  {finish
-                    ? <>Finish ≈ <strong>{finish.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</strong></>
-                    : "Pick a start date to see the finish date"}
-                </span>
-              </div>
 
               <div className="consult-plan-head">
                 <span>Milestones</span>
@@ -343,7 +353,6 @@ export default function ConsultPanel({ department, workspace, workspaceLabel, te
 
               <div className="consult-actions">
                 <button className="consult-regen" onClick={startOver}>Start over</button>
-                <button className="btn-primary consult-apply" onClick={apply}>Use this plan →</button>
               </div>
             </div>
           )}
@@ -353,6 +362,42 @@ export default function ConsultPanel({ department, workspace, workspaceLabel, te
           Skip AI · start from the {workspaceLabel} default milestones
         </button>
       </div>
+
+      {/* ── Setup: who, when, and the deadline that gives ── */}
+      {ready && (
+        <aside className="section-card consult-setup" aria-label="Project setup">
+          <div className="consult-setup-cap">Project setup</div>
+          <label className="consult-setup-label" htmlFor="consult-start-2">Start date <b>*</b></label>
+          <DatePicker id="consult-start-2" value={startDate} onChange={setStartDate} placeholder="Pick a start date" required />
+          <label className="consult-setup-label">Assignees <b>*</b></label>
+          <MultiSelect
+            values={assignees}
+            onChange={(v) => onAssigneesChange?.(v)}
+            options={staffOptions.map((n) => ({ value: n, label: n }))}
+            placeholder="Pick who's working on it"
+            allLabel="Clear"
+            menuWidth={280}
+            emptyText="No one in this department yet — add people in Settings → Staff Management."
+            ariaLabel="Assignees"
+          />
+          <div className={`entry-deadline ${finish ? "" : "empty"}`}>
+            <div className="entry-deadline-cap">Expected deadline</div>
+            <div className="entry-deadline-date" key={finish ? finish.getTime() : "none"}>{finish ? fmtDay(finish) : "Pick a start date"}</div>
+            <div className="entry-deadline-sub">{plan.milestones.length} milestones · {totalDays} days{totalDays >= 7 ? ` (~${Math.round(totalDays / 7)} wk)` : ""}</div>
+          </div>
+          {startDate && (
+            <div className={`entry-start-note ${startDate <= new Date().toLocaleDateString("en-CA") ? "now" : ""}`}>
+              {startDate <= new Date().toLocaleDateString("en-CA")
+                ? "Starts today or earlier — it goes straight to Pending once it's created."
+                : "Waits in To Do and moves to Pending by itself on its start date."}
+            </div>
+          )}
+          <button className="btn-primary consult-review-btn" onClick={apply} disabled={!startDate || !assignees.length}>
+            {!startDate ? "Pick a start date" : !assignees.length ? "Pick an assignee" : "Review project →"}
+          </button>
+          <p className="consult-setup-foot">Next is a review page — you can still change anything before it's created.</p>
+        </aside>
+      )}
     </div>
   );
 }
