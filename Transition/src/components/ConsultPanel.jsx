@@ -1,10 +1,11 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import DatePicker from "./ui/DatePicker";
 import MultiSelect from "./ui/MultiSelect";
+import EditableText from "./ui/EditableText";
 import { useQuery } from "../data/react";
 import { api } from "../data/api";
 import { planTask } from "../utils/taskPlanner";
-import { DAY_MS } from "../utils/deadlines";
+import { daysBetweenISO, fitMilestonesToDays } from "../utils/deadlines";
 
 /**
  * ConsultPanel — the AI-first step of New Task (rendered inline, not a modal).
@@ -29,8 +30,9 @@ import { DAY_MS } from "../utils/deadlines";
  */
 export default function ConsultPanel({
   department, workspace, workspaceLabel, template, onApply, onSkip, seed, onSeedUsed,
-  startDate = "", onStartDateChange, assignees = [], onAssigneesChange, staffOptions = [],
+  startDate = "", onStartDateChange, deadline = "", onDeadlineChange, assignees = [], onAssigneesChange, staffOptions = [],
 }) {
+  const setDeadline = (v) => onDeadlineChange?.(v);
   const [brief, setBrief] = useState(seed?.brief || "");
   const setStartDate = (v) => onStartDateChange?.(v);
   const [phase, setPhase] = useState("idle"); // "idle" | "thinking" | "ready"
@@ -91,6 +93,7 @@ export default function ConsultPanel({
         workspaceLabel,
         brief: theBrief,
         startDateISO: startDate,
+        deadlineISO: deadline,
         currentPlan: isRefine ? { ...plan, milestones: plan.milestones.filter((m) => m.name.trim()) } : null,
         feedback: isRefine ? feedback : "",
         template: (template || []).map(({ name, days }) => ({ name, days })),
@@ -165,6 +168,10 @@ export default function ConsultPanel({
       setError("Pick a start date first — every project needs one.");
       return;
     }
+    if (!deadline) {
+      setError("Set the deadline first — the milestones are the steps to reach it.");
+      return;
+    }
     if (!assignees.length) {
       setError("Pick who's working on it first.");
       return;
@@ -173,10 +180,18 @@ export default function ConsultPanel({
   }
 
   const totalDays = plan ? plan.milestones.reduce((s, m) => s + (m.days || 0), 0) : 0;
-  // Calendar days (not 24h blocks), so a daylight-saving change can't shift the date.
-  const finish = startDate && totalDays ? (() => { const [y, m, d] = startDate.split("-").map(Number); return new Date(y, m - 1, d + totalDays); })() : null;
+  // The person's deadline is fixed; the milestones are the steps to reach it.
+  const windowDays = daysBetweenISO(startDate, deadline);
+  const deadlineDate = /^\d{4}-\d{2}-\d{2}$/.test(deadline) ? (() => { const [y, m, d] = deadline.split("-").map(Number); return new Date(y, m - 1, d); })() : null;
+  const fitState = windowDays == null ? "none" : totalDays > windowDays ? "over" : totalDays < windowDays ? "under" : "exact";
   const busy = phase === "thinking";
 
+  const setPlanField = (field, v) => setPlan((p) => ({ ...p, [field]: v }));
+  const setPlanListItem = (field, i, v) => setPlan((p) => {
+    const list = [...(p[field] || [])];
+    if (v) list[i] = v; else list.splice(i, 1);
+    return { ...p, [field]: list };
+  });
   const ready = phase === "ready" && !!plan;
   const fmtDay = (d) => d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric" });
   return (
@@ -220,8 +235,11 @@ export default function ConsultPanel({
                 </div>
               )}
               <div className="consult-start-row">
-                <label htmlFor="consult-start">Start date <span>(required before you use the plan)</span></label>
+                <label htmlFor="consult-start">Start date</label>
                 <DatePicker id="consult-start" size="sm" className="consult-date-picker" value={startDate} onChange={setStartDate} disabled={busy} allowClear placeholder="Pick a date" />
+                <label htmlFor="consult-deadline">Deadline</label>
+                <DatePicker id="consult-deadline" size="sm" className="consult-date-picker" value={deadline} onChange={setDeadline} disabled={busy} allowClear min={startDate || undefined} placeholder="Pick a date" />
+                <span className="consult-start-hint">Both required before you use the plan — the AI plans the steps to reach the deadline.</span>
               </div>
               {phase === "idle" && (
                 <button className="consult-generate" onClick={() => run()} disabled={!brief.trim()}>
@@ -255,10 +273,10 @@ export default function ConsultPanel({
                 <span className="cs-chip">{plan.milestones.length} steps · {totalDays} days{totalDays >= 7 ? ` (~${Math.round(totalDays / 7)} wk)` : ""}</span>
               </div>
 
-              {plan.title && <h2 className="consult-plan-title">{plan.title}</h2>}
-              {plan.description && <p className="consult-plan-desc">{plan.description}</p>}
+              <EditableText as="h2" className="consult-plan-title" value={plan.title} onChange={(v) => setPlanField("title", v)} placeholder="Double-click to name the project" ariaLabel="Plan title" />
+              <EditableText as="p" multiline className="consult-plan-desc" value={plan.description} onChange={(v) => setPlanField("description", v)} placeholder="Double-click to describe it" ariaLabel="Plan description" />
               {plan.successMeasure && (
-                <p className="consult-goal"><span>Goal</span>{plan.successMeasure}</p>
+                <p className="consult-goal"><span>Goal</span><EditableText multiline value={plan.successMeasure} onChange={(v) => setPlanField("successMeasure", v)} ariaLabel="Goal" /></p>
               )}
 
               <TimelineBar milestones={plan.milestones} total={totalDays} />
@@ -279,7 +297,7 @@ export default function ConsultPanel({
                         aria-label={`Milestone ${i + 1} name`}
                         onChange={(e) => editMilestone(i, "name", e.target.value)}
                       />
-                      {m.doneWhen && <span className="cms-done">Done when: {m.doneWhen}</span>}
+                      <span className="cms-done">Done when: <EditableText value={m.doneWhen} onChange={(v) => editMilestone(i, "doneWhen", v)} placeholder="double-click to add" ariaLabel={`Milestone ${i + 1} done when`} /></span>
                     </div>
                     <label className="cms-days">
                       <input
@@ -306,14 +324,14 @@ export default function ConsultPanel({
                   {plan.assumptions.length > 0 && (
                     <div className="cn-box">
                       <div className="cn-title">Assumed</div>
-                      <ul>{plan.assumptions.map((a, i) => <li key={i}>{a}</li>)}</ul>
+                      <ul>{plan.assumptions.map((a, i) => <li key={i}><EditableText multiline value={a} onChange={(v) => setPlanListItem("assumptions", i, v)} ariaLabel="Assumption" /></li>)}</ul>
                       <div className="cn-hint">Wrong? Say so below and refine.</div>
                     </div>
                   )}
                   {plan.risks.length > 0 && (
                     <div className="cn-box cn-box--risk">
                       <div className="cn-title">Watch out for</div>
-                      <ul>{plan.risks.map((r, i) => <li key={i}>{r}</li>)}</ul>
+                      <ul>{plan.risks.map((r, i) => <li key={i}><EditableText multiline value={r} onChange={(v) => setPlanListItem("risks", i, v)} ariaLabel="Watch out for" /></li>)}</ul>
                     </div>
                   )}
                 </div>
@@ -369,6 +387,8 @@ export default function ConsultPanel({
           <div className="consult-setup-cap">Project setup</div>
           <label className="consult-setup-label" htmlFor="consult-start-2">Start date <b>*</b></label>
           <DatePicker id="consult-start-2" value={startDate} onChange={setStartDate} placeholder="Pick a start date" required />
+          <label className="consult-setup-label" htmlFor="consult-deadline-2">Deadline <b>*</b></label>
+          <DatePicker id="consult-deadline-2" value={deadline} onChange={setDeadline} min={startDate || undefined} placeholder="When must it be done?" required />
           <label className="consult-setup-label">Assignees <b>*</b></label>
           <MultiSelect
             values={assignees}
@@ -380,11 +400,32 @@ export default function ConsultPanel({
             emptyText="No one in this department yet — add people in Settings → Staff Management."
             ariaLabel="Assignees"
           />
-          <div className={`entry-deadline ${finish ? "" : "empty"}`}>
-            <div className="entry-deadline-cap">Expected deadline</div>
-            <div className="entry-deadline-date" key={finish ? finish.getTime() : "none"}>{finish ? fmtDay(finish) : "Pick a start date"}</div>
-            <div className="entry-deadline-sub">{plan.milestones.length} milestones · {totalDays} days{totalDays >= 7 ? ` (~${Math.round(totalDays / 7)} wk)` : ""}</div>
+          <div className={`entry-deadline ${deadlineDate ? "" : "empty"}`}>
+            <div className="entry-deadline-cap">Deadline</div>
+            <div className="entry-deadline-date" key={deadline || "none"}>{deadlineDate ? fmtDay(deadlineDate) : "Set a deadline"}</div>
+            <div className="entry-deadline-sub">
+              {windowDays != null ? `${windowDays} days from the start · ` : ""}{plan.milestones.length} milestones · {totalDays} days of steps
+            </div>
           </div>
+          {windowDays != null && windowDays > 0 && (
+            <div className={`entry-fit ${fitState}`}>
+              {fitState === "over"
+                ? <>The steps need <b>{totalDays} days</b> but the deadline gives <b>{windowDays}</b> — {totalDays - windowDays} over.</>
+                : fitState === "under"
+                  ? <>The steps take <b>{totalDays}</b> of <b>{windowDays} days</b> — {windowDays - totalDays} days of buffer.</>
+                  : <>The steps fill the <b>{windowDays} days</b> to the deadline exactly.</>}
+              {fitState !== "exact" && (
+                <div className="entry-fit-actions">
+                  <button type="button" onClick={() => setPlan((p) => ({ ...p, milestones: fitMilestonesToDays(p.milestones, windowDays) }))}>
+                    Fit the steps to the deadline
+                  </button>
+                  <button type="button" onClick={() => run({ feedback: `The deadline is ${deadline} — ${windowDays} days from the start (${startDate}). Re-plan the steps to reach it: the milestones' days must add up to ${windowDays}.` })}>
+                    Ask AI to re-plan for it
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
           {startDate && (
             <div className={`entry-start-note ${startDate <= new Date().toLocaleDateString("en-CA") ? "now" : ""}`}>
               {startDate <= new Date().toLocaleDateString("en-CA")
@@ -392,8 +433,8 @@ export default function ConsultPanel({
                 : "Waits in To Do and moves to Pending by itself on its start date."}
             </div>
           )}
-          <button className="btn-primary consult-review-btn" onClick={apply} disabled={!startDate || !assignees.length}>
-            {!startDate ? "Pick a start date" : !assignees.length ? "Pick an assignee" : "Review project →"}
+          <button className="btn-primary consult-review-btn" onClick={apply} disabled={!startDate || !deadline || !assignees.length}>
+            {!startDate ? "Pick a start date" : !deadline ? "Set the deadline" : !assignees.length ? "Pick an assignee" : "Review project →"}
           </button>
           <p className="consult-setup-foot">Next is a review page — you can still change anything before it's created.</p>
         </aside>

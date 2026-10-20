@@ -1596,7 +1596,7 @@ html:has(.profile-popover-overlay) {
   display: flex; gap: 8px; align-items: baseline; margin: 0 0 14px;
   font-size: 0.82rem; line-height: 1.5; color: var(--color-text-primary);
 }
-.consult-goal span {
+.consult-goal > span:first-child {
   flex-shrink: 0; font-size: 0.66rem; font-weight: 900; text-transform: uppercase; letter-spacing: 0.5px;
   padding: 2px 7px; border-radius: 6px; background: color-mix(in srgb, var(--color-accent) 14%, transparent); color: var(--color-accent);
 }

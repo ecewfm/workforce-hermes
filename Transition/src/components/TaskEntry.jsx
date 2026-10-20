@@ -8,6 +8,8 @@ import ConsultPanel from "./ConsultPanel";
 import Select from "./ui/Select";
 import DatePicker from "./ui/DatePicker";
 import MultiSelect from "./ui/MultiSelect";
+import EditableText from "./ui/EditableText";
+import { daysBetweenISO, fitMilestonesToDays } from "../utils/deadlines";
 import { useOutsideClose } from "./ui/Popover";
 import { isCaddyEnabled } from "../utils/aiConfig";
 import { termsFor } from "../utils/workspaceTerms";
@@ -90,6 +92,8 @@ export default function TaskEntry({ staff, userRole, actualRole, userName, onCre
   const [draftTitle, setDraftTitle] = useState("");
   const [draftDesc, setDraftDesc] = useState("");
   const [draftStart, setDraftStart] = useState("");
+  // The person's deadline — fixed; the milestones are the steps to reach it.
+  const [draftDeadline, setDraftDeadline] = useState("");
   // The review panel mirrors the title/description as they're typed.
   const [titlePreview, setTitlePreview] = useState("");
   const [descPreview, setDescPreview] = useState("");
@@ -178,6 +182,7 @@ export default function TaskEntry({ staff, userRole, actualRole, userName, onCre
     setDraftTitle("");
     setDraftDesc("");
     setDraftStart("");
+    setDraftDeadline("");
     setDocuments([]);
     setPlanNotes({ watchOuts: [], assumptions: [] });
     setAccountId(boardAccount());
@@ -213,6 +218,7 @@ export default function TaskEntry({ staff, userRole, actualRole, userName, onCre
     setDraftTitle("");
     setDraftDesc("");
     setDraftStart("");
+    setDraftDeadline("");
     setPlanNotes({ watchOuts: [], assumptions: [] });
     setStep("form");
   }
@@ -240,6 +246,8 @@ export default function TaskEntry({ staff, userRole, actualRole, userName, onCre
       !titlePreview.trim() && "a title",
       selectedAssignees.size === 0 && "an assignee",
       !/^\d{4}-\d{2}-\d{2}$/.test(draftStart) && "a start date",
+      !/^\d{4}-\d{2}-\d{2}$/.test(draftDeadline) && "a deadline",
+      draftDeadline && draftStart && draftDeadline < draftStart && "a deadline on or after the start date",
     ].filter(Boolean);
     if (missing.length) {
       showModal({ title: "Almost there", message: `Add ${missing.join(", ")} before creating the project.`, type: "alert" });
@@ -264,6 +272,7 @@ export default function TaskEntry({ staff, userRole, actualRole, userName, onCre
       title: titlePreview.trim(),
       assignee: Array.from(selectedAssignees).join(", "),
       startDate: draftStart,
+      deadline: draftDeadline,
       description: descPreview,
       milestones: milestonesData,
       ...(terms.accounts && accountId ? { accountId } : {}),
@@ -302,11 +311,9 @@ export default function TaskEntry({ staff, userRole, actualRole, userName, onCre
   }
 
   const totalDays = milestones.reduce((sum, m) => sum + (Number(m.days) || 0), 0);
-  const months = (totalDays / 30).toFixed(1);
-  // Expected deadline = start date + every milestone's days (if work starts that day).
+  // Milestone due dates count from the start date (if work starts that day).
   const startAt = /^\d{4}-\d{2}-\d{2}$/.test(draftStart) ? new Date(`${draftStart}T00:00:00`) : null;
   const plusDays = (d, n) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
-  const expectedDeadline = startAt ? plusDays(startAt, totalDays) : null;
   const fmtLong = (d) => d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric" });
   const fmtShort = (d) => d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
   let runningDays = 0;
@@ -315,12 +322,28 @@ export default function TaskEntry({ staff, userRole, actualRole, userName, onCre
     return startAt ? plusDays(startAt, runningDays) : null;
   });
   const accountName = (accounts || []).find((a) => a._id === accountId)?.name || "";
+  // Deadline vs. the steps: the days from start to deadline, and whether the milestones fit them.
+  const windowDays = daysBetweenISO(draftStart, draftDeadline);
+  const deadlineAt = /^\d{4}-\d{2}-\d{2}$/.test(draftDeadline) ? new Date(`${draftDeadline}T00:00:00`) : null;
+  const fitState = windowDays == null ? "none" : totalDays > windowDays ? "over" : totalDays < windowDays ? "under" : "exact";
+  const fitToDeadline = () => { milestonesTouched.current = true; setMilestones((prev) => fitMilestonesToDays(prev, windowDays)); };
+  const setMilestoneField = (idx, field, v) => {
+    milestonesTouched.current = true;
+    setMilestones((prev) => prev.map((m, i) => (i === idx ? { ...m, [field]: v } : m)));
+  };
+  const setNote = (field, i, v) => setPlanNotes((p) => {
+    const list = [...p[field]];
+    if (v) list[i] = v; else list.splice(i, 1);
+    return { ...p, [field]: list };
+  });
   const startsNow = !!startAt && draftStart <= new Date().toLocaleDateString("en-CA");
   const docCount = documents.filter((d) => (d.url || "").trim()).length;
   const stillNeeded = [
     !titlePreview.trim() && "a title",
     selectedAssignees.size === 0 && "an assignee",
     !startAt && "a start date",
+    !deadlineAt && "a deadline",
+    deadlineAt && startAt && deadlineAt < startAt && "a deadline on or after the start date",
   ].filter(Boolean);
 
   const assigneeOptions = assignableStaff.map((st) => ({ value: st.name, label: st.name }));
@@ -330,12 +353,12 @@ export default function TaskEntry({ staff, userRole, actualRole, userName, onCre
         <li key={idx} className="guide-item">
           <span className="entry-ms-num">{idx + 1}</span>
           <div className="guide-label">
-            {m.name || "Unnamed Milestone"}
-            {m.hint && <div className="guide-hint">{m.hint}</div>}
+            <EditableText value={m.name} onChange={(v) => v && setMilestoneField(idx, "name", v)} placeholder="Unnamed Milestone" ariaLabel={`Milestone ${idx + 1} name`} />
+            {m.hint && <EditableText as="div" multiline className="guide-hint" value={m.hint} onChange={(v) => setMilestoneField(idx, "hint", v)} ariaLabel={`Milestone ${idx + 1} meaning`} />}
           </div>
           <div className="entry-ms-when">
             <span className="guide-days">{m.days}d</span>
-            {milestoneDue[idx] && <span className="entry-ms-due">{fmtShort(milestoneDue[idx])}</span>}
+            {milestoneDue[idx] && <span className={`entry-ms-due ${deadlineAt && milestoneDue[idx] > deadlineAt ? "late" : ""}`} title={deadlineAt && milestoneDue[idx] > deadlineAt ? "After the deadline" : ""}>{fmtShort(milestoneDue[idx])}</span>}
           </div>
         </li>
       ))}
@@ -346,27 +369,42 @@ export default function TaskEntry({ staff, userRole, actualRole, userName, onCre
       {planNotes.watchOuts.length > 0 && (
         <div className="entry-plan-block watch">
           <div className="entry-plan-title">Watch out for</div>
-          <ul>{planNotes.watchOuts.map((w, i) => <li key={i}>{w}</li>)}</ul>
+          <ul>{planNotes.watchOuts.map((w, i) => <li key={i}><EditableText multiline value={w} onChange={(v) => setNote("watchOuts", i, v)} ariaLabel="Watch out for" /></li>)}</ul>
         </div>
       )}
       {planNotes.assumptions.length > 0 && (
         <div className="entry-plan-block assume">
           <div className="entry-plan-title">Assumptions</div>
-          <ul>{planNotes.assumptions.map((x, i) => <li key={i}>{x}</li>)}</ul>
+          <ul>{planNotes.assumptions.map((x, i) => <li key={i}><EditableText multiline value={x} onChange={(v) => setNote("assumptions", i, v)} ariaLabel="Assumption" /></li>)}</ul>
         </div>
       )}
-      <div className="entry-plan-foot">Saved with the project — you'll find them in its task view.</div>
+      <div className="entry-plan-foot">Saved with the project — you'll find them in its task view. Double-click any line to edit it.</div>
+    </div>
+  );
+  const fitBlock = windowDays != null && windowDays > 0 && (
+    <div className={`entry-fit ${fitState}`}>
+      {fitState === "over"
+        ? <>The steps need <b>{totalDays} days</b> but the deadline gives <b>{windowDays}</b> — {totalDays - windowDays} over.</>
+        : fitState === "under"
+          ? <>The steps take <b>{totalDays}</b> of <b>{windowDays} days</b> — {windowDays - totalDays} days of buffer.</>
+          : <>The steps fill the <b>{windowDays} days</b> to the deadline exactly.</>}
+      {fitState !== "exact" && (
+        <div className="entry-fit-actions">
+          <button type="button" onClick={fitToDeadline}>Fit the steps to the deadline</button>
+        </div>
+      )}
     </div>
   );
   const deadlineCard = (
     <>
-      <div className={`entry-deadline ${expectedDeadline ? "" : "empty"}`}>
-        <div className="entry-deadline-cap">Expected deadline</div>
-        <div className="entry-deadline-date" key={expectedDeadline ? expectedDeadline.getTime() : "none"}>{expectedDeadline ? fmtLong(expectedDeadline) : "Pick a start date"}</div>
+      <div className={`entry-deadline ${deadlineAt ? "" : "empty"}`}>
+        <div className="entry-deadline-cap">Deadline</div>
+        <div className="entry-deadline-date" key={draftDeadline || "none"}>{deadlineAt ? fmtLong(deadlineAt) : "Set a deadline"}</div>
         <div className="entry-deadline-sub">
-          {startAt ? <>Starts {fmtLong(startAt)} · </> : null}{totalDays} days (~{months} months)
+          {startAt ? <>Starts {fmtLong(startAt)} · </> : null}{windowDays != null ? `${windowDays} days to work with` : `${totalDays} days of steps`}
         </div>
       </div>
+      {fitBlock}
       {startAt && (
         <div className={`entry-start-note ${startsNow ? "now" : ""}`}>
           {startsNow
@@ -408,6 +446,8 @@ export default function TaskEntry({ staff, userRole, actualRole, userName, onCre
               onSeedUsed={onPlannerSeedUsed}
               startDate={draftStart}
               onStartDateChange={setDraftStart}
+              deadline={draftDeadline}
+              onDeadlineChange={setDraftDeadline}
               assignees={Array.from(selectedAssignees)}
               onAssigneesChange={(names) => setSelectedAssignees(new Set(names))}
               staffOptions={assignableStaff.map((st) => st.name)}
@@ -444,6 +484,10 @@ export default function TaskEntry({ staff, userRole, actualRole, userName, onCre
                 <div className="entry-review-field">
                   <label htmlFor="review-start">Start date <b>*</b></label>
                   <DatePicker id="review-start" value={draftStart} onChange={setDraftStart} placeholder="Pick a start date" required />
+                </div>
+                <div className="entry-review-field">
+                  <label htmlFor="review-deadline">Deadline <b>*</b></label>
+                  <DatePicker id="review-deadline" value={draftDeadline} onChange={setDraftDeadline} min={draftStart || undefined} placeholder="When must it be done?" required />
                 </div>
                 <div className="entry-review-field">
                   <label>Assignees <b>*</b></label>
@@ -586,11 +630,15 @@ export default function TaskEntry({ staff, userRole, actualRole, userName, onCre
                 <div className="form-group">
                   <label className="form-label">Start Date *</label>
                   <DatePicker id="task-date" value={draftStart} onChange={setDraftStart} placeholder="Pick a start date" required />
-                  <div className={`entry-start-deadline ${expectedDeadline ? "" : "empty"}`}>
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Deadline *</label>
+                  <DatePicker id="task-deadline" value={draftDeadline} onChange={setDraftDeadline} min={draftStart || undefined} placeholder="When must it be done?" required />
+                  <div className={`entry-start-deadline ${windowDays != null ? "" : "empty"}`}>
                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6" /></svg>
-                    {expectedDeadline
-                      ? <>Expected deadline <b>{fmtLong(expectedDeadline)}</b> · {totalDays} days</>
-                      : <>Pick a start date to see the expected deadline ({totalDays} days of work)</>}
+                    {windowDays != null
+                      ? <><b>{windowDays} days</b> to the deadline · the milestones below take <b>{totalDays}</b>{fitState === "over" ? " — too many, fit them on the right" : ""}</>
+                      : <>Set the start date and the deadline — the milestones are the steps to reach it ({totalDays} days of steps now)</>}
                   </div>
                 </div>
                 <div className="form-group">
@@ -627,7 +675,7 @@ export default function TaskEntry({ staff, userRole, actualRole, userName, onCre
                     <div key={idx} className="milestone-row">
                       <input type="text" className="form-input" value={m.name} onChange={(e) => updateMilestone(idx, "name", e.target.value)} placeholder="Milestone Name" />
                       <input type="number" className="form-input" value={m.days} onChange={(e) => updateMilestone(idx, "days", e.target.value)} placeholder="Days" />
-                      <span className={`milestone-row-due ${milestoneDue[idx] ? "" : "empty"}`} title={milestoneDue[idx] ? "Due if work starts on the start date" : "Pick a start date"}>
+                      <span className={`milestone-row-due ${milestoneDue[idx] ? "" : "empty"} ${deadlineAt && milestoneDue[idx] > deadlineAt ? "late" : ""}`} title={milestoneDue[idx] ? (deadlineAt && milestoneDue[idx] > deadlineAt ? "After the deadline" : "Due if work starts on the start date") : "Pick a start date"}>
                         {milestoneDue[idx] ? fmtShort(milestoneDue[idx]) : "—"}
                       </span>
                       <button type="button" className="btn-remove-milestone" onClick={() => removeMilestoneRow(idx)}>×</button>
@@ -650,20 +698,7 @@ export default function TaskEntry({ staff, userRole, actualRole, userName, onCre
             <h2 className={`entry-review-title ${titlePreview.trim() ? "" : "empty"}`}>{titlePreview.trim() || "Untitled project"}</h2>
             {descPreview.trim() && <p className="entry-review-desc">{descPreview.trim()}</p>}
 
-            {startAt && (
-              <div className={`entry-start-note ${startsNow ? "now" : ""}`}>
-                {startsNow
-                  ? "Starts today or earlier — it goes straight to Pending and its clock starts."
-                  : `Waits in To Do, then moves to Pending by itself on ${fmtLong(startAt)}.`}
-              </div>
-            )}
-            <div className={`entry-deadline entry-deadline-form ${expectedDeadline ? "" : "empty"}`}>
-              <div className="entry-deadline-cap">Expected deadline</div>
-              <div className="entry-deadline-date" key={expectedDeadline ? expectedDeadline.getTime() : "none"}>{expectedDeadline ? fmtLong(expectedDeadline) : "Pick a start date"}</div>
-              <div className="entry-deadline-sub">
-                {startAt ? <>Starts {fmtLong(startAt)} · </> : null}{totalDays} days (~{months} months)
-              </div>
-            </div>
+            {deadlineCard}
 
             <dl className="entry-review-facts">
               <div>
@@ -679,39 +714,9 @@ export default function TaskEntry({ staff, userRole, actualRole, userName, onCre
             </dl>
 
             <div className="entry-review-cap">Milestones · {milestones.length}</div>
-            <ol className="guide-list entry-review-ms">
-              {milestones.map((m, idx) => (
-                <li key={idx} className="guide-item">
-                  <span className="entry-ms-num">{idx + 1}</span>
-                  <div className="guide-label">
-                    {m.name || "Unnamed Milestone"}
-                    {m.hint && <div className="guide-hint">{m.hint}</div>}
-                  </div>
-                  <div className="entry-ms-when">
-                    <span className="guide-days">{m.days}d</span>
-                    {milestoneDue[idx] && <span className="entry-ms-due">{fmtShort(milestoneDue[idx])}</span>}
-                  </div>
-                </li>
-              ))}
-            </ol>
+            {milestoneList}
 
-            {(planNotes.watchOuts.length > 0 || planNotes.assumptions.length > 0) && (
-              <div className="entry-plan-notes">
-                {planNotes.watchOuts.length > 0 && (
-                  <div className="entry-plan-block watch">
-                    <div className="entry-plan-title">Watch out for</div>
-                    <ul>{planNotes.watchOuts.map((w, i) => <li key={i}>{w}</li>)}</ul>
-                  </div>
-                )}
-                {planNotes.assumptions.length > 0 && (
-                  <div className="entry-plan-block assume">
-                    <div className="entry-plan-title">Assumptions</div>
-                    <ul>{planNotes.assumptions.map((x, i) => <li key={i}>{x}</li>)}</ul>
-                  </div>
-                )}
-                <div className="entry-plan-foot">Saved with the project — you'll find them in its task view.</div>
-              </div>
-            )}
+            {planNotesBlock}
 
             <div className="entry-review-foot">
               {accUi.locked ? (

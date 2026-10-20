@@ -165,3 +165,36 @@ html:has(.entry-review) .ai-hint { visibility: hidden; pointer-events: none; }
 .announcement-popup { max-width: 640px; }
 .notif-modal-content { max-width: 760px; }
 .settings-panel { max-width: 1180px; }
+
+/* ── Deadline vs. the steps ── */
+.entry-fit {
+  margin: 0 0 12px; padding: 10px 12px; border-radius: 12px; font-size: 0.78rem; font-weight: 600; line-height: 1.45;
+  color: var(--color-text-secondary); background: var(--color-bg-subtle); border: 1px solid var(--glass-border, #e2e8f0);
+}
+.entry-fit b { color: var(--color-text-primary); }
+.entry-fit.exact { color: #047857; background: color-mix(in srgb, #10b981 10%, transparent); border-color: color-mix(in srgb, #10b981 35%, transparent); }
+.entry-fit.over { color: #b91c1c; background: color-mix(in srgb, #ef4444 9%, transparent); border-color: color-mix(in srgb, #ef4444 35%, transparent); }
+.entry-fit-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.entry-fit-actions button {
+  padding: 6px 12px; border-radius: 999px; cursor: pointer; font: inherit; font-size: 0.72rem; font-weight: 800;
+  color: var(--color-accent); background: var(--color-card-bg, #fff); border: 1.5px solid color-mix(in srgb, var(--color-accent) 55%, transparent);
+  transition: background-color 0.18s ease, color 0.18s ease, scale 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.entry-fit-actions button:hover { background: var(--color-accent); color: #fff; }
+.entry-fit-actions button:active { scale: 0.95; }
+.entry-ms-due.late, .milestone-row-due.late { color: #dc2626; background: color-mix(in srgb, #ef4444 10%, transparent); }
+.consult-start-row { flex-wrap: wrap; }
+.consult-start-hint { flex-basis: 100%; font-size: 0.72rem; color: var(--color-text-secondary); }
+
+/* ── Double-click to edit ── */
+.editable-text { cursor: text; border-radius: 6px; outline: none; transition: background-color 0.15s ease, box-shadow 0.15s ease; }
+.editable-text:hover { background: color-mix(in srgb, var(--color-accent) 8%, transparent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 8%, transparent); }
+.editable-text:focus-visible { box-shadow: 0 0 0 2px var(--color-accent); }
+.editable-text.empty { color: #94a3b8; font-style: italic; }
+.editable-input {
+  display: block; box-sizing: border-box; width: 100%; margin: 0; padding: 2px 6px; border-radius: 6px; resize: none;
+  font: inherit; color: inherit; letter-spacing: inherit; line-height: inherit; overflow: hidden;
+  background: var(--color-card-bg, #fff); border: 1.5px solid var(--color-accent); outline: none;
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-accent) 14%, transparent);
+}
+span > .editable-input, li > .editable-input { display: inline-block; }

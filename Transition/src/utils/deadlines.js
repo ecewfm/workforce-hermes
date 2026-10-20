@@ -85,3 +85,36 @@ export function deadlineTone(daysLeft) {
   if (daysLeft <= 30) return "soon";
   return "ok";
 }
+
+// ── Planning to a deadline (New Task) ──────────────────────────────────────
+/** Calendar days from one "YYYY-MM-DD" to another (null if either is missing). */
+export function daysBetweenISO(fromISO, toISO) {
+  const p = (s) => (/^\d{4}-\d{2}-\d{2}$/.test(s || "") ? s.split("-").map(Number) : null);
+  const a = p(fromISO), b = p(toISO);
+  if (!a || !b) return null;
+  return Math.round((Date.UTC(b[0], b[1] - 1, b[2]) - Date.UTC(a[0], a[1] - 1, a[2])) / DAY_MS);
+}
+
+/**
+ * Re-size milestones so their days add up to exactly `targetDays`, keeping
+ * their proportions (largest-remainder rounding, at least 1 day each).
+ * The deadline is fixed; the milestones are the steps that get you there.
+ */
+export function fitMilestonesToDays(milestones, targetDays) {
+  const list = milestones || [];
+  if (!list.length || !(targetDays > 0)) return list;
+  const days = list.map((m) => Math.max(1, Number(m.days) || 1));
+  const total = days.reduce((a, b) => a + b, 0);
+  const target = Math.max(targetDays, list.length); // can't go below 1 day each
+  const raw = days.map((d) => (d * target) / total);
+  const out = raw.map((x) => Math.max(1, Math.floor(x)));
+  let diff = target - out.reduce((a, b) => a + b, 0);
+  const byRemainder = raw.map((x, i) => [x - Math.floor(x), i]).sort((a, b) => b[0] - a[0]).map(([, i]) => i);
+  for (let k = 0; diff > 0; k++) { out[byRemainder[k % out.length]] += 1; diff--; }
+  while (diff < 0) {
+    const i = out.indexOf(Math.max(...out));
+    if (out[i] <= 1) break;
+    out[i] -= 1; diff++;
+  }
+  return list.map((m, i) => ({ ...m, days: out[i] }));
+}

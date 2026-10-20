@@ -49,6 +49,7 @@ const APP_GUIDE = `WHERE THINGS LIVE in Hermes (use this to answer "where do I�
 • "Skip AI" on New Task starts from the workspace's DEFAULT milestones (also used when Caddy is off). Operations' built-in default is a general 8-step, 56-day template that fits any operations project: Scope & Goals (5d) → Plan & Design (7d) → Review & Sign-off (3d) → Prepare & Set Up (7d) → Pilot / Test Run (10d) → Train & Communicate (5d) → Go-Live / Full Rollout (5d) → Monitor & Hand Over (14d). Executives has its own 7-step, 53-day default: Situation & Data Review (7d) → Options & Recommendation (7d) → Stakeholder Alignment (5d) → Decision & Approval (3d) → Launch & Delegate (5d) → Oversight & Check-ins (21d) → Results Review & Close-out (5d). Workforce's is a 10-step software-delivery template. Each built-in Operations/Executives step comes with a short meaning that shows under it in the task. Admin+ can change any workspace's default in Settings → Workspace Defaults ("Restore Original" brings the built-in one back).
 • New Task's details step ("Final touches"): the expected deadline (start date + every milestone's days, assuming work starts that day) shows right under the start date, each milestone row shows its due date, and the right side is a live Review of the whole project (title, deadline, assignees, account, documents, milestones with due dates, watch-outs) with the Create Task button at the bottom — it lists anything still missing.
 • Start dates are REQUIRED for every project (New Task — the AI planner won't continue without one —, Caddy's create_project, and taking a notebook idea, which asks for one). A project whose start date is today or earlier goes straight to Pending when it's created; a later one waits in To Do and moves to Pending by itself on its start date (Manila time, within ~10 minutes of midnight). Only never-started projects move automatically — one dragged back to To Do on purpose stays there.
+• Deadlines in New Task: the person sets the DEADLINE themselves (required, next to the start date) and the milestones are the steps to reach it. The AI planner plans to that deadline; if the steps add up to more (or fewer) days than start→deadline, New Task says so and offers "Fit the steps to the deadline" (scales the days to fit) or, on the plan page, "Ask AI to re-plan for it". Steps that would land after the deadline show their due date in red. The deadline is saved as the project's pinned completion deadline. Any sentence on the plan/review (title, description, goal, a step's "done when", watch-outs, assumptions, milestone names) can be edited by double-clicking it.
 • Deadline clock: a project's countdown starts the first time it leaves To Do (e.g. moved to Pending). After that it keeps running — moving it back to To Do does NOT pause or reset it. A project that has never left To Do has no countdown yet ("Starts when work begins").
 • You (Caddy) can also act on the screen: open a project's card, take the person to a screen (board, overview, new task, notebook, announcements, handbook, settings, project links — called Project Documents outside Workforce), or open the New Task planner with their idea already filled in and planning started.
 • Clicking a project card morphs that card into the task modal — it keeps the card's shape and content as it grows to the centre, while the board zooms toward it — and closing shrinks it back into the card's spot. That's the intended animation, not a glitch; the board zoom follows the "Camera follows the cursor" toggle. While a big task's notes and features (or roadblocks) load, those lists show soft placeholder rows for a moment. Same for the robotic touches: the cursor is a robotic hand that grips when you click, a robotic arm reaches for your cursor on the navigation buttons, and the view gently pans toward the pointer like a camera — deliberate fun, not glitches. Each can be turned on/off under Settings → General Preferences → "Motion & Fun Effects".
@@ -149,6 +150,7 @@ function buildTools({ tech, accounts, columnLabels = [], accountNames = [] }) {
           title: { type: "string", description: "Project title." },
           description: { type: "string", description: "A clear 1–3 sentence description of what this project involves and its goal. Required — write it yourself from the title, context, and (if the term/tool is unfamiliar) web research." },
           start_date: { type: "string", description: "Start date, YYYY-MM-DD. Required — ask for it if you don't know it." },
+          deadline: { type: "string", description: "The date it must be done by, YYYY-MM-DD, if the person gave one (ask if it matters to them). The milestones are then planned as the steps to reach it." },
           assignee: { type: "string", description: "Optional assignee full name. Defaults to the current user." },
           ...(accounts ? {
             account: {
@@ -411,6 +413,10 @@ export function useAiActions({ userName, userEmail, actualRole, uiActions }) {
         const title = (args.title || "Untitled Project").trim();
         const description = (args.description || "").trim();
         const startDate = String(args.start_date || "").trim();
+        const deadline = /^\d{4}-\d{2}-\d{2}$/.test(String(args.deadline || "").trim()) ? String(args.deadline).trim() : "";
+        if (deadline && deadline < startDate) {
+          return { created: false, error: "The deadline is before the start date, so nothing was created. Check both dates with the person." };
+        }
         if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate)) {
           return { created: false, error: "A start date is required and nothing was created. Ask the person when the project starts, then try again with start_date as YYYY-MM-DD." };
         }
@@ -451,6 +457,8 @@ export function useAiActions({ userName, userEmail, actualRole, uiActions }) {
             department: WORKSPACE_META[workspace]?.department,
             workspaceLabel: wsLabel,
             brief: description ? `${title}\n\n${description}` : title,
+            startDateISO: startDate,
+            deadlineISO: deadline,
             template,
             thinkingLevel: "medium",
           });
@@ -468,6 +476,7 @@ export function useAiActions({ userName, userEmail, actualRole, uiActions }) {
         const assignee = (args.assignee || "").trim() || userName;
         await convex.mutation(api.tasks.addTask, {
           workspace, title, assignee, description, milestones, startDate,
+          ...(deadline ? { deadline } : {}),
           ...(account ? { accountId: account._id } : {}),
           ...(watchOuts.length ? { watchOuts } : {}),
           ...(assumptions.length ? { assumptions } : {}),
@@ -477,6 +486,7 @@ export function useAiActions({ userName, userEmail, actualRole, uiActions }) {
           title,
           assignee,
           startDate,
+          ...(deadline ? { deadline } : {}),
           status: startDate <= new Date().toLocaleDateString("en-CA") ? "Pending (its start date has arrived, so the clock is running)" : `To Do — moves to Pending by itself on ${startDate}`,
           workspace,
           ...(account ? { account: account.name } : {}),

@@ -89,12 +89,25 @@ export const api = {
       return storageIds.map((id) => byPath.get(id) || null);
     }),
 
-    addTask: mutation("tasks.addTask", TASK_TABLES, (a) => rpc("add_task", {
-      p_workspace: WS(a.workspace), p_title: a.title, p_assignee: a.assignee || "", p_description: a.description || "",
-      p_milestones: a.milestones || [], p_start_date: a.startDate || null,
-      p_account_id: a.accountId || null, p_documents: a.documents || null,
-      p_watch_outs: a.watchOuts || null, p_assumptions: a.assumptions || null,
-    })),
+    addTask: mutation("tasks.addTask", TASK_TABLES, async (a) => {
+      const base = {
+        p_workspace: WS(a.workspace), p_title: a.title, p_assignee: a.assignee || "", p_description: a.description || "",
+        p_milestones: a.milestones || [], p_start_date: a.startDate || null,
+        p_account_id: a.accountId || null, p_documents: a.documents || null,
+        p_watch_outs: a.watchOuts || null, p_assumptions: a.assumptions || null,
+      };
+      if (!a.deadline) return rpc("add_task", base);
+      try {
+        return await rpc("add_task", { ...base, p_deadline: a.deadline });
+      } catch (err) {
+        // A database without the deadline parameter yet: create, then pin the
+        // deadline the older way (allowed for Admins).
+        if (!/Could not find the function|p_deadline|PGRST202/i.test(String(err?.message || ""))) throw err;
+        const id = await rpc("add_task", base);
+        try { await rpc("set_task_deadline", { p_task_id: id, p_deadline_ms: new Date(`${a.deadline}T23:59:59`).getTime() }); } catch { /* not an Admin */ }
+        return id;
+      }
+    }),
     updateTaskStatus: mutation("tasks.updateTaskStatus", ["tasks"], (a) => rpc("update_task_status", { p_task_id: a.taskId, p_status: a.newStatus })),
     updateTaskMilestones: mutation("tasks.updateTaskMilestones", TASK_TABLES, (a) => rpc("update_task_milestones", {
       p_task_id: a.taskId, p_milestones: a.milestones, p_actor_name: a.actorName || null,

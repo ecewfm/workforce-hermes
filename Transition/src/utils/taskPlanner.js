@@ -213,16 +213,26 @@ function buildSystemInstruction({ department, workspaceLabel, todayISO, template
   return lines.join("\n");
 }
 
-function buildUserText({ brief, startDateISO, currentPlan, feedback }) {
+function buildUserText({ brief, startDateISO, deadlineISO, currentPlan, feedback }) {
   const start = startDateISO
     ? `Planned start date: ${startDateISO}.`
     : `No start date set yet — assume it starts within the next week.`;
+  // The person's deadline is fixed; the milestones are the steps to reach it.
+  const windowDays = startDateISO && deadlineISO
+    ? Math.round((Date.parse(`${deadlineISO}T00:00:00Z`) - Date.parse(`${startDateISO}T00:00:00Z`)) / 86400000)
+    : null;
+  const due = deadlineISO
+    ? (windowDays != null && windowDays > 0
+        ? `DEADLINE (fixed, set by the person): ${deadlineISO} — ${windowDays} days after the start. Plan the steps to reach it: the milestones' days must add up to ${windowDays} (use the whole window, never more). If the work realistically needs longer, still fit it into ${windowDays} days and say plainly in "risks" what's tight and what would have to give.`
+        : `DEADLINE (fixed, set by the person): ${deadlineISO}. Plan the steps to reach it by then; if it's very tight, say so in "risks".`)
+    : "";
+  const lead = [start, due].filter(Boolean).join("\n");
   if (currentPlan && feedback) {
     const { projectType, size, title, description, successMeasure, assumptions, milestones, risks } = currentPlan;
     return [
       `ORIGINAL TASK DESCRIPTION:`,
       brief.trim(),
-      start,
+      lead,
       ``,
       `CURRENT PLAN. Milestones with "editedByPerson": true were written or changed by the person by hand — keep their names and days exactly unless the feedback explicitly asks to change them; adjust the others around them:`,
       JSON.stringify({
@@ -234,7 +244,7 @@ function buildUserText({ brief, startDateISO, currentPlan, feedback }) {
       feedback.trim(),
     ].join("\n");
   }
-  return [`Plan this task.`, start, ``, `TASK DESCRIPTION:`, brief.trim()].join("\n");
+  return [`Plan this task.`, lead, ``, `TASK DESCRIPTION:`, brief.trim()].join("\n");
 }
 
 // ── Parsing ─────────────────────────────────────────────────────────────────
@@ -342,6 +352,7 @@ export function parseThoughtSteps(thoughts) {
  * @param {string}  opts.workspaceLabel  human label for the workspace
  * @param {string}  opts.brief           the person's description of the task
  * @param {string}  [opts.startDateISO]  yyyy-mm-dd
+ * @param {string}  [opts.deadlineISO]   yyyy-mm-dd — the person's fixed deadline; milestones fit it
  * @param {object}  [opts.currentPlan]   the plan to revise (with `feedback`)
  * @param {string}  [opts.feedback]      what to change about currentPlan
  * @param {Array}   [opts.template]      the workspace's milestone template [{name, days}]
@@ -358,6 +369,7 @@ export async function planTask({
   workspaceLabel,
   brief,
   startDateISO = "",
+  deadlineISO = "",
   currentPlan = null,
   feedback = "",
   template = [],
@@ -375,7 +387,7 @@ export async function planTask({
     template,
     recentProjects,
   });
-  const userText = buildUserText({ brief, startDateISO, currentPlan, feedback });
+  const userText = buildUserText({ brief, startDateISO, deadlineISO, currentPlan, feedback });
   const schema = planSchema(department);
 
   const { text, thoughts, model } = await streamGenerate({
