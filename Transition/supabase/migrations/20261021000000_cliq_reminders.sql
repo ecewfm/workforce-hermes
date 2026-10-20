@@ -239,8 +239,9 @@ begin
 
   -- Up to four projects get their own button; the last one opens Hermes.
   for e in select x from jsonb_array_elements(own_late || own_soon || team) with ordinality as t(x, o) order by o limit 4 loop
-    lbl := 'Open ' || (e ->> 'title');
-    if length(lbl) > 30 then lbl := left(lbl, 29) || '…'; end if;
+    -- Cliq refuses button labels over 20 characters (not the 30 its docs say).
+    lbl := btrim(e ->> 'title');
+    if length(lbl) > 20 then lbl := rtrim(left(lbl, 19)) || '…'; end if;
     buttons := buttons || jsonb_build_object('label', lbl, 'action', jsonb_build_object('type', 'open.url', 'data', jsonb_build_object(
       'web', p_app || '/?project=' || regexp_replace(e ->> 'id', '[^A-Za-z0-9_-]', '', 'g') || '&ws=' || (e ->> 'workspace'))));
   end loop;
