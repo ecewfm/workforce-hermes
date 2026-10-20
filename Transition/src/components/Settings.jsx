@@ -1336,7 +1336,7 @@ export default function Settings({ userName, userEmail, onClose, showModal, onLo
                   </p>
                   {hasAccounts && (
                     <p className="settings-field-hint staff-acc-hint">
-                      <b>Client accounts:</b> tie someone to one or more accounts and they'll only see those accounts' projects (plus any project they're assigned to). "All accounts" = no restriction. Admin+ and Managers always see every account.
+                      <b>Client accounts:</b> Users and Admins only see the projects of the accounts they're on (plus any project they're assigned to). With <b>no account they're locked out</b> of {terms.label} projects until you add them to one. Admin+ and Managers always see every account.
                     </p>
                   )}
                   <div className="staff-management-list">
@@ -1479,7 +1479,7 @@ export default function Settings({ userName, userEmail, onClose, showModal, onLo
                                 const mine = accountsByEmail[s.email] || [];
                                 if (!isAdminPlus) {
                                   const names = (accounts || []).filter((a) => mine.includes(a._id)).map((a) => a.name);
-                                  return <span className="staff-acc-all">{names.length ? names.join(", ") : "All accounts"}</span>;
+                                  return <span className="staff-acc-all">{names.length ? names.join(", ") : "None — locked"}</span>;
                                 }
                                 return (
                                   <MultiSelect
@@ -1487,7 +1487,7 @@ export default function Settings({ userName, userEmail, onClose, showModal, onLo
                                     className="staff-acc-select"
                                     values={mine}
                                     options={(accounts || []).map((a) => ({ value: a._id, label: a.name }))}
-                                    allLabel="All accounts"
+                                    allLabel="None — locked"
                                     emptyText="No client accounts yet — add one under Client Accounts."
                                     ariaLabel={`Client accounts for ${s.name}`}
                                     onChange={async (ids) => {

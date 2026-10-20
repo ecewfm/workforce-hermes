@@ -1,6 +1,7 @@
-// Client-account access (Operations): someone tied to accounts — and below
-// Admin+ — only sees those accounts' projects. The database enforces it; this
-// just lets screens match (e.g. no "No account" choice for them).
+// Client-account access (Operations): everyone below Admin+ only sees their
+// own accounts' projects (plus projects they're assigned to). With NO account
+// they're locked out until an Admin+ or Manager adds them to one. The
+// database enforces it; this just lets screens match.
 import { useQuery } from "../data/react";
 import { api } from "../data/api";
 import { usesAccounts } from "./workspaceTerms";
@@ -11,7 +12,9 @@ export function useAccountScope(workspace, actualRole) {
   const rows = useQuery(api.accounts.getStaffAccounts, on ? { workspace } : "skip");
   const me = (localStorage.getItem("wf_email") || "").toLowerCase();
   const accountIds = on ? (rows || []).filter((r) => r.email === me).map((r) => r.accountId) : [];
-  return { scoped: on && !isAdminPlusOrAbove(actualRole) && accountIds.length > 0, accountIds };
+  const scoped = on && !isAdminPlusOrAbove(actualRole);
+  // rows === undefined while loading — don't flash the "locked" notice.
+  return { scoped, accountIds, locked: scoped && rows !== undefined && accountIds.length === 0 };
 }
 
 /**
@@ -23,10 +26,10 @@ export function useAccountScope(workspace, actualRole) {
  *   to choose, so the account UI stays out of the way.
  */
 export function useAccountUi(workspace, actualRole, userRole) {
-  const { scoped, accountIds } = useAccountScope(workspace, actualRole);
+  const { scoped, accountIds, locked } = useAccountScope(workspace, actualRole);
   const on = usesAccounts(workspace);
   const full = on && isAdminPlusOrAbove(actualRole) && userRole !== "Programmer";
   const show = on && (full || accountIds.length > 1);
   const limit = (list) => (full ? list || [] : (list || []).filter((a) => accountIds.includes(a._id)));
-  return { on, full, show, scoped, accountIds, limit };
+  return { on, full, show, scoped, locked, accountIds, limit };
 }

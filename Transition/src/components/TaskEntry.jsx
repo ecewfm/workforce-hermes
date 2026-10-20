@@ -418,7 +418,10 @@ export default function TaskEntry({ staff, userRole, actualRole, userName, onCre
 
               <div style={{ display: "flex", justifyContent: "center", gap: 15, marginTop: 40 }}>
                 <button type="button" className="btn-secondary" onClick={resetForm}>Clear</button>
-                <button type="submit" className="btn-primary" style={{ width: "auto", padding: "12px 40px" }} disabled={submitting}>
+                {accUi.locked && (
+                  <p className="account-locked-inline">You're not on a client account yet, so you can't start a {terms.label} project. Ask an Admin+ or Manager to add you to one.</p>
+                )}
+                <button type="submit" className="btn-primary" style={{ width: "auto", padding: "12px 40px" }} disabled={submitting || accUi.locked}>
                   {submitting ? "CREATING..." : "Create Task"}
                 </button>
               </div>
