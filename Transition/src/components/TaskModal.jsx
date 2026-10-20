@@ -990,7 +990,8 @@ export default function TaskModal({ taskId, isEditMode, initialNotesOpen, userRo
                   </button>
                 </div>
               )}
-              {items.map((f) => {
+              {/* Newest first */}
+              {[...items].reverse().map((f) => {
                 const isSelected = selected.has(f.id);
                 const open = f.status !== "completed";
                 return (
@@ -1683,7 +1684,8 @@ export default function TaskModal({ taskId, isEditMode, initialNotesOpen, userRo
                   </button>
                 </div>
               )}
-              {(task.notes || []).map((n, i) => {
+              {/* Newest first; `i` stays the note's real position (reactions, replies, selection use it). */}
+              {(task.notes || []).map((n, i) => [n, i]).reverse().map(([n, i]) => {
                 const reactions = n.reactions || {};
                 const reactionTypes = [
                   { key: "heart", emoji: "❤️", label: "Heart" },
