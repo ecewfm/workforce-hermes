@@ -822,9 +822,9 @@ export default function App() {
       setShowAI(false);
       openTaskModal(taskId);
     },
-    planNewTask: (brief) => {
+    planNewTask: (brief, dates = {}) => {
       setShowAI(false);
-      setPlannerSeed({ brief, nonce: Date.now() });
+      setPlannerSeed({ brief, startDate: dates.startDate || "", deadline: dates.deadline || "", nonce: Date.now() });
       switchView("entry");
     },
     goTo: (place) => {

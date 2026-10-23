@@ -10,7 +10,9 @@ import { daysBetweenISO, fitMilestonesToDays } from "../utils/deadlines";
 /**
  * ConsultPanel — the AI-first step of New Task (rendered inline, not a modal).
  *
- *  1. The person describes what they're planning (+ an optional start date).
+ *  1. The person describes what they're planning and picks the start date and
+ *     the deadline (both required before the AI plans: the milestones are the
+ *     steps to reach the deadline, and each shows its due date).
  *  2. The AI thinks — its reasoning streams in live as a step list — then the
  *     plan streams in: project type, size, then milestones one by one.
  *  3. The plan is fully editable here (rename, re-time, add, remove, reorder),
@@ -42,6 +44,7 @@ export default function ConsultPanel({
   const [plan, setPlan] = useState(null); // the finished, editable plan
   const [reasoning, setReasoning] = useState([]); // thought steps behind `plan`
   const [error, setError] = useState("");
+  const [needDates, setNeedDates] = useState(false); // tried to plan without both dates
   const [refinement, setRefinement] = useState("");
   const abortRef = useRef(null);
   const briefRef = useRef(null);
@@ -64,20 +67,40 @@ export default function ConsultPanel({
   );
 
   useEffect(() => { setTimeout(() => briefRef.current?.focus(), 80); }, []);
+  // Both dates in → clear the "pick the dates first" nudge.
+  useEffect(() => {
+    if (needDates && startDate && deadline) { setNeedDates(false); setError(""); }
+  }, [needDates, startDate, deadline]);
   useEffect(() => () => abortRef.current?.abort(), []);
 
-  // Caddy handed us a brief → fill it in and start planning right away.
+  // Caddy handed us a brief (and maybe the dates) → fill them in; with both
+  // dates it starts planning right away, otherwise it waits for them.
   useEffect(() => {
     if (!seed?.brief) return;
     setBrief(seed.brief);
-    run({ text: seed.brief });
+    const iso = (v) => (/^\d{4}-\d{2}-\d{2}$/.test(v || "") ? v : "");
+    const s = iso(seed.startDate) || startDate;
+    const d = iso(seed.deadline) && (!s || iso(seed.deadline) >= s) ? iso(seed.deadline) : deadline;
+    if (s !== startDate) setStartDate(s);
+    if (d !== deadline) setDeadline(d);
+    run({ text: seed.brief, start: s, end: d });
     onSeedUsed?.();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [seed?.nonce]);
 
-  async function run({ feedback = "", text } = {}) {
+  async function run({ feedback = "", text, start, end } = {}) {
     const theBrief = (text ?? brief).trim();
     if (!theBrief) return;
+    // The AI plans the steps to reach the deadline, so it needs both dates first.
+    const s = start ?? startDate;
+    const d = end ?? deadline;
+    if (!s || !d) {
+      setNeedDates(true);
+      setError(!s && !d ? "Pick a start date and a deadline first. The AI plans the steps to reach the deadline."
+        : !s ? "Pick a start date first. The AI plans the steps from that day." : "Set the deadline first. The AI plans the steps to reach it.");
+      return;
+    }
+    setNeedDates(false);
     const isRefine = !!feedback && !!plan;
     abortRef.current?.abort();
     const ctrl = new AbortController();
@@ -92,8 +115,8 @@ export default function ConsultPanel({
         department,
         workspaceLabel,
         brief: theBrief,
-        startDateISO: startDate,
-        deadlineISO: deadline,
+        startDateISO: s,
+        deadlineISO: d,
         currentPlan: isRefine ? { ...plan, milestones: plan.milestones.filter((m) => m.name.trim()) } : null,
         feedback: isRefine ? feedback : "",
         template: (template || []).map(({ name, days }) => ({ name, days })),
@@ -184,6 +207,15 @@ export default function ConsultPanel({
   const windowDays = daysBetweenISO(startDate, deadline);
   const deadlineDate = /^\d{4}-\d{2}-\d{2}$/.test(deadline) ? (() => { const [y, m, d] = deadline.split("-").map(Number); return new Date(y, m - 1, d); })() : null;
   const fitState = windowDays == null ? "none" : totalDays > windowDays ? "over" : totalDays < windowDays ? "under" : "exact";
+  // Each step's due date (work starting on the start date), so the plan reads
+  // as the step-by-step route to the deadline.
+  const startAt = /^\d{4}-\d{2}-\d{2}$/.test(startDate) ? (() => { const [y, m, d] = startDate.split("-").map(Number); return new Date(y, m - 1, d); })() : null;
+  let runningDays = 0;
+  const stepDue = (plan?.milestones || []).map((m) => {
+    runningDays += Number(m.days) || 0;
+    return startAt ? new Date(startAt.getFullYear(), startAt.getMonth(), startAt.getDate() + runningDays) : null;
+  });
+  const fmtShortDay = (d) => d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
   const busy = phase === "thinking";
 
   const setPlanField = (field, v) => setPlan((p) => ({ ...p, [field]: v }));
@@ -220,7 +252,7 @@ export default function ConsultPanel({
                 className="consult-textarea"
                 value={brief}
                 onChange={(e) => setBrief(e.target.value)}
-                onKeyDown={(e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey) && brief.trim() && !busy) run(); }}
+                onKeyDown={(e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey) && brief.trim() && !busy) { e.preventDefault(); run(); } }}
                 placeholder={placeholderFor(department)}
                 disabled={busy}
               />
@@ -234,16 +266,22 @@ export default function ConsultPanel({
                   ))}
                 </div>
               )}
-              <div className="consult-start-row">
-                <label htmlFor="consult-start">Start date</label>
-                <DatePicker id="consult-start" size="sm" className="consult-date-picker" value={startDate} onChange={setStartDate} disabled={busy} allowClear placeholder="Pick a date" />
-                <label htmlFor="consult-deadline">Deadline</label>
-                <DatePicker id="consult-deadline" size="sm" className="consult-date-picker" value={deadline} onChange={setDeadline} disabled={busy} allowClear min={startDate || undefined} placeholder="Pick a date" />
-                <span className="consult-start-hint">Both required before you use the plan — the AI plans the steps to reach the deadline.</span>
+              <div className={`consult-start-row ${needDates && (!startDate || !deadline) ? "needs" : ""}`}>
+                <label htmlFor="consult-start">Start date <b>*</b></label>
+                <DatePicker id="consult-start" size="sm" className={`consult-date-picker ${needDates && !startDate ? "missing" : ""}`} value={startDate} onChange={setStartDate} disabled={busy} allowClear placeholder="Pick a date" required />
+                <label htmlFor="consult-deadline">Deadline <b>*</b></label>
+                <DatePicker id="consult-deadline" size="sm" className={`consult-date-picker ${needDates && !deadline ? "missing" : ""}`} value={deadline} onChange={setDeadline} disabled={busy} allowClear min={startDate || undefined} placeholder="Pick a date" required />
+                <span className={`consult-start-hint ${windowDays != null ? "set" : ""}`}>
+                  {windowDays == null
+                    ? "Both are required before the AI plans. It lays out the steps to finish by the deadline."
+                    : windowDays === 0
+                      ? "Start and deadline are the same day. The AI will plan a one-day job."
+                      : `${windowDays} days from start to deadline. The AI plans the steps to fit them.`}
+                </span>
               </div>
               {phase === "idle" && (
-                <button className="consult-generate" onClick={() => run()} disabled={!brief.trim()}>
-                  ✦ Think it through &amp; propose a plan
+                <button className="consult-generate" onClick={() => run()} disabled={!brief.trim() || !startDate || !deadline}>
+                  {!brief.trim() ? "Describe the project to start" : !startDate ? "Pick a start date to start" : !deadline ? "Set the deadline to start" : <>✦ Think it through &amp; propose a plan</>}
                 </button>
               )}
             </>
@@ -309,6 +347,11 @@ export default function ConsultPanel({
                       />
                       <span>d</span>
                     </label>
+                    {stepDue[i] && (
+                      <span className={`cms-due ${deadlineDate && stepDue[i] > deadlineDate ? "late" : ""}`} title={deadlineDate && stepDue[i] > deadlineDate ? "Lands after the deadline" : "Due if work starts on the start date"}>
+                        Due {fmtShortDay(stepDue[i])}
+                      </span>
+                    )}
                     <div className="cms-tools">
                       <button type="button" title="Move up" onClick={() => moveMilestone(i, -1)} disabled={i === 0}>↑</button>
                       <button type="button" title="Move down" onClick={() => moveMilestone(i, 1)} disabled={i === plan.milestones.length - 1}>↓</button>

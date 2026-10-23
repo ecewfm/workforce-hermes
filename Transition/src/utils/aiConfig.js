@@ -6,56 +6,45 @@
 //
 // Only non-secret config (model names, feature flags) lives here on the client.
 
-// Model tier — primary + a backup used automatically if the primary is
-// rate-limited / erroring. Override in env via VITE_GEMINI_MODEL / _FALLBACK
-// (model names aren't secret, so VITE_ is fine for these).
-const DEFAULT_MODEL = "gemini-flash-lite-latest";
-const DEFAULT_FALLBACK = "gemini-flash-latest";
+// ── Which Gemini model does what ────────────────────────────────────────────
+// Three tiers (model ids checked against the Gemini API, Oct 2026). Each list
+// is tried in order, dropping to the next on a rate limit or outage, and every
+// tier ends on the everyday models so Caddy still answers when the big ones
+// are busy.
+//   • Everyday — Caddy questions and simple edits: Gemini 3.5 Flash Lite.
+//   • Deep — bigger Caddy jobs (a new project, several steps at once, many
+//     projects, analysis, long messages): Gemini 3.6 Flash, thinking hard.
+//   • Planner — the New Task planner, a whole project plan: Gemini 3.8 Flash.
+// Model names aren't secret; override any tier with a comma-separated
+// VITE_GEMINI_MODELS / VITE_GEMINI_DEEP_MODELS / VITE_GEMINI_PLANNER_MODELS.
+const EVERYDAY_MODELS = ["gemini-3.5-flash-lite", "gemini-3.1-flash-lite"];
+const DEEP_MODELS = ["gemini-3.6-flash", "gemini-3.8-flash"];
+const PLANNER_MODELS = ["gemini-3.8-flash", "gemini-3.6-flash"];
 
-export const GEMINI_MODEL = (import.meta.env.VITE_GEMINI_MODEL || DEFAULT_MODEL).trim();
-export const GEMINI_MODEL_FALLBACK = (import.meta.env.VITE_GEMINI_MODEL_FALLBACK || DEFAULT_FALLBACK).trim();
+const modelList = (envValue, fallback) => {
+  const list = String(envValue || "").split(",").map((m) => m.trim()).filter(Boolean);
+  return list.length ? list : fallback;
+};
+const chain = (...lists) => [...new Set(lists.flat())];
 
-// Stronger model used for action / "do a task" requests (creating or editing
-// projects, features, bugs, notes…) which benefit from better descriptions and
-// multi-step tool use. Plain questions stay on the lighter, higher-quota model
-// (the free tier gives lite far more headroom). Override via env; it's tried
-// FIRST for task requests, then falls back through the normal chain.
-export const TASK_MODEL = (import.meta.env.VITE_GEMINI_TASK_MODEL || "gemini-3-flash-preview").trim();
-
-// Ordered, de-duplicated model chain the client tries in turn (dropping to the
-// next on rate-limit/error). Provide ANY number via a comma-separated
-// VITE_GEMINI_MODELS (highest priority); otherwise it's just the primary +
-// backup pair above.
-//   e.g. VITE_GEMINI_MODELS=gemini-3.1-flash-lite,gemini-3.5-flash,gemini-2.5-flash
+/** Everyday chain (Caddy's default). */
 export function getGeminiModels() {
-  // Forgiving: accept a comma-separated list in EITHER VITE_GEMINI_MODEL or
-  // VITE_GEMINI_MODELS, plus the backup and optional numbered vars. Every source
-  // is split on commas, trimmed, de-duplicated, and tried in order.
-  //   e.g. VITE_GEMINI_MODEL=gemini-3.1-flash-lite, gemini-3.5-flash, gemini-3-flash
-  const sources = [
-    import.meta.env.VITE_GEMINI_MODELS,
-    import.meta.env.VITE_GEMINI_MODEL,
-    import.meta.env.VITE_GEMINI_MODEL_FALLBACK,
-    import.meta.env.VITE_GEMINI_MODEL_2,
-    import.meta.env.VITE_GEMINI_MODEL_3,
-    import.meta.env.VITE_GEMINI_MODEL_4,
-  ];
-  const chain = sources
-    .flatMap((v) => String(v || "").split(","))
-    .map((m) => m.trim())
-    .filter(Boolean);
-  return [...new Set(chain.length ? chain : [DEFAULT_MODEL, DEFAULT_FALLBACK])];
+  return chain(modelList(import.meta.env.VITE_GEMINI_MODELS, EVERYDAY_MODELS));
 }
 
-// Models for the New Task planner, tried in order before the normal chain.
-// Planning is infrequent and quality matters more than speed, so it leads with
-// stronger models (each still falls back on rate-limit/error). Override with a
-// comma-separated VITE_GEMINI_PLANNER_MODELS.
-const DEFAULT_PLANNER_MODELS = ["gemini-3.5-flash", "gemini-3-flash-preview"];
+/** Deep chain: bigger Caddy jobs, then the everyday models as a last resort. */
+export function getDeepModels() {
+  return chain(modelList(import.meta.env.VITE_GEMINI_DEEP_MODELS, DEEP_MODELS), getGeminiModels());
+}
+
+/** The New Task planner's chain, strongest first. */
 export function getPlannerModels() {
-  const custom = String(import.meta.env.VITE_GEMINI_PLANNER_MODELS || "")
-    .split(",").map((m) => m.trim()).filter(Boolean);
-  return [...new Set([...(custom.length ? custom : DEFAULT_PLANNER_MODELS), ...getGeminiModels()])];
+  return chain(modelList(import.meta.env.VITE_GEMINI_PLANNER_MODELS, PLANNER_MODELS), getGeminiModels());
+}
+
+/** True for the models that only do the big jobs (they get thinking set high). */
+export function isDeepModel(model) {
+  return [...getDeepModels(), ...getPlannerModels()].includes(model) && !getGeminiModels().includes(model);
 }
 
 /**
@@ -81,18 +70,23 @@ export function thinkingConfigFor(model, level = "high", includeThoughts = true)
 // VITE_GEMINI_WEB_SEARCH=true once you have billing/quota for grounding.
 export const ENABLE_WEB_SEARCH = String(import.meta.env.VITE_GEMINI_WEB_SEARCH || "").toLowerCase() === "true";
 
-// Rough intent check: is the user asking Caddy to DO something (create/modify a
-// project, feature, bug, roadblock, note, milestone, column…) rather than just
-// answer a question? Action requests get routed to TASK_MODEL for higher-quality
-// tool use; queries stay on the lighter model. Verb + task-noun keeps false
-// positives low (a miss just means the lighter model — the current default).
-// Covers every workspace's words: Workforce's features/bugs and Operations/
-// Executives' roadblocks, accounts and documents.
-const TASK_VERB = /\b(create|make|add|new|set\s?up|setup|start|build|log|file|flag|raise|open|register|schedule|assign|update|change|jot|post|mark|complete|move|rename|remove|delete)\b/i;
-const TASK_NOUN = /\b(project|task|feature|bug|roadblocks?|blockers?|issues?|requests?|accounts?|documents?|note|idea|milestone|deadline|column|status|ticket|assignment)\b/i;
-export function isTaskRequest(text) {
-  const t = String(text || "");
-  return TASK_VERB.test(t) && TASK_NOUN.test(t);
+// Is this a bigger job for the deep model? A miss just means the everyday
+// model, which still uses every tool — so this only catches the clear cases:
+//   • a long message (a pasted brief, a list of things to do);
+//   • starting a new project (Caddy plans its milestones);
+//   • planning / analysis / reporting work;
+//   • anything across many projects ("all overdue projects", "the whole board");
+//   • several actions in one go ("add a note to X and move Y to Done").
+const PLAN_WORDS = /\b(plan|planning|break\s+(it|this|that)?\s*down|analy[sz]e|analysis|compare|summari[sz]e|summary|report|review|assess|audit|prioriti[sz]e|estimate|forecast|strategy|recommend|root\s+cause|trade-?offs?|step[-\s]by[-\s]step)\b/i;
+const WIDE_SCOPE = /\b(all|every|each|across|whole|entire)\b[^.?!]{0,40}\b(projects?|tasks?|board|team|workspace|accounts?|milestones?)\b|\b(overdue|late|behind|stalled|stuck|at[-\s]risk)\b[^.?!]{0,20}\b(projects?|tasks?)\b|\b(projects?|tasks?)\b[^.?!]{0,25}\b(overdue|late|behind|stalled|stuck|at[-\s]risk)\b/i;
+const NEW_PROJECT = /\b(create|make|start|set\s?up|setup|build|launch|kick\s?off|new)\b[^.?!]{0,40}\b(project|task)\b/i;
+const ACTION = /\b(create|make|add|set\s?up|start|log|file|flag|raise|assign|update|change|post|mark|complete|move|rename|remove|delete|close|reopen)\b/gi;
+export function isDeepRequest(text) {
+  const t = String(text || "").trim();
+  if (t.length > 500 || t.split(/\n/).filter((l) => l.trim()).length > 5) return true;
+  if (PLAN_WORDS.test(t) || WIDE_SCOPE.test(t) || NEW_PROJECT.test(t)) return true;
+  const actions = t.match(ACTION) || [];
+  return new Set(actions.map((a) => a.toLowerCase())).size >= 2 && /\b(and|then|also)\b|[,;]/i.test(t);
 }
 
 // ── Enable / disable the whole Caddy assistant ──────────────────────────────

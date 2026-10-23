@@ -198,3 +198,16 @@ html:has(.entry-review) .ai-hint { visibility: hidden; pointer-events: none; }
   box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-accent) 14%, transparent);
 }
 span > .editable-input, li > .editable-input { display: inline-block; }
+
+/* Planner: start date + deadline are required before the AI plans */
+.consult-start-row label b { color: #ef4444; }
+.consult-start-hint.set { color: var(--color-accent); font-weight: 700; }
+.ui-select.consult-date-picker.missing {
+  border-color: #f59e0b; box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.2);
+  animation: consultNudge 0.45s cubic-bezier(0.36, 0.07, 0.19, 0.97);
+}
+@keyframes consultNudge { 20%, 60% { transform: translateX(-4px); } 40%, 80% { transform: translateX(4px); } }
+/* Each step's due date, so the plan reads as the route to the deadline */
+.cms-due { flex-shrink: 0; min-width: 92px; text-align: right; font-size: 0.72rem; font-weight: 700; color: var(--color-text-secondary); }
+.cms-due.late { color: #dc2626; }
+@media (prefers-reduced-motion: reduce) { .ui-select.consult-date-picker.missing { animation: none; } }

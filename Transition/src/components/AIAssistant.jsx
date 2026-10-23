@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { runAssistant } from "../utils/geminiClient";
-import { isTaskRequest } from "../utils/aiConfig";
+import { isDeepRequest } from "../utils/aiConfig";
 import { useAiActions } from "../utils/aiTools";
 import { loadChats, saveChat, deleteChat, newSessionId } from "../utils/caddyChats";
 import { useWorkspace } from "../utils/workspaceContext";
@@ -186,10 +186,9 @@ export default function AIAssistant({ open, onClose, userName, userEmail, actual
         systemInstruction,
         executeTool,
         onStatus: (phase) => setStatus({ phase, label: sassLine(phase) }),
-        // Route action requests (create/edit a project, feature, bug,
-        // roadblock…) to the stronger task model; plain questions stay on the
-        // lighter model.
-        taskMode: isTaskRequest(msg),
+        // Bigger jobs (a new project, several steps, many projects,
+        // analysis) go to the deep model; the rest stay on the everyday one.
+        deep: isDeepRequest(msg),
       });
       historyRef.current = contents;
       setMessages((m) => [...m, { role: "assistant", text: reply }]);

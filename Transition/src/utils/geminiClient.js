@@ -1,4 +1,4 @@
-import { getGeminiModels, TASK_MODEL, ENABLE_WEB_SEARCH } from "./aiConfig";
+import { getGeminiModels, getDeepModels, isDeepModel, thinkingConfigFor, ENABLE_WEB_SEARCH } from "./aiConfig";
 import { supabase } from "../data/supabase";
 
 // Safety cap on how many tool-call rounds a single request may take.
@@ -9,6 +9,29 @@ const MAX_TURNS = 10;
 // makes Caddy fall straight to a model that still has quota.
 const rateLimitedUntil = {}; // model id -> timestamp
 const COOLDOWN_MS = 60_000;
+
+// A model that hasn't started answering in this long is overloaded (Gemini
+// 3.8 Flash sat ~2 minutes before its first byte in Oct 2026): drop to the next
+// model and skip this one for a while.
+const STALL_MS = 20_000; // streaming: until the first chunk
+const REQUEST_MS = 45_000; // tool calls: the whole request
+const SLOW_COOLDOWN_MS = 15 * 60_000;
+
+// One attempt's abort signal: fires if the caller cancels, or after `ms`
+// (then timedOut() is true). Call done() once the attempt no longer needs it.
+function attemptSignal(outer, ms) {
+  const ctrl = new AbortController();
+  let timedOut = false;
+  const onOuter = () => ctrl.abort();
+  outer?.addEventListener("abort", onOuter, { once: true });
+  let timer = setTimeout(() => { timedOut = true; ctrl.abort(); }, ms);
+  return {
+    signal: ctrl.signal,
+    timedOut: () => timedOut,
+    settle: () => { clearTimeout(timer); timer = null; }, // it's answering — no more deadline
+    done: () => { clearTimeout(timer); outer?.removeEventListener("abort", onOuter); },
+  };
+}
 
 function firstAvailableIdx(models) {
   const now = Date.now();
@@ -104,15 +127,23 @@ export async function streamGenerate({ models, buildBody, onThought, onText, onR
       throw reason instanceof Error ? reason : new Error(String(reason));
     };
 
+    const attempt = attemptSignal(signal, STALL_MS);
+    const stalled = () => {
+      if (!attempt.timedOut()) return false;
+      rateLimitedUntil[model] = Date.now() + SLOW_COOLDOWN_MS;
+      return true;
+    };
     let res;
     try {
-      res = await postGemini({ model, body: buildBody(model), stream: true, signal });
+      res = await postGemini({ model, body: buildBody(model), stream: true, signal: attempt.signal });
     } catch (err) {
+      attempt.done();
       if (signal?.aborted) throw err;
-      tryNext(new Error("Couldn't reach the assistant service (network error). Check your connection."));
+      tryNext(new Error(stalled() ? `${model} is overloaded right now.` : "Couldn't reach the assistant service (network error). Check your connection."));
       continue;
     }
     if (!res.ok) {
+      attempt.done();
       const errText = await res.text().catch(() => "");
       if (proxyRouteMissing(res.status, errText)) {
         throw new Error("The AI endpoint /api/gemini returned 404 — the server function isn't deployed yet. Redeploy the latest build to Vercel.");
@@ -120,6 +151,7 @@ export async function streamGenerate({ models, buildBody, onThought, onText, onR
       const refusal = proxyRefusal(res.status, errText);
       if (refusal) throw refusal;
       if (res.status === 429) rateLimitedUntil[model] = Date.now() + COOLDOWN_MS;
+      if (res.status === 503) rateLimitedUntil[model] = Date.now() + SLOW_COOLDOWN_MS; // "high demand"
       // A 400 is usually this model rejecting a config option (e.g. thinking) —
       // worth one more model before giving up.
       if (isRetryable(res.status) || res.status === 400) { tryNext(new Error(parseGeminiError(res.status, errText, model))); continue; }
@@ -150,6 +182,7 @@ export async function streamGenerate({ models, buildBody, onThought, onText, onR
       while (true) {
         const { value, done } = await reader.read();
         if (done) break;
+        attempt.settle(); // it's answering; take as long as it needs
         buffer += decoder.decode(value, { stream: true });
         let m;
         while ((m = buffer.match(/\r?\n\r?\n/))) {
@@ -159,11 +192,14 @@ export async function streamGenerate({ models, buildBody, onThought, onText, onR
       }
       if (buffer.trim()) handleEvent(buffer);
     } catch (err) {
+      attempt.done();
       if (signal?.aborted) throw err;
-      // Died mid-stream before any answer — start over on the next model.
-      if (!text) { tryNext(err); continue; }
+      // Too slow to start, or died mid-stream before any answer — start over
+      // on the next model.
+      if (stalled() || !text) { tryNext(err); continue; }
       throw err;
     }
+    attempt.done();
     if (!text && idx < models.length - 1) { tryNext("empty"); continue; }
     return { text, thoughts, model, finishReason };
   }
@@ -181,13 +217,10 @@ export async function streamGenerate({ models, buildBody, onThought, onText, onR
  * @param {(phase:string, label:string)=>void} opts.onStatus  progress indicator hook
  * @returns {Promise<{text:string, contents:Array}>} final text + updated contents (for history)
  */
-export async function runAssistant({ history = [], userText, tools = [], systemInstruction, executeTool, onStatus, taskMode = false }) {
-  let models = getGeminiModels();
-  // For action/"do a task" requests, try the stronger TASK_MODEL first, then
-  // fall back through the normal chain (dedup so it isn't tried twice).
-  if (taskMode && TASK_MODEL) {
-    models = [TASK_MODEL, ...models.filter((m) => m !== TASK_MODEL)];
-  }
+export async function runAssistant({ history = [], userText, tools = [], systemInstruction, executeTool, onStatus, deep = false }) {
+  // Bigger jobs go to the deep models (see aiConfig); everything else stays on
+  // the everyday model. Both chains end on the everyday models.
+  const models = deep ? getDeepModels() : getGeminiModels();
   // Start on the first model that isn't in a rate-limit cooldown.
   let modelIdx = firstAvailableIdx(models);
 
@@ -203,13 +236,19 @@ export async function runAssistant({ history = [], userText, tools = [], systemI
   async function generate(body) {
     while (true) {
       const model = models[modelIdx];
+      // The deep models think hard; the everyday model keeps its quick default.
+      const thinking = isDeepModel(model) ? thinkingConfigFor(model, "high", false) : null;
+      const attempt = attemptSignal(null, REQUEST_MS);
       let res;
       try {
-        res = await postGemini({ model, body });
+        res = await postGemini({ model, body: thinking ? { ...body, generationConfig: { ...body.generationConfig, thinkingConfig: thinking } } : body, signal: attempt.signal });
       } catch {
+        attempt.done();
+        if (attempt.timedOut()) rateLimitedUntil[model] = Date.now() + SLOW_COOLDOWN_MS; // overloaded — skip it for a while
         if (modelIdx < models.length - 1) { modelIdx++; onStatus?.("thinking", "Switching to backup model…"); continue; }
-        throw new Error("Couldn't reach the assistant service (network error). Check your connection.");
+        throw new Error(attempt.timedOut() ? "The assistant is overloaded right now. Try again in a minute." : "Couldn't reach the assistant service (network error). Check your connection.");
       }
+      attempt.done();
       if (res.ok) return res.json();
       const errText = await res.text().catch(() => "");
       if (proxyRouteMissing(res.status, errText)) {
@@ -217,8 +256,9 @@ export async function runAssistant({ history = [], userText, tools = [], systemI
       }
       const refusal = proxyRefusal(res.status, errText);
       if (refusal) throw refusal;
-      // Put a rate-limited model on cooldown so later messages skip it.
+      // Put a rate-limited or overloaded model on cooldown so later messages skip it.
       if (res.status === 429) rateLimitedUntil[model] = Date.now() + COOLDOWN_MS;
+      if (res.status === 503) rateLimitedUntil[model] = Date.now() + SLOW_COOLDOWN_MS;
       if (modelIdx < models.length - 1 && isRetryable(res.status)) {
         modelIdx++;
         onStatus?.("thinking", "That model's busy — switching to backup…");
@@ -304,6 +344,6 @@ function parseGeminiError(status, text, model) {
   if (status === 400 && /api key|api_key/i.test(msg)) return "Invalid Gemini API key. Check it in Settings → AI Assistant.";
   if (status === 403) return "Gemini rejected the key (403). Verify the key and that the Generative Language API is enabled for it.";
   if (status === 429) return "Gemini rate limit reached (primary + backup). Give it a moment and try again.";
-  if (status === 404) return `Model "${model}" wasn't found. Set a valid model id in .env.local (VITE_GEMINI_MODEL / _FALLBACK).`;
+  if (status === 404) return `Model "${model}" wasn't found. Check the model ids in src/utils/aiConfig.js (or VITE_GEMINI_MODELS).`;
   return msg || `Gemini request failed (${status}).`;
 }

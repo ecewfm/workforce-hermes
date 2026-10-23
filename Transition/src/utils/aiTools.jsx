@@ -2,7 +2,7 @@ import { useConvex, useQuery } from "../data/react";
 import { api } from "../data/api";
 import { useWorkspace } from "./workspaceContext";
 import { isAdminPlusOrAbove } from "./roles";
-import { DAY_MS } from "./deadlines";
+import { DAY_MS, getProjectDeadlines } from "./deadlines";
 import { resolveColumns, taskInColumn } from "./columns";
 import { WORKSPACE_META } from "./departments";
 import { ENABLE_WEB_SEARCH } from "./aiConfig";
@@ -16,6 +16,22 @@ function estNow() {
     timeZone: "America/New_York",
     year: "numeric", month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit",
   });
+}
+
+// A project's deadline as the board shows it, for Caddy: the due date and
+// whether it's overdue (closed and never-started projects have no countdown).
+function deadlineFacts(t) {
+  const st = String(t.status || "").toLowerCase();
+  if (["done", "implemented", "scrapped", "scrapyard"].includes(st)) return {};
+  const dl = getProjectDeadlines(t);
+  if (!dl) return { deadline: st === "todo" ? "not started yet (the countdown starts when work begins)" : "none set" };
+  if (dl.complete) return { deadline: "all milestones complete" };
+  const days = Math.floor((dl.completionDue - Date.now()) / DAY_MS);
+  return {
+    dueDate: new Date(dl.completionDue).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
+    deadline: days < 0 ? `OVERDUE by ${-days} day${-days === 1 ? "" : "s"}` : days === 0 ? "due today" : `due in ${days} day${days === 1 ? "" : "s"}`,
+    ...(dl.activeName ? { currentMilestone: dl.activeName } : {}),
+  };
 }
 
 function genId(prefix) {
@@ -47,7 +63,7 @@ const APP_GUIDE = `WHERE THINGS LIVE in Hermes (use this to answer "where do I�
 • The task modal (click a project card): every milestone can show its meaning right under its name — what the step is, or "Done when: …" for an AI-planned step. AI-planned projects also keep the plan's "Watch out for" list (the risks) and its "Assumptions" in the task modal; both are editable there. In Workforce the left sidebar holds Features and Bug Reports, and Admins find System Links, API Access and the project's Admin login behind the round "⋯" button at the top right of the modal (next to Delete Task) — tucked away there to keep the milestones roomy. Adding or opening a feature, bug or roadblock opens a large two-panel sheet (colour-coded: features in the app colour, bugs rose, roadblocks amber) with tips, up to 3 images (click a slot or drag images onto it), and Esc closes it. In Operations and Executives the sidebar is one "Roadblocks" list — anything blocking progress: add one, mark it cleared, edit or delete it — and "Documents" replaces System Links (add any number of named links, e.g. an SOP, a deck or a sheet). API Access and project Admin Credentials only exist in Workforce.
 • Project Admin Credentials (Workforce): revealing a project's admin login asks for YOUR OWN account password — there's no shared master password.
 • Operations — client Accounts: each project can belong to a client account. The board has an account filter bar (pick an account to see just its projects), the Overview shows projects per account, and New Task and the task modal each have an Account picker — Admin+ can create a new account right from it ("+ New account…"). The full list lives in Settings → Client Accounts (its own tab, Operations only): Admin+ and Managers add, rename and delete accounts there; everyone else sees the list read-only. Deleting an account doesn't delete its projects; they just have no account. People are put on accounts in Settings → Staff Management (the client-accounts picker on each person; Admin+ and Managers set it). Users and Admins only see — and can only work on — the projects of the accounts they're on (being assigned to a project in another account doesn't open it); their new projects must go in one of their accounts. Someone below Admin+ with NO account has no access to Operations projects at all (the board says so, and they can't start a project) until they're added to one — their other workspaces (e.g. Workforce) are unaffected. Admin+ and Managers always see everything. Account controls (the board's account bar, the account on cards, the Account pickers, the Client Accounts tab) only show for Admin+/Managers — or for someone tied to SEVERAL accounts, and then only their accounts; with one account (or none) they're hidden and new projects use that one account. Approving a pending access request from a workspace makes the person a member of that workspace.
-• New Task is AI-first: it opens on a "Plan a new task" step. The person describes what they're planning (one-click example briefs help) and can set a start date. The AI thinks it through — its reasoning shows live as a step list — then streams in a plan tailored to how THIS workspace's department works (Workforce = software delivery; Operations = classified by project type, e.g. campaign launch, SOP change, KPI improvement, tool rollout, training, scheduling change, with sign-offs, a pilot, training and post-go-live monitoring built in; Executives = analysis→proposal→approval→oversight). The plan shows project type, size, a goal, a timeline bar with the finish date, assumptions and risks, and every milestone has a "done when". Everything is editable right there (rename, change days, reorder, add, remove); quick chips or a typed note ("it's only one site") refine it. "Use this plan →" opens the details step (assignees, start date, editable milestones) to create the task.
+• New Task is AI-first: it opens on a "Plan a new task" step. The person describes what they're planning (one-click example briefs help) and MUST pick a start date and a deadline before the AI plans (the button stays off until both are set) — the AI then lays out the steps to finish by that deadline, and every step on the plan shows its due date (red if it would land after the deadline). The AI thinks it through — its reasoning shows live as a step list — then streams in a plan tailored to how THIS workspace's department works (Workforce = software delivery; Operations = classified by project type, e.g. campaign launch, SOP change, KPI improvement, tool rollout, training, scheduling change, with sign-offs, a pilot, training and post-go-live monitoring built in; Executives = analysis→proposal→approval→oversight). The plan shows project type, size, a goal, a timeline bar with the finish date, assumptions and risks, and every milestone has a "done when". Everything is editable right there (rename, change days, reorder, add, remove); quick chips or a typed note ("it's only one site") refine it. "Use this plan →" opens the details step (assignees, start date, editable milestones) to create the task.
 • "Skip AI" on New Task starts from the workspace's DEFAULT milestones (also used when Caddy is off). Operations' built-in default is a general 8-step, 56-day template that fits any operations project: Scope & Goals (5d) → Plan & Design (7d) → Review & Sign-off (3d) → Prepare & Set Up (7d) → Pilot / Test Run (10d) → Train & Communicate (5d) → Go-Live / Full Rollout (5d) → Monitor & Hand Over (14d). Executives has its own 7-step, 53-day default: Situation & Data Review (7d) → Options & Recommendation (7d) → Stakeholder Alignment (5d) → Decision & Approval (3d) → Launch & Delegate (5d) → Oversight & Check-ins (21d) → Results Review & Close-out (5d). Workforce's is a 10-step software-delivery template. Each built-in Operations/Executives step comes with a short meaning that shows under it in the task. Admin+ can change any workspace's default in Settings → Workspace Defaults ("Restore Original" brings the built-in one back).
 • New Task's details step ("Final touches"): the expected deadline (start date + every milestone's days, assuming work starts that day) shows right under the start date, each milestone row shows its due date, and the right side is a live Review of the whole project (title, deadline, assignees, account, documents, milestones with due dates, watch-outs) with the Create Task button at the bottom — it lists anything still missing.
 • Start dates are REQUIRED for every project (New Task — the AI planner won't continue without one —, Caddy's create_project, and taking a notebook idea, which asks for one). A project whose start date is today or earlier goes straight to Pending when it's created; a later one waits in To Do and moves to Pending by itself on its start date (Manila time, within ~10 minutes of midnight). Only never-started projects move automatically — one dragged back to To Do on purpose stays there.
@@ -121,7 +137,7 @@ function buildTools({ tech, accounts, columnLabels = [], accountNames = [] }) {
   return [
     {
       name: "list_projects",
-      description: `List the projects (tasks) in the current workspace with their status, assignee${accounts ? ", client account" : ""} and progress. Use this to find the exact project name before acting on one.`,
+      description: `List the projects (tasks) in the current workspace with their status, assignee${accounts ? ", client account" : ""}, progress and deadline (due date, days left, or how many days overdue — the same countdown the board shows). Use this to find the exact project name before acting on one, and to answer which projects are overdue, due soon or on track.`,
       parameters: { type: "object", properties: {} },
     },
     {
@@ -232,11 +248,13 @@ function buildTools({ tech, accounts, columnLabels = [], accountNames = [] }) {
     },
     {
       name: "plan_new_task",
-      description: "Open the New Task planner ON SCREEN with this brief filled in and start the AI milestone plan, so the person can watch it think, then review, edit and refine it before creating the task. Prefer this whenever someone wants to plan / scope / get milestones for a new task.",
+      description: `Open the New Task planner ON SCREEN with this brief filled in, so the person can watch the AI think, then review, edit and refine the plan before creating the task. Prefer this whenever someone wants to plan / scope / get milestones for a new task. The planner needs a START DATE and a DEADLINE before it plans (the milestones are the steps to reach the deadline): pass both when you know them (today is ${new Date().toLocaleDateString("en-CA")}; convert "next Monday", "end of the month"… to YYYY-MM-DD) and it starts planning at once; without them it opens with the brief filled in and asks the person to pick the dates on screen.`,
       parameters: {
         type: "object",
         properties: {
           brief: { type: "string", description: "A clear description of the task in the person's own terms: what needs to happen, scale (teams, sites, headcount), constraints, deadlines." },
+          start_date: { type: "string", description: "Start date, YYYY-MM-DD, if known." },
+          deadline: { type: "string", description: "The date it must be done by, YYYY-MM-DD (on or after the start date), if known." },
         },
         required: ["brief"],
       },
@@ -349,6 +367,7 @@ export function useAiActions({ userName, userEmail, actualRole, uiActions }) {
               ...(accounts ? { account: t.account || "No account" } : {}),
               progressPercent: Math.round(((t.completedMilestones || 0) / total) * 100),
               notes: t.notesCount || 0,
+              ...deadlineFacts(t),
             };
           }),
         };
@@ -505,8 +524,13 @@ export function useAiActions({ userName, userEmail, actualRole, uiActions }) {
         const brief = (args.brief || "").trim();
         if (!brief) return { error: "No brief given." };
         if (!uiActions?.planNewTask) return { error: "The planner can't be opened from here." };
-        uiActions.planNewTask(brief);
-        return { opened: true, note: "The New Task planner is open with the brief filled in and is planning now. The person reviews, edits and creates it there." };
+        const iso = (v) => (/^\d{4}-\d{2}-\d{2}$/.test(String(v || "").trim()) ? String(v).trim() : "");
+        const startDate = iso(args.start_date);
+        const deadline = iso(args.deadline) && (!startDate || iso(args.deadline) >= startDate) ? iso(args.deadline) : "";
+        uiActions.planNewTask(brief, { startDate, deadline });
+        return startDate && deadline
+          ? { opened: true, note: "The New Task planner is open with the brief and both dates filled in, and is planning now. The person reviews, edits and creates it there." }
+          : { opened: true, note: "The New Task planner is open with the brief filled in. It needs a start date and a deadline before it plans — tell the person to pick them on screen, then press Think it through." };
       }
 
       case "open_project": {

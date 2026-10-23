@@ -12,7 +12,7 @@ import { useWorkspace } from "../utils/workspaceContext";
 import { DEPARTMENTS, WORKSPACE_META, workspaceLabel, MAIN_ADMIN_EMAIL } from "../utils/departments";
 import { hashPassword, markWorkspaceUnlocked } from "../utils/workspacePassword";
 import { COLUMN_COLOR_PRESETS, ARCHIVED_STATUS, defaultColumnsFor, resolveColumns, isArchivedStatus, taskInColumn, makeColumnId } from "../utils/columns";
-import { getGeminiModels, isCaddyEnabled, setCaddyEnabled } from "../utils/aiConfig";
+import { getGeminiModels, getDeepModels, getPlannerModels, isCaddyEnabled, setCaddyEnabled } from "../utils/aiConfig";
 import { getFxPrefs, setFxPref } from "../utils/fxPrefs";
 import { termsFor, usesAccounts, roleLabel } from "../utils/workspaceTerms";
 import AnnouncementComposer from "./AnnouncementComposer";
@@ -748,7 +748,7 @@ export default function Settings({ userName, userEmail, onClose, showModal, onLo
                 {terms.tech ? (
                   <p className="settings-field-hint">
                     <strong>Caddy</strong> (the Caduceus assistant). The Gemini API key is configured
-                    securely on the server — it's never exposed in the app. Models (fallback order): <strong>{getGeminiModels().join(" → ")}</strong>.
+                    securely on the server — it's never exposed in the app. Everyday questions and edits: <strong>{getGeminiModels()[0]}</strong>; bigger jobs (a new project, several steps, many projects): <strong>{getDeepModels()[0]}</strong>; the New Task planner: <strong>{getPlannerModels()[0]}</strong>. Each falls back to the next model if one is busy.
                   </p>
                 ) : (
                   <p className="settings-field-hint">
