@@ -139,8 +139,13 @@ function buildTools({ tech, accounts, columnLabels = [], accountNames = [] }) {
   return [
     {
       name: "list_projects",
-      description: `List the projects (tasks) in the current workspace with their status, assignee${accounts ? ", client account" : ""}, progress and deadline (due date, days left, or how many days overdue — the same countdown the board shows). Use this to find the exact project name before acting on one, and to answer which projects are overdue, due soon or on track.`,
-      parameters: { type: "object", properties: {} },
+      description: `List the projects (tasks) in the current workspace with their status, assignee${accounts ? ", client account" : ""}, progress and deadline (due date, days left, or how many days overdue — the same countdown the board shows). Use this to find the exact project name before acting on one, and to answer which projects are overdue, due soon or on track. For "what's overdue / late / due soon / still open" questions, pass \`only\` — the list then holds exactly those projects (an empty list means there are none), so you don't need to open each project to check.`,
+      parameters: {
+        type: "object",
+        properties: {
+          only: { type: "string", enum: ["overdue", "due_soon", "open"], description: "overdue = past its deadline; due_soon = due within the next 7 days (not yet overdue); open = not finished or archived. Leave out for every project." },
+        },
+      },
     },
     {
       name: "get_project_updates",
@@ -371,8 +376,20 @@ export function useAiActions({ userName, userEmail, actualRole, uiActions }) {
     switch (name) {
       case "list_projects": {
         const tasks = await convex.query(api.tasks.getTasksLight, { workspace });
+        const closed = (t) => ["done", "implemented", "scrapped", "scrapyard"].includes(String(t.status || "").toLowerCase());
+        const daysLeft = (t) => {
+          if (closed(t)) return null;
+          const dl = getProjectDeadlines(t);
+          return dl && !dl.complete ? Math.floor((dl.completionDue - Date.now()) / DAY_MS) : null;
+        };
+        const keep = args.only === "overdue" ? (t) => { const d = daysLeft(t); return d != null && d < 0; }
+          : args.only === "due_soon" ? (t) => { const d = daysLeft(t); return d != null && d >= 0 && d <= 7; }
+            : args.only === "open" ? (t) => !closed(t)
+              : () => true;
+        const picked = (tasks || []).filter(keep);
         return {
-          projects: (tasks || []).map((t) => {
+          ...(args.only ? { filter: args.only, count: picked.length } : {}),
+          projects: picked.map((t) => {
             const total = (t.milestones || []).length || 1;
             return {
               title: t.title,

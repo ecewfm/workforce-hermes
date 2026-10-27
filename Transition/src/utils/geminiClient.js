@@ -1,4 +1,4 @@
-import { getGeminiModels, getDeepModels, isDeepModel, thinkingConfigFor, ENABLE_WEB_SEARCH } from "./aiConfig";
+import { getGeminiModels, getDeepModels, thinkingConfigFor, ENABLE_WEB_SEARCH } from "./aiConfig";
 import { supabase } from "../data/supabase";
 
 // Safety cap on how many tool-call rounds a single request may take.
@@ -237,8 +237,9 @@ export async function runAssistant({ history = [], userText, tools = [], systemI
   async function generate(body) {
     while (true) {
       const model = models[modelIdx];
-      // The deep models think hard; the everyday model keeps its quick default.
-      const thinking = isDeepModel(model) ? thinkingConfigFor(model, "high", false) : null;
+      // Bigger jobs think hard (on whichever model ends up taking them);
+      // everyday requests keep each model's quick default.
+      const thinking = deep ? thinkingConfigFor(model, "high", false) : null;
       const attempt = attemptSignal(null, REQUEST_MS);
       let res;
       try {

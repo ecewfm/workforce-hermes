@@ -7,21 +7,22 @@
 // Only non-secret config (model names, feature flags) lives here on the client.
 
 // ── Which Gemini model does what ────────────────────────────────────────────
-// Three tiers (model ids checked against the Gemini API, Oct 2026). Each list
-// is tried in order, dropping to the next on a rate limit or outage, and every
-// tier ends on the everyday models so Caddy still answers when the big ones
-// are busy.
-//   • Everyday — Caddy questions and simple edits: Gemini 3.5 Flash Lite.
+// The lineup (model ids checked against the Gemini API, Oct 2026) is tried in
+// order, dropping to the next model on a rate limit, an outage, or a model
+// that's too slow to start answering.
+//   • Everyday — Caddy questions and simple edits: the whole lineup, from
+//     Gemini 3.5 Flash Lite down.
 //   • Deep — bigger Caddy jobs (a new project, several steps at once, many
-//     projects, analysis, long messages): Gemini 3.6 Flash, thinking hard.
-//   • Planner — the New Task planner, a whole project plan: Gemini 3.6 Flash, then 3.8 Flash.
-// Model names aren't secret; override any tier with a comma-separated
-// VITE_GEMINI_MODELS / VITE_GEMINI_DEEP_MODELS / VITE_GEMINI_PLANNER_MODELS.
-const EVERYDAY_MODELS = ["gemini-3.5-flash-lite", "gemini-3.1-flash-lite"];
-const DEEP_MODELS = ["gemini-3.6-flash", "gemini-3.8-flash"];
-// 3.8 Flash leads once Google has the capacity: through Oct 2026 it kept
-// answering "high demand" (503) after ~40s, so 3.6 goes first for now.
-const PLANNER_MODELS = ["gemini-3.6-flash", "gemini-3.8-flash"];
+//     projects, analysis, long messages) and the New Task planner: from
+//     Gemini 3.6 Flash, thinking hard, then the rest of the lineup.
+// Model names aren't secret; override with a comma-separated
+// VITE_GEMINI_MODELS / VITE_GEMINI_DEEP_MODELS / VITE_GEMINI_PLANNER_MODELS
+// (VITE_ values are baked in at build time — .env.local only changes local dev).
+const EVERYDAY_MODELS = ["gemini-3.5-flash-lite", "gemini-3.5-flash", "gemini-3.6-flash", "gemini-3.7-flash", "gemini-3.8-flash", "gemini-3.1-flash-lite"];
+// 3.7 and 3.8 Flash were overloaded through late Oct 2026 (no answer, or
+// "high demand" 503s after 20–40s), so 3.6 Flash leads the big jobs for now.
+const DEEP_MODELS = ["gemini-3.6-flash", "gemini-3.7-flash", "gemini-3.8-flash"];
+const PLANNER_MODELS = DEEP_MODELS;
 
 const modelList = (envValue, fallback) => {
   const list = String(envValue || "").split(",").map((m) => m.trim()).filter(Boolean);
@@ -42,11 +43,6 @@ export function getDeepModels() {
 /** The New Task planner's chain, strongest first. */
 export function getPlannerModels() {
   return chain(modelList(import.meta.env.VITE_GEMINI_PLANNER_MODELS, PLANNER_MODELS), getGeminiModels());
-}
-
-/** True for the models that only do the big jobs (they get thinking set high). */
-export function isDeepModel(model) {
-  return [...getDeepModels(), ...getPlannerModels()].includes(model) && !getGeminiModels().includes(model);
 }
 
 /**
