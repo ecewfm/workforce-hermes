@@ -1,0 +1,204 @@
+/* ============================================================
+   Settings → Account Knowledge (AccountKnowledge.jsx), plus the
+   SOP sheet (rendered on <body>) and the planner's account row.
+   ============================================================ */
+
+.settings-panel .kb { display: flex; flex-direction: column; gap: 14px; }
+.settings-panel .kb-muted, .kb-sheet .kb-muted { color: var(--color-text-secondary); font-size: 0.74rem; font-weight: 600; }
+.kb-spinner {
+  display: inline-block; width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0;
+  border: 2px solid color-mix(in srgb, var(--color-accent) 25%, transparent); border-top-color: var(--color-accent);
+  animation: kbSpin 0.7s linear infinite;
+}
+@keyframes kbSpin { to { transform: rotate(360deg); } }
+.settings-panel .kb-loading { display: flex; align-items: center; gap: 10px; padding: 20px; color: var(--color-text-secondary); font-size: 0.85rem; }
+.settings-panel .kb-empty-accounts { font-size: 0.85rem; color: var(--color-text-secondary); }
+
+/* Account switcher */
+.settings-panel .kb-accounts { display: flex; flex-wrap: wrap; gap: 8px; }
+.settings-panel .kb-account {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 1px; padding: 9px 14px; border-radius: 12px; cursor: pointer;
+  font: inherit; text-align: left; color: var(--color-text-primary); background: var(--color-card-bg, #fff);
+  border: 1.5px solid var(--glass-border, #e2e8f0);
+  transition: border-color 0.2s, box-shadow 0.2s, transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), scale 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.settings-panel .kb-account:hover { transform: translateY(-2px); border-color: color-mix(in srgb, var(--color-accent) 45%, transparent); }
+.settings-panel .kb-account:active { scale: 0.96; }
+.settings-panel .kb-account.on { border-color: var(--color-accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 16%, transparent); }
+.settings-panel .kb-account-name { font-size: 0.86rem; font-weight: 800; }
+.settings-panel .kb-account-meta { font-size: 0.68rem; font-weight: 700; color: var(--color-text-secondary); }
+.settings-panel .kb-account.on .kb-account-meta { color: var(--color-accent); }
+
+/* Status line */
+.settings-panel .kb-status {
+  display: flex; align-items: flex-start; gap: 12px; padding: 14px 16px; border-radius: 14px; font-size: 0.84rem; line-height: 1.5;
+  color: var(--color-text-secondary); background: var(--color-bg-subtle); border: 1px dashed color-mix(in srgb, var(--color-text-secondary) 30%, transparent);
+}
+.settings-panel .kb-status.has { color: var(--color-text-primary); border-style: solid; border-color: color-mix(in srgb, var(--color-accent) 30%, transparent); background: color-mix(in srgb, var(--color-accent) 7%, var(--color-card-bg, #fff)); }
+.settings-panel .kb-status strong { color: var(--color-text-primary); }
+.settings-panel .kb-status-sub { color: var(--color-text-secondary); }
+.settings-panel .kb-status-icon {
+  flex-shrink: 0; width: 34px; height: 34px; border-radius: 10px; display: flex; align-items: center; justify-content: center;
+  color: #fff; background: linear-gradient(140deg, var(--color-accent), var(--color-nav-bg));
+}
+
+/* Cards */
+.settings-panel .kb-card { position: relative; margin-bottom: 0; }
+.settings-panel .kb-card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; margin-bottom: 12px; flex-wrap: wrap; }
+.settings-panel .kb-card-title { font-size: 0.92rem; font-weight: 900; color: var(--color-text-primary); }
+.settings-panel .kb-card-hint { margin-top: 2px; font-size: 0.76rem; line-height: 1.45; color: var(--color-text-secondary); max-width: 62ch; }
+.settings-panel .kb-card-actions { display: flex; gap: 8px; flex-shrink: 0; }
+.settings-panel .kb-card-actions button,
+.settings-panel .kb-save { transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), scale 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.2s, background-color 0.2s, box-shadow 0.2s; }
+.settings-panel .kb-card-actions button:active:not(:disabled), .settings-panel .kb-save:active:not(:disabled) { scale: 0.95; }
+.settings-panel .kb-save:disabled { opacity: 0.5; cursor: default; transform: none; box-shadow: none; }
+
+/* Notes */
+.settings-panel .kb-notes {
+  box-sizing: border-box; width: 100%; min-height: 170px; resize: vertical; padding: 14px 16px; border-radius: 12px;
+  font: inherit; font-size: 0.88rem; line-height: 1.6; color: var(--color-text-primary);
+  background: var(--color-card-bg, #fff); border: 1.5px solid var(--glass-border, #e2e8f0); outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.settings-panel .kb-notes:focus { border-color: var(--color-accent); box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-accent) 14%, transparent); }
+.settings-panel .kb-notes::placeholder { color: #94a3b8; }
+.settings-panel .kb-notes-foot { display: flex; align-items: center; gap: 12px; margin-top: 10px; }
+.settings-panel .kb-notes-foot .kb-muted { flex: 1; }
+.settings-panel .kb-unsaved { font-size: 0.72rem; font-weight: 800; color: #b45309; animation: kbFade 0.3s ease both; }
+@keyframes kbFade { from { opacity: 0; transform: translateY(3px); } }
+
+/* Documents */
+.settings-panel .kb-docs.dragging { border-color: var(--color-accent); }
+.settings-panel .kb-drop-veil {
+  position: absolute; inset: 0; border-radius: inherit; display: flex; align-items: center; justify-content: center; z-index: 2;
+  font-size: 0.95rem; font-weight: 900; color: var(--color-accent); pointer-events: none;
+  background: color-mix(in srgb, var(--color-accent) 10%, color-mix(in srgb, var(--color-card-bg, #fff) 88%, transparent));
+  border: 2px dashed var(--color-accent); animation: kbFade 0.2s ease both;
+}
+.settings-panel .kb-drop {
+  width: 100%; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 30px 16px; border-radius: 14px; cursor: pointer;
+  font: inherit; font-size: 0.86rem; color: var(--color-text-primary); background: var(--color-card-bg, #fff);
+  border: 2px dashed color-mix(in srgb, var(--color-text-secondary) 30%, transparent);
+  transition: border-color 0.2s, color 0.2s, background-color 0.2s, transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.settings-panel .kb-drop svg { color: var(--color-accent); transition: transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1); }
+.settings-panel .kb-drop:hover { border-color: var(--color-accent); transform: translateY(-2px); }
+.settings-panel .kb-drop:hover svg { transform: translateY(-3px) scale(1.08); }
+.settings-panel .kb-doc-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.settings-panel .kb-doc { position: relative; display: flex; align-items: center; gap: 8px; animation: kbRow 0.4s cubic-bezier(0.2, 0, 0, 1) backwards; animation-delay: calc(var(--i, 0) * 35ms); }
+@keyframes kbRow { from { opacity: 0; transform: translateY(8px); } }
+.settings-panel .kb-doc--pending { padding: 10px 14px; border-radius: 12px; background: var(--color-card-bg, #fff); border: 1px dashed var(--glass-border, #e2e8f0); }
+.settings-panel .kb-doc--pending.failed { border-color: color-mix(in srgb, #ef4444 45%, transparent); }
+.settings-panel .kb-doc-open {
+  flex: 1; min-width: 0; display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-radius: 12px; cursor: pointer;
+  font: inherit; text-align: left; color: inherit; background: var(--color-card-bg, #fff); border: 1px solid var(--glass-border, #e2e8f0);
+  transition: border-color 0.2s, box-shadow 0.25s, transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), scale 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.settings-panel .kb-doc-open:hover { border-color: color-mix(in srgb, var(--color-accent) 45%, transparent); transform: translateY(-2px); box-shadow: 0 10px 22px -16px rgba(15, 23, 42, 0.45); }
+.settings-panel .kb-doc-open:active { scale: 0.985; }
+.settings-panel .kb-doc-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.settings-panel .kb-doc-title { font-size: 0.86rem; font-weight: 800; color: var(--color-text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.settings-panel .kb-doc-meta { font-size: 0.7rem; font-weight: 600; color: var(--color-text-secondary); }
+.settings-panel .kb-doc-meta.err { color: #dc2626; white-space: normal; }
+.settings-panel .kb-x { width: 26px; height: 26px; border: none; border-radius: 50%; cursor: pointer; font-size: 1rem; color: var(--color-text-secondary); background: var(--color-bg-subtle); }
+.settings-panel .kb-retry { flex-shrink: 0; padding: 8px 12px; border-radius: 10px; border: 1px solid color-mix(in srgb, #ef4444 40%, transparent); background: transparent; color: #dc2626; font: inherit; font-size: 0.74rem; font-weight: 800; cursor: pointer; }
+.settings-panel .kb-retry:hover { background: color-mix(in srgb, #ef4444 8%, transparent); }
+
+.kb-kind {
+  flex-shrink: 0; min-width: 44px; height: 30px; padding: 0 6px; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center;
+  font-size: 0.6rem; font-weight: 900; letter-spacing: 0.6px; color: #fff; background: #64748b;
+}
+.kb-kind--docx { background: #2563eb; }
+.kb-kind--pdf { background: #dc2626; }
+.kb-kind--txt, .kb-kind--md { background: #475569; }
+.kb-kind--typed { background: linear-gradient(140deg, var(--color-accent), var(--color-nav-bg)); }
+.kb-kind--pending { background: var(--color-bg-subtle); color: #dc2626; }
+
+.settings-panel .kb-ai {
+  flex-shrink: 0; display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px;
+  font-size: 0.68rem; font-weight: 800; white-space: nowrap;
+}
+.settings-panel .kb-ai.ready { color: var(--color-accent); background: color-mix(in srgb, var(--color-accent) 12%, transparent); }
+.settings-panel .kb-ai.ready::before { content: "✓"; }
+.settings-panel .kb-ai.busy { color: var(--color-text-secondary); background: var(--color-bg-subtle); }
+.settings-panel .kb-ai.failed { color: #dc2626; background: color-mix(in srgb, #ef4444 10%, transparent); }
+
+/* ── The SOP sheet ── */
+.kb-sheet-overlay {
+  position: fixed; inset: 0; z-index: 5000; display: flex; align-items: center; justify-content: center; padding: 3vh 3vw;
+  background: rgba(15, 23, 42, 0.5); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); animation: kbFade 0.2s ease both;
+}
+.kb-sheet {
+  width: min(1180px, 96vw); height: min(820px, 92vh); display: flex; flex-direction: column; overflow: hidden; border-radius: 22px;
+  background: var(--color-card-bg, #fff); box-shadow: 0 40px 90px -30px rgba(15, 23, 42, 0.6);
+  animation: kbSheetIn 0.45s cubic-bezier(0.34, 1.2, 0.64, 1) both;
+}
+@keyframes kbSheetIn { from { opacity: 0; transform: translateY(22px) scale(0.96); } }
+.kb-sheet-head { display: flex; align-items: center; gap: 12px; padding: 20px 24px 6px; }
+.kb-sheet-title {
+  flex: 1; min-width: 0; border: none; border-bottom: 2px solid transparent; outline: none; background: transparent; padding: 4px 2px;
+  font: inherit; font-size: 1.4rem; font-weight: 900; letter-spacing: -0.3px; color: var(--color-text-primary); transition: border-color 0.2s;
+}
+.kb-sheet-title:hover { border-bottom-color: var(--glass-border, #e2e8f0); }
+.kb-sheet-title:focus { border-bottom-color: var(--color-accent); }
+.kb-sheet-close {
+  width: 38px; height: 38px; border-radius: 50%; border: none; cursor: pointer; font-size: 1.15rem; color: var(--color-text-secondary); background: var(--color-bg-subtle);
+  transition: transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1), background-color 0.2s, color 0.2s;
+}
+.kb-sheet-close:hover { transform: rotate(90deg); background: var(--color-accent); color: #fff; }
+.kb-sheet-meta { padding: 0 24px 14px 82px; font-size: 0.76rem; color: var(--color-text-secondary); border-bottom: 1px solid var(--glass-border, #eef2f7); }
+.kb-sheet-body { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.05fr); }
+.kb-sheet-body.create { grid-template-columns: 1fr; }
+.kb-digest { overflow-y: auto; padding: 18px 24px; border-right: 1px solid var(--glass-border, #eef2f7); background: color-mix(in srgb, var(--color-accent) 4%, var(--color-card-bg, #fff)); }
+.kb-text { display: flex; flex-direction: column; min-height: 0; padding: 18px 24px; }
+.kb-pane-label { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 10px; font-size: 0.64rem; font-weight: 900; letter-spacing: 1.1px; text-transform: uppercase; color: var(--color-text-secondary); }
+.kb-text textarea {
+  flex: 1; min-height: 0; resize: none; padding: 14px 16px; border-radius: 12px; outline: none;
+  font: inherit; font-size: 0.86rem; line-height: 1.6; color: var(--color-text-primary); background: var(--color-bg-subtle); border: 1.5px solid var(--glass-border, #e2e8f0);
+  transition: border-color 0.2s, box-shadow 0.2s, background-color 0.2s;
+}
+.kb-text textarea:focus { border-color: var(--color-accent); background: var(--color-card-bg, #fff); box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-accent) 14%, transparent); }
+.kb-text-hint { margin-top: 8px; font-size: 0.72rem; color: var(--color-text-secondary); }
+.kb-dg-summary { margin: 0 0 12px; font-size: 0.92rem; line-height: 1.6; color: var(--color-text-primary); }
+.kb-dg-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
+.kb-dg-chips span { font-size: 0.7rem; font-weight: 800; padding: 3px 10px; border-radius: 999px; color: var(--color-accent); background: color-mix(in srgb, var(--color-accent) 12%, transparent); }
+.kb-dg-block { margin-bottom: 14px; }
+.kb-dg-label { margin-bottom: 5px; font-size: 0.66rem; font-weight: 900; letter-spacing: 0.8px; text-transform: uppercase; color: var(--color-text-secondary); }
+.kb-dg-block ul, .kb-dg-block ol { margin: 0; padding-left: 20px; display: grid; gap: 4px; font-size: 0.84rem; line-height: 1.5; color: var(--color-text-primary); }
+.kb-dg-busy { display: flex; align-items: center; gap: 10px; font-size: 0.86rem; color: var(--color-text-secondary); }
+.kb-dg-failed { font-size: 0.84rem; color: #dc2626; }
+.kb-dg-failed button { margin-left: 6px; border: none; background: none; color: var(--color-accent); font: inherit; font-weight: 800; cursor: pointer; text-decoration: underline; }
+.kb-sheet-foot { display: flex; align-items: center; gap: 8px; padding: 14px 24px 18px; border-top: 1px solid var(--glass-border, #eef2f7); }
+.kb-spacer { flex: 1; }
+.kb-btn {
+  display: inline-flex; align-items: center; gap: 6px; padding: 10px 18px; border-radius: 11px; border: none; cursor: pointer; font: inherit; font-size: 0.82rem; font-weight: 800;
+  transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), scale 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), background-color 0.2s, color 0.2s, filter 0.2s;
+}
+.kb-btn:active:not(:disabled) { scale: 0.95; }
+.kb-btn.ghost { color: var(--color-text-secondary); background: var(--color-bg-subtle); }
+.kb-btn.ghost:hover { color: var(--color-text-primary); }
+.kb-btn.danger { color: #dc2626; background: transparent; }
+.kb-btn.danger:hover { background: color-mix(in srgb, #ef4444 9%, transparent); }
+.kb-btn.primary { color: #fff; background: linear-gradient(135deg, var(--color-accent), var(--color-nav-bg)); }
+.kb-btn.primary:hover:not(:disabled) { transform: translateY(-2px); filter: brightness(1.06); }
+.kb-btn:disabled { opacity: 0.5; cursor: default; }
+[data-theme="dark"] .kb-btn.ghost, [data-theme="dark"] .kb-sheet-close { background: rgba(255, 255, 255, 0.08); }
+
+/* ── New Task planner: which account (and its knowledge) ── */
+.consult-account-row { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-top: 14px; }
+.consult-account-row > label { font-size: 0.78rem; font-weight: 700; color: var(--color-text-secondary); }
+.consult-account-row .ui-select { width: auto; min-width: 200px; }
+.consult-kb-hint { display: inline-flex; align-items: center; gap: 6px; font-size: 0.74rem; font-weight: 700; color: var(--color-text-secondary); }
+.consult-kb-hint.has { color: var(--color-accent); }
+.consult-kb-hint.has::before { content: "✦"; }
+.consult-sops { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 4px 0 12px; font-size: 0.74rem; color: var(--color-text-secondary); }
+.consult-sops span.sop { font-weight: 800; padding: 3px 10px; border-radius: 999px; color: var(--color-accent); background: color-mix(in srgb, var(--color-accent) 12%, transparent); }
+
+@media (max-width: 760px) {
+  .kb-sheet-body { grid-template-columns: 1fr; grid-template-rows: auto minmax(260px, 1fr); overflow-y: auto; }
+  .kb-digest { border-right: none; border-bottom: 1px solid var(--glass-border, #eef2f7); }
+  .kb-sheet-meta { padding-left: 24px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .kb-spinner, .kb-sheet, .kb-sheet-overlay, .settings-panel .kb-doc, .settings-panel .kb-unsaved, .settings-panel .kb-drop-veil { animation: none; }
+}

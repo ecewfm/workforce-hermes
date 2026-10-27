@@ -14,12 +14,14 @@
 //   • Everyday — Caddy questions and simple edits: Gemini 3.5 Flash Lite.
 //   • Deep — bigger Caddy jobs (a new project, several steps at once, many
 //     projects, analysis, long messages): Gemini 3.6 Flash, thinking hard.
-//   • Planner — the New Task planner, a whole project plan: Gemini 3.8 Flash.
+//   • Planner — the New Task planner, a whole project plan: Gemini 3.6 Flash, then 3.8 Flash.
 // Model names aren't secret; override any tier with a comma-separated
 // VITE_GEMINI_MODELS / VITE_GEMINI_DEEP_MODELS / VITE_GEMINI_PLANNER_MODELS.
 const EVERYDAY_MODELS = ["gemini-3.5-flash-lite", "gemini-3.1-flash-lite"];
 const DEEP_MODELS = ["gemini-3.6-flash", "gemini-3.8-flash"];
-const PLANNER_MODELS = ["gemini-3.8-flash", "gemini-3.6-flash"];
+// 3.8 Flash leads once Google has the capacity: through Oct 2026 it kept
+// answering "high demand" (503) after ~40s, so 3.6 goes first for now.
+const PLANNER_MODELS = ["gemini-3.6-flash", "gemini-3.8-flash"];
 
 const modelList = (envValue, fallback) => {
   const list = String(envValue || "").split(",").map((m) => m.trim()).filter(Boolean);

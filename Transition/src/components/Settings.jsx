@@ -16,6 +16,7 @@ import { getGeminiModels, getDeepModels, getPlannerModels, isCaddyEnabled, setCa
 import { getFxPrefs, setFxPref } from "../utils/fxPrefs";
 import { termsFor, usesAccounts, roleLabel } from "../utils/workspaceTerms";
 import AnnouncementComposer from "./AnnouncementComposer";
+import AccountKnowledge from "./AccountKnowledge";
 import "../styles/settings-extra.css";
 
 const ACCENT_COLORS = [
@@ -63,6 +64,8 @@ function SectionIcon({ icon, size = 18 }) {
       return (<svg viewBox="0 0 24 24" {...s}><circle cx="12" cy="12" r="10" /><circle cx="12" cy="12" r="6" /><circle cx="12" cy="12" r="2" /></svg>);
     case "megaphone":
       return (<svg viewBox="0 0 24 24" {...s}><path d="M3 11v2a1 1 0 0 0 1 1h2l5 4V6L6 10H4a1 1 0 0 0-1 1z" /><path d="M15.5 8.5a5 5 0 0 1 0 7" /><path d="M18.5 5.5a9 9 0 0 1 0 13" /></svg>);
+    case "book":
+      return (<svg viewBox="0 0 24 24" {...s}><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" /><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" /><path d="M9 7h7M9 11h5" /></svg>);
     case "briefcase":
       return (<svg viewBox="0 0 24 24" {...s}><rect x="2" y="7" width="20" height="14" rx="2" ry="2" /><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" /></svg>);
     default: return null;
@@ -93,7 +96,11 @@ export default function Settings({ userName, userEmail, onClose, showModal, onLo
   // Client Accounts tab: Admin+ manage every account; others only see it when they have several.
   const accUi = useAccountUi(workspace, actualRole);
   const SECTIONS = useMemo(() => {
-    const accountsSection = hasAccounts && (isAdminPlus || accUi.show) ? [{ id: "accounts", label: "Client Accounts", icon: "briefcase" }] : [];
+    const accountsSection = [
+      ...(hasAccounts && (isAdminPlus || accUi.show) ? [{ id: "accounts", label: "Client Accounts", icon: "briefcase" }] : []),
+      // Each account's SOPs and notes for the AI — for anyone on an account.
+      ...(hasAccounts && (isAdminPlus || accUi.accountIds.length > 0) ? [{ id: "knowledge", label: "Account Knowledge", icon: "book" }] : []),
+    ];
     return isAdminPlus
       ? [
           ...BASE_SECTIONS.filter(s => s.id !== "archive"),
@@ -104,7 +111,7 @@ export default function Settings({ userName, userEmail, onClose, showModal, onLo
           { id: "archive", label: "Archived Projects", icon: "archive" },
         ]
       : [...BASE_SECTIONS.filter(s => s.id !== "archive"), ...accountsSection, ...BASE_SECTIONS.filter(s => s.id === "archive")];
-  }, [isAdminPlus, hasAccounts, accUi.show]);
+  }, [isAdminPlus, hasAccounts, accUi.show, accUi.accountIds.length]);
 
   const contentRef = useRef(null);
   const savedRef = useRef(null); // snapshot of settings before edits
@@ -406,8 +413,14 @@ export default function Settings({ userName, userEmail, onClose, showModal, onLo
   }
 
   // --- Client Accounts (Operations — everyone sees them, Admin+/Manager manage) ---
-  const accounts = useQuery(api.accounts.getAccounts, hasAccounts ? { workspace } : "skip");
-  const staffAccounts = useQuery(api.accounts.getStaffAccounts, hasAccounts ? { workspace } : "skip");
+  // Accounts belong to Operations, but Staff Management can set them from any
+  // workspace — as long as the person managing staff can open Operations.
+  const ACCOUNT_WS = "operations";
+  const myRow = (allStaff || []).find((p) => (p.email || "").toLowerCase() === (userEmail || "").toLowerCase());
+  const viewerHasOps = isMainAdmin || (Array.isArray(myRow?.departments) && myRow.departments.includes(WORKSPACE_META[ACCOUNT_WS].department));
+  const staffAccountsUi = hasAccounts || (isAdminPlus && viewerHasOps);
+  const accounts = useQuery(api.accounts.getAccounts, staffAccountsUi ? { workspace: ACCOUNT_WS } : "skip");
+  const staffAccounts = useQuery(api.accounts.getStaffAccounts, staffAccountsUi ? { workspace: ACCOUNT_WS } : "skip");
   const setStaffAccountsMut = useMutation(api.accounts.setStaffAccounts);
   const accountsByEmail = useMemo(() => {
     const m = {};
@@ -589,7 +602,7 @@ export default function Settings({ userName, userEmail, onClose, showModal, onLo
   useEffect(() => {
     const onKey = (e) => {
       if (e.key !== "Escape" || e.defaultPrevented) return;
-      if (document.querySelector(".custom-modal-overlay, .ui-popover, .profile-popover-overlay, .announcement-overlay")) return;
+      if (document.querySelector(".custom-modal-overlay, .ui-popover, .profile-popover-overlay, .announcement-overlay, .kb-sheet-overlay")) return;
       cancelRef.current();
     };
     window.addEventListener("keydown", onKey);
@@ -968,6 +981,18 @@ export default function Settings({ userName, userEmail, onClose, showModal, onLo
                 </div>
               )}
             </section>
+
+            {/* ─── ACCOUNT KNOWLEDGE (Operations — anyone on an account) ─── */}
+            {SECTIONS.some((x) => x.id === "knowledge") && (
+              <section id="settings-section-knowledge" className="settings-section" style={{ display: activeSection === "knowledge" ? undefined : "none" }}>
+                <div className="settings-section-header"><SectionIcon icon="book" size={20} /><h3>Account Knowledge</h3></div>
+                <p className="settings-section-desc">
+                  Each client account's SOPs and notes. When someone plans a project for an account, the AI reads these first and builds the
+                  milestones around how that account actually works. Anyone on an account can add and edit; Admins (or whoever added it) can delete.
+                </p>
+                <AccountKnowledge showModal={showModal} userName={userName} />
+              </section>
+            )}
 
             {/* ─── ANNOUNCEMENTS (Admin+ only) ─── */}
             {isAdminPlus && (
@@ -1405,12 +1430,12 @@ export default function Settings({ userName, userEmail, onClose, showModal, onLo
                   <label className="settings-field-label">Team Members</label>
                   <p className="settings-field-hint">
                     Everyone's access in one place: their <b>role</b> (Access Type), the <b>workspaces</b> they can open (Department Membership — exactly what's lit up)
-                    {hasAccounts ? <>, and their <b>client accounts</b></> : null}. Reset passwords or revoke access from the same row.
+                    {staffAccountsUi ? <>, and their <b>client accounts</b> in Operations</> : null}. Reset passwords or revoke access from the same row.
                     {!canEditDepartments && " Workspaces are view-only for you — only Managers can change them."}
                   </p>
-                  {hasAccounts && (
+                  {staffAccountsUi && (
                     <p className="settings-field-hint staff-acc-hint">
-                      <b>Client accounts:</b> Users and Admins only see the projects of the accounts they're on — being assigned to a project in another account doesn't open it. With <b>no account they're locked out</b> of {terms.label} projects until you add them to one. Admin+ and Managers always see every account.
+                      <b>Client accounts (Operations):</b> Users and Admins only see the projects of the accounts they're on — being assigned to a project in another account doesn't open it. With <b>no account they're locked out</b> of Operations projects until you add them to one. Admin+ and Managers always see every account.
                     </p>
                   )}
                   <div className="staff-management-list">
@@ -1540,13 +1565,10 @@ export default function Settings({ userName, userEmail, onClose, showModal, onLo
                                 );
                               })()}
                           </div>
-                          {hasAccounts && (
+                          {staffAccountsUi && (Array.isArray(s.departments) && s.departments.includes(WORKSPACE_META[ACCOUNT_WS].department)) && (
                             <div className="staff-access-group">
                               <span className="staff-access-cap">Client accounts</span>
-                              {hasAccounts && (() => {
-                                const dept = WORKSPACE_META[workspace]?.department;
-                                const here = !dept || (Array.isArray(s.departments) && s.departments.includes(dept));
-                                if (!here) return <span className="staff-acc-all" title={`No access to ${terms.label} yet`}>No {terms.label} access</span>;
+                              {(() => {
                                 if (s.role === "Admin+" || s.role === "Manager") {
                                   return <span className="staff-acc-all" title="Admin+ and Managers always see every account">All accounts</span>;
                                 }
@@ -1562,11 +1584,11 @@ export default function Settings({ userName, userEmail, onClose, showModal, onLo
                                     values={mine}
                                     options={(accounts || []).map((a) => ({ value: a._id, label: a.name }))}
                                     allLabel="None — locked"
-                                    emptyText="No client accounts yet — add one under Client Accounts."
+                                    emptyText={hasAccounts ? "No client accounts yet — add one under Client Accounts." : "No client accounts yet — add one in Operations → Settings → Client Accounts."}
                                     ariaLabel={`Client accounts for ${s.name}`}
                                     onChange={async (ids) => {
                                       try {
-                                        await setStaffAccountsMut({ email: s.email, workspace, accountIds: ids });
+                                        await setStaffAccountsMut({ email: s.email, workspace: ACCOUNT_WS, accountIds: ids });
                                       } catch (err) {
                                         showModal({ title: "Couldn't change accounts", message: err.message || "Please try again.", type: "alert" });
                                       }

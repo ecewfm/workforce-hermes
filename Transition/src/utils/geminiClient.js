@@ -116,9 +116,10 @@ function proxyRefusal(status, errText) {
  * @param {(chunk:string, all:string)=>void} [opts.onText]     answer text
  * @param {(model:string)=>void} [opts.onRestart]  a model failed mid-stream; output so far is void
  * @param {AbortSignal} [opts.signal]
+ * @param {number} [opts.stallMs]  how long a model may take to start answering (big inputs need longer)
  * @returns {Promise<{text:string, thoughts:string, model:string, finishReason:string}>}
  */
-export async function streamGenerate({ models, buildBody, onThought, onText, onRestart, signal }) {
+export async function streamGenerate({ models, buildBody, onThought, onText, onRestart, signal, stallMs = STALL_MS }) {
   let idx = firstAvailableIdx(models);
   while (true) {
     const model = models[idx];
@@ -127,7 +128,7 @@ export async function streamGenerate({ models, buildBody, onThought, onText, onR
       throw reason instanceof Error ? reason : new Error(String(reason));
     };
 
-    const attempt = attemptSignal(signal, STALL_MS);
+    const attempt = attemptSignal(signal, stallMs);
     const stalled = () => {
       if (!attempt.timedOut()) return false;
       rateLimitedUntil[model] = Date.now() + SLOW_COOLDOWN_MS;
@@ -329,6 +330,7 @@ function toolStatusLabel(name) {
     open_project: "Opening the project…",
     go_to: "Taking you there…",
     plan_new_task: "Opening the planner…",
+    search_account_sops: "Reading the account's SOPs…",
   };
   return map[name] || "Working…";
 }

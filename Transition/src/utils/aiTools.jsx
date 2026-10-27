@@ -9,6 +9,7 @@ import { ENABLE_WEB_SEARCH } from "./aiConfig";
 import { fallbackMilestonesFor, withTemplateHints } from "./defaults";
 import { isTechWorkspace, usesAccounts } from "./workspaceTerms";
 import { planTask } from "./taskPlanner";
+import { buildKnowledgeBrief, searchKnowledge } from "./sopKnowledge";
 
 // Display date string matching how the rest of the app stamps notes/ideas.
 function estNow() {
@@ -62,7 +63,8 @@ const APP_GUIDE = `WHERE THINGS LIVE in Hermes (use this to answer "where do I�
 • The Notebook (NOTEBOOK in the nav) shows ideas as cards with search, sort (newest, oldest, A–Z) and an All/Open/Taken filter (Taken only appears while older taken ideas are still listed). Clicking a card grows it into a big sheet: what it does, further details, and the pros and cons side by side (numbered lines like "1. Faster" start a point and the lines under them become its details). "Take this idea" is in that sheet (Workforce: the Programmer view; Operations/Executives: anyone) — it asks for a start date and turns the idea into a project assigned to the taker, which leaves the notebook. In the Admin view, "+ New idea" opens a form (name, what it does, pros, cons, further details; Ctrl+Enter saves) and Delete is in the idea's sheet.
 • The task modal (click a project card): every milestone can show its meaning right under its name — what the step is, or "Done when: …" for an AI-planned step. AI-planned projects also keep the plan's "Watch out for" list (the risks) and its "Assumptions" in the task modal; both are editable there. In Workforce the left sidebar holds Features and Bug Reports, and Admins find System Links, API Access and the project's Admin login behind the round "⋯" button at the top right of the modal (next to Delete Task) — tucked away there to keep the milestones roomy. Adding or opening a feature, bug or roadblock opens a large two-panel sheet (colour-coded: features in the app colour, bugs rose, roadblocks amber) with tips, up to 3 images (click a slot or drag images onto it), and Esc closes it. In Operations and Executives the sidebar is one "Roadblocks" list — anything blocking progress: add one, mark it cleared, edit or delete it — and "Documents" replaces System Links (add any number of named links, e.g. an SOP, a deck or a sheet). API Access and project Admin Credentials only exist in Workforce.
 • Project Admin Credentials (Workforce): revealing a project's admin login asks for YOUR OWN account password — there's no shared master password.
-• Operations — client Accounts: each project can belong to a client account. The board has an account filter bar (pick an account to see just its projects), the Overview shows projects per account, and New Task and the task modal each have an Account picker — Admin+ can create a new account right from it ("+ New account…"). The full list lives in Settings → Client Accounts (its own tab, Operations only): Admin+ and Managers add, rename and delete accounts there; everyone else sees the list read-only. Deleting an account doesn't delete its projects; they just have no account. People are put on accounts in Settings → Staff Management (the client-accounts picker on each person; Admin+ and Managers set it). Users and Admins only see — and can only work on — the projects of the accounts they're on (being assigned to a project in another account doesn't open it); their new projects must go in one of their accounts. Someone below Admin+ with NO account has no access to Operations projects at all (the board says so, and they can't start a project) until they're added to one — their other workspaces (e.g. Workforce) are unaffected. Admin+ and Managers always see everything. Account controls (the board's account bar, the account on cards, the Account pickers, the Client Accounts tab) only show for Admin+/Managers — or for someone tied to SEVERAL accounts, and then only their accounts; with one account (or none) they're hidden and new projects use that one account. Approving a pending access request from a workspace makes the person a member of that workspace.
+• Operations — Account Knowledge (Settings → Account Knowledge): each client account has notes for the AI (an always-editable text area — who signs off, client rules, tools, SLAs, blackout dates) and SOP documents (upload Word .docx, PDF up to 3 MB, .txt or .md — or "Write one" to type an SOP in Hermes). The AI reads each SOP once and keeps a summary (its procedure, sign-offs, timelines, tools, roles, rules and watch-outs); open a document to see that summary, fix the extracted text (saving makes the AI read it again), download the original, or delete it (Admins and above, or whoever added it). Anyone on an account can add and edit its knowledge. When someone plans a project for an account (New Task's planner has a Client account picker; or create_project with an account), the AI plans from that account's SOPs and notes, and the plan says which SOPs it was "Built from". You can look things up in an account's SOPs with search_account_sops.
+• Operations — client Accounts: each project can belong to a client account. The board has an account filter bar (pick an account to see just its projects), the Overview shows projects per account, and New Task and the task modal each have an Account picker — Admin+ can create a new account right from it ("+ New account…"). The full list lives in Settings → Client Accounts (its own tab, Operations only): Admin+ and Managers add, rename and delete accounts there; everyone else sees the list read-only. Deleting an account doesn't delete its projects; they just have no account. People are put on accounts in Settings → Staff Management (the client-accounts picker on each Operations person's row; Admin+ and Managers set it, from any workspace as long as they can open Operations). Users and Admins only see — and can only work on — the projects of the accounts they're on (being assigned to a project in another account doesn't open it); their new projects must go in one of their accounts. Someone below Admin+ with NO account has no access to Operations projects at all (the board says so, and they can't start a project) until they're added to one — their other workspaces (e.g. Workforce) are unaffected. Admin+ and Managers always see everything. Account controls (the board's account bar, the account on cards, the Account pickers, the Client Accounts tab) only show for Admin+/Managers — or for someone tied to SEVERAL accounts, and then only their accounts; with one account (or none) they're hidden and new projects use that one account. Approving a pending access request from a workspace makes the person a member of that workspace.
 • New Task is AI-first: it opens on a "Plan a new task" step. The person describes what they're planning (one-click example briefs help) and MUST pick a start date and a deadline before the AI plans (the button stays off until both are set) — the AI then lays out the steps to finish by that deadline, and every step on the plan shows its due date (red if it would land after the deadline). The AI thinks it through — its reasoning shows live as a step list — then streams in a plan tailored to how THIS workspace's department works (Workforce = software delivery; Operations = classified by project type, e.g. campaign launch, SOP change, KPI improvement, tool rollout, training, scheduling change, with sign-offs, a pilot, training and post-go-live monitoring built in; Executives = analysis→proposal→approval→oversight). The plan shows project type, size, a goal, a timeline bar with the finish date, assumptions and risks, and every milestone has a "done when". Everything is editable right there (rename, change days, reorder, add, remove); quick chips or a typed note ("it's only one site") refine it. "Use this plan →" opens the details step (assignees, start date, editable milestones) to create the task.
 • "Skip AI" on New Task starts from the workspace's DEFAULT milestones (also used when Caddy is off). Operations' built-in default is a general 8-step, 56-day template that fits any operations project: Scope & Goals (5d) → Plan & Design (7d) → Review & Sign-off (3d) → Prepare & Set Up (7d) → Pilot / Test Run (10d) → Train & Communicate (5d) → Go-Live / Full Rollout (5d) → Monitor & Hand Over (14d). Executives has its own 7-step, 53-day default: Situation & Data Review (7d) → Options & Recommendation (7d) → Stakeholder Alignment (5d) → Decision & Approval (3d) → Launch & Delegate (5d) → Oversight & Check-ins (21d) → Results Review & Close-out (5d). Workforce's is a 10-step software-delivery template. Each built-in Operations/Executives step comes with a short meaning that shows under it in the task. Admin+ can change any workspace's default in Settings → Workspace Defaults ("Restore Original" brings the built-in one back).
 • New Task's details step ("Final touches"): the expected deadline (start date + every milestone's days, assuming work starts that day) shows right under the start date, each milestone row shows its due date, and the right side is a live Review of the whole project (title, deadline, assignees, account, documents, milestones with due dates, watch-outs) with the Create Task button at the bottom — it lists anything still missing.
@@ -220,6 +222,18 @@ function buildTools({ tech, accounts, columnLabels = [], accountNames = [] }) {
       },
     },
     ...itemTools,
+    ...(accounts ? [{
+      name: "search_account_sops",
+      description: "Look things up in a client account's knowledge: its SOPs and the team's notes (Settings → Account Knowledge). Use it whenever someone asks how an account does something, what its process / SLA / sign-off / rule is, or wants advice that should follow that account's way of working. Returns the account's notes, each SOP's summary, and the passages that best match the question — answer from those, name the SOP you're quoting, and say so plainly if they don't cover it.",
+      parameters: {
+        type: "object",
+        properties: {
+          account: { type: "string", description: `The client account's name.${accountNames.length ? ` This workspace's accounts: ${accountNames.join(", ")}.` : ""} Optional when the person is only on one account.` },
+          question: { type: "string", description: "What to look up, in the person's words." },
+        },
+        required: ["question"],
+      },
+    }] : []),
     {
       name: "set_project_status",
       description: "Move a project to a different board column/status in the current workspace.",
@@ -475,13 +489,22 @@ export function useAiActions({ userName, userEmail, actualRole, uiActions }) {
         let assumptions = [];
         let plannedByAI = false;
         try {
+          // A project for a client account is planned from that account's SOPs and notes.
+          const brief = description ? `${title}\n\n${description}` : title;
+          let knowledge = null;
+          if (account?._id) {
+            const pack = await convex.query(api.knowledge.getPack, { accountId: account._id }).catch(() => null);
+            const kb = buildKnowledgeBrief(pack, brief);
+            if (!kb.empty) knowledge = { accountName: pack.name, text: kb.text };
+          }
           const { plan } = await planTask({
             department: WORKSPACE_META[workspace]?.department,
             workspaceLabel: wsLabel,
-            brief: description ? `${title}\n\n${description}` : title,
+            brief,
             startDateISO: startDate,
             deadlineISO: deadline,
             template,
+            knowledge,
             thinkingLevel: "medium",
           });
           // Same shape as the New Task planner: each step's "done when" is its
@@ -531,6 +554,26 @@ export function useAiActions({ userName, userEmail, actualRole, uiActions }) {
         return startDate && deadline
           ? { opened: true, note: "The New Task planner is open with the brief and both dates filled in, and is planning now. The person reviews, edits and creates it there." }
           : { opened: true, note: "The New Task planner is open with the brief filled in. It needs a start date and a deadline before it plans — tell the person to pick them on screen, then press Think it through." };
+      }
+
+      case "search_account_sops": {
+        const question = String(args.question || "").trim();
+        if (!question) return { error: "No question given." };
+        const overview = await convex.query(api.knowledge.getOverview, { workspace }).catch(() => null);
+        const list = Array.isArray(overview) ? overview : [];
+        if (!list.length) return { error: "This person isn't on any client account, so there's no account knowledge to search." };
+        const name = String(args.account || "").trim().toLowerCase();
+        const acc = name
+          ? list.find((a) => a.name.toLowerCase() === name) || list.find((a) => a.name.toLowerCase().includes(name))
+          : list.length === 1 ? list[0] : null;
+        if (!acc) {
+          return { error: name ? `No account called "${args.account}" that this person can see.` : "Which account?", accounts: list.map((a) => a.name) };
+        }
+        if (!Number(acc.docs) && !acc.hasNotes) {
+          return { account: acc.name, empty: true, note: `${acc.name} has no SOPs or notes yet. They're added in Settings → Account Knowledge.` };
+        }
+        const pack = await convex.query(api.knowledge.getPack, { accountId: acc.accountId });
+        return searchKnowledge(pack, question);
       }
 
       case "open_project": {

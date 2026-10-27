@@ -451,6 +451,14 @@ export default function TaskEntry({ staff, userRole, actualRole, userName, onCre
               assignees={Array.from(selectedAssignees)}
               onAssigneesChange={(names) => setSelectedAssignees(new Set(names))}
               staffOptions={assignableStaff.map((st) => st.name)}
+              usesAccounts={!!terms.accounts}
+              accountId={accountId}
+              onAccountChange={setAccountId}
+              showAccountPicker={accUi.show}
+              accountOptions={[
+                ...(accUi.full ? [{ value: "", label: "No account" }] : []),
+                ...accUi.limit(accounts).map((a) => ({ value: a._id, label: a.name })),
+              ]}
             />
           </div>
         )}

@@ -70,6 +70,30 @@ export async function uploadFeatureImage(file) {
   return path;
 }
 
+// ── SOP files (originals of uploaded account SOPs) ─────────────────────────
+// Private bucket, one folder per account: "<accountId>/<uuid>-<name>".
+export const SOP_BUCKET = "account-sops";
+
+export async function uploadSopFile(accountId, file) {
+  const safe = String(file.name || "sop").replace(/[^A-Za-z0-9._-]+/g, "-").replace(/-+/g, "-").slice(-80);
+  const path = `${accountId}/${crypto.randomUUID()}-${safe}`;
+  const { error } = await supabase.storage.from(SOP_BUCKET).upload(path, file, { contentType: file.type || undefined });
+  if (error) throw new Error(`Upload failed for ${file.name}: ${error.message}`);
+  return path;
+}
+
+/** A short-lived link to download an SOP's original file. */
+export async function sopFileUrl(path, fileName) {
+  const { data, error } = await supabase.storage.from(SOP_BUCKET).createSignedUrl(path, 10 * 60, fileName ? { download: fileName } : undefined);
+  if (error) throw new Error(error.message || "Couldn't open the file.");
+  return data.signedUrl;
+}
+
+export async function removeSopFile(path) {
+  if (!path) return;
+  await supabase.storage.from(SOP_BUCKET).remove([path]).catch(() => {});
+}
+
 export const api = {
   // ── Projects ──────────────────────────────────────────────────────────────
   tasks: {
@@ -227,6 +251,32 @@ export const api = {
     })),
     deleteIdea: mutation("notebook.deleteIdea", ["notebook_ideas"], (a) => rpc("delete_idea", { p_idea_id: a.ideaId })),
     takeIdea: mutation("notebook.takeIdea", ["notebook_ideas", ...TASK_TABLES], (a) => rpc("take_idea", { p_idea_id: a.ideaId, p_taker_name: a.takerName || null, p_start_date: a.startDate || null })),
+  },
+
+  // ── Account knowledge (each client account's SOPs + notes for the AI) ────
+  knowledge: {
+    getOverview: query("knowledge.getOverview", ["account_knowledge", "account_docs", "workspace_accounts", "staff_accounts"], ({ workspace }) =>
+      rpc("get_knowledge_overview", { p_workspace: WS(workspace) })),
+    getAccount: query("knowledge.getAccount", ["account_knowledge", "account_docs", "workspace_accounts"], ({ accountId }) =>
+      rpc("get_account_knowledge", { p_account_id: accountId })),
+    getDoc: query("knowledge.getDoc", ["account_docs"], ({ docId }) => rpc("get_account_doc", { p_doc_id: docId })),
+    getPack: query("knowledge.getPack", ["account_knowledge", "account_docs"], ({ accountId }) =>
+      rpc("get_account_knowledge_pack", { p_account_id: accountId })),
+    saveNotes: mutation("knowledge.saveNotes", ["account_knowledge"], ({ accountId, notes }) =>
+      rpc("save_account_notes", { p_account_id: accountId, p_notes: notes || "" })),
+    addDoc: mutation("knowledge.addDoc", ["account_docs"], (a) => rpc("add_account_doc", {
+      p_account_id: a.accountId, p_title: a.title, p_source: a.source || "upload", p_content: a.content || "",
+      p_file_name: a.fileName || null, p_file_type: a.fileType || null, p_file_size: a.fileSize ?? null, p_storage_path: a.storagePath || null,
+    })),
+    updateDoc: mutation("knowledge.updateDoc", ["account_docs"], ({ docId, title, content }) =>
+      rpc("update_account_doc", { p_doc_id: docId, p_title: title ?? null, p_content: content ?? null })),
+    setDigest: mutation("knowledge.setDigest", ["account_docs"], ({ docId, digest, status, error }) =>
+      rpc("set_account_doc_digest", { p_doc_id: docId, p_digest: digest ?? null, p_status: status, p_error: error ?? null })),
+    deleteDoc: mutation("knowledge.deleteDoc", ["account_docs"], async ({ docId }) => {
+      const path = await rpc("delete_account_doc", { p_doc_id: docId });
+      await removeSopFile(path);
+      return path;
+    }),
   },
 
   // ── Cliq reminders (Admin+ / Managers) ───────────────────────────────────

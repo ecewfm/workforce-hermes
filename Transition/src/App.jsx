@@ -14,6 +14,7 @@ import { signOut, authApi } from "./data/auth";
 import { initNotifications } from "./utils/notifications";
 import WorkspaceSelect, { WorkspaceCards } from "./components/WorkspaceSelect";
 import WorkspacePasswordGate from "./components/WorkspacePasswordGate";
+import AuthShell from "./components/AuthShell";
 import Dashboard from "./components/Dashboard";
 import KanbanBoard from "./components/KanbanBoard";
 import TaskEntry from "./components/TaskEntry";
@@ -645,12 +646,6 @@ export default function App() {
     setLoginError("");
     const lowerEmail = email.toLowerCase();
 
-    // Must wait for staff to be loaded
-    if (staff === undefined) {
-      setLoginError("System is still loading. Please wait a moment and try again.");
-      return;
-    }
-
     try {
       const result = await loginMutation({ email: lowerEmail, password });
 
@@ -916,39 +911,28 @@ export default function App() {
   }
 
   if (authStage === "denied") {
+    const deniedEmail = localStorage.getItem("wf_email") || "";
+    const revoked = staff?.find((st) => st.email.toLowerCase() === deniedEmail.toLowerCase())?.role === "Revoked";
     return (
-      <div className="login-container">
-        <div className="header-box" style={{ marginBottom: 30 }}>
-          <img src="https://i.imgur.com/BRd5lrB.png" alt="ECE Logo" className="header-logo" />
-          <div className="header-text-content">
-            <h1>HERMES</h1>
-            <p>ECE Project Database · Workforce · Operations · Executives</p>
-          </div>
-        </div>
-        <div style={{ background: "white", padding: 40, borderRadius: 24, boxShadow: "0 10px 25px rgba(0,0,0,0.1)", maxWidth: 420, textAlign: "center" }}>
-          <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="var(--color-accent)" strokeWidth="2" style={{ marginBottom: 20 }}>
-            <circle cx="12" cy="12" r="10" />
-            <line x1="12" y1="8" x2="12" y2="12" />
-            <line x1="12" y1="16" x2="12.01" y2="16" />
+      <AuthShell cardKey="denied">
+        <div className="auth-message-icon" aria-hidden="true">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+            {revoked ? <><circle cx="12" cy="12" r="10" /><line x1="4.9" y1="4.9" x2="19.1" y2="19.1" /></> : <><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></>}
           </svg>
-          <h2 style={{ color: "var(--color-text-primary)", marginBottom: 10 }}>Access Restricted</h2>
-          <p style={{ color: "#64748b", lineHeight: 1.6 }}>
-            {staff?.find(s => s.email.toLowerCase() === localStorage.getItem("wf_email")?.toLowerCase())?.role === "Revoked"
-              ? "Your access has been revoked. Please contact an administrator if you believe this is an error."
-              : "Your email has been registered. Please wait for an administrator to approve your access."}
-          </p>
-          <p style={{ marginTop: 15, fontWeight: 700, color: "#4355f1", fontSize: "0.85rem" }}>
-            {localStorage.getItem("wf_email")}
-          </p>
-          <button
-            className="btn-secondary"
-            style={{ marginTop: 25, padding: "10px 24px", background: "var(--color-logout)" }}
-            onClick={logout}
-          >
-            Back to Login
-          </button>
         </div>
-      </div>
+        <div className="auth-eyebrow">{revoked ? "Access revoked" : "Waiting for approval"}</div>
+        <h1 className="auth-title">{revoked ? "You can't sign in to Hermes" : "You're on the list"}</h1>
+        <p className="auth-sub">
+          {revoked
+            ? "Your access has been revoked. Ask an administrator if you think that's a mistake."
+            : "Your account is registered. An Admin+ or Manager needs to approve it and give you a workspace; you can sign in once they have."}
+        </p>
+        <div className="auth-who">
+          <span className="auth-who-avatar" aria-hidden="true">{(deniedEmail[0] || "?").toUpperCase()}</span>
+          <span className="auth-who-email">{deniedEmail}</span>
+        </div>
+        <button type="button" className="auth-back" onClick={logout}>← Back to sign in</button>
+      </AuthShell>
     );
   }
 
@@ -977,7 +961,7 @@ export default function App() {
           loop
           playsInline
         />
-        <div className="brand-loading-text">Loading…</div>
+        <div className="brand-loading-text">Opening Hermes…</div>
       </div>
     );
   }
@@ -991,7 +975,7 @@ export default function App() {
       return (
         <div className="brand-loading">
           <video className="brand-loading-video" src="/logo%20animation.mp4" autoPlay muted loop playsInline />
-          <div className="brand-loading-text">Loading…</div>
+          <div className="brand-loading-text">Opening Hermes…</div>
         </div>
       );
     }

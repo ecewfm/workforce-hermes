@@ -1,5 +1,6 @@
 import { useState } from "react";
 import Select from "./ui/Select";
+import AuthShell, { AuthButton, AuthField, AuthError, LockIcon, KeyIcon } from "./AuthShell";
 import { useMutation } from "../data/react";
 import { api } from "../data/api";
 
@@ -22,6 +23,7 @@ export default function SetPassword({ email, onSet, onComplete, mode = "onboardi
   const [selectedQuestion, setSelectedQuestion] = useState("");
   const [securityAnswer, setSecurityAnswer] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [show, setShow] = useState(false);
 
   const setPasswordMut = useMutation(api.staff.setPassword);
   const setSecurityQuestionMut = useMutation(api.staff.setSecurityQuestion);
@@ -29,11 +31,11 @@ export default function SetPassword({ email, onSet, onComplete, mode = "onboardi
   const handlePasswordSubmit = async (e) => {
     e.preventDefault();
     if (newPassword.length < 4) {
-      setError("Password must be at least 4 characters.");
+      setError("Use at least 4 characters (8 or more is safer).");
       return;
     }
     if (newPassword !== confirm) {
-      setError("Passwords do not match.");
+      setError("The two passwords don't match.");
       return;
     }
     setIsLoading(true);
@@ -43,7 +45,7 @@ export default function SetPassword({ email, onSet, onComplete, mode = "onboardi
       // Move to security question step
       setStep("security");
     } catch (err) {
-      setError("Failed to set password. Please try again.");
+      setError("Couldn't save your password. Try again.");
     } finally {
       setIsLoading(false);
     }
@@ -52,15 +54,15 @@ export default function SetPassword({ email, onSet, onComplete, mode = "onboardi
   const handleSecuritySubmit = async (e) => {
     e.preventDefault();
     if (!selectedQuestion) {
-      setError("Please select a security question.");
+      setError("Pick a security question.");
       return;
     }
     if (!securityAnswer.trim()) {
-      setError("Please provide an answer.");
+      setError("Type your answer.");
       return;
     }
     if (securityAnswer.trim().length < 2) {
-      setError("Answer must be at least 2 characters.");
+      setError("Use at least 2 characters.");
       return;
     }
     setIsLoading(true);
@@ -78,132 +80,70 @@ export default function SetPassword({ email, onSet, onComplete, mode = "onboardi
         onSet(newPassword);
       }
     } catch (err) {
-      setError("Failed to save security question. Please try again.");
+      setError("Couldn't save your security question. Try again.");
     } finally {
       setIsLoading(false);
     }
   };
 
+  // How strong the new password looks (a nudge, not a rule).
+  const strength = !newPassword ? 0 : newPassword.length < 8 ? 1 : /[A-Z]/.test(newPassword) && /\d/.test(newPassword) && newPassword.length >= 10 ? 3 : 2;
+  const strengthLabel = ["", "Short — 8 or more characters is safer", "Good", "Strong"][strength];
+  const onboarding = mode !== "security-only";
+
   return (
-    <div className="login-container">
-      <div className="header-box" style={{ marginBottom: 30 }}>
-        <img src="https://i.imgur.com/BRd5lrB.png" alt="ECE Logo" className="header-logo" />
-        <div className="header-text-content">
-          <h1>HERMES</h1>
-          <p>ECE Project Database · Workforce · Operations · Executives</p>
+    <AuthShell busy={isLoading} cardKey={step}>
+      {onboarding && (
+        <div className="auth-steps" aria-label={`Step ${step === "password" ? 1 : 2} of 2`}>
+          <span className="on" /><span className={step === "security" ? "on" : ""} />
         </div>
-      </div>
-      <div className="login-box">
-        {step === "password" && (
-          <>
-            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#4355f1" strokeWidth="2" style={{ marginBottom: 20 }}>
-              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-            </svg>
-            <h2 style={{ color: "#1e293b", marginBottom: 10, fontWeight: 900 }}>Set Your Password</h2>
-            <p style={{ color: "#64748b", fontSize: "0.9rem", marginBottom: 5 }}>
-              Welcome! Create a secure password for
-            </p>
-            <p style={{ color: "#4355f1", fontWeight: 700, fontSize: "0.85rem", marginBottom: 20, wordBreak: "break-all" }}>
-              {email}
-            </p>
+      )}
 
-            {/* Step indicator */}
-            <div className="login-step-indicator">
-              <div className="login-step-dot active" />
-              <div className="login-step-dot" />
-            </div>
+      {step === "password" && (
+        <form onSubmit={handlePasswordSubmit} noValidate>
+          <div className="auth-eyebrow">Set up your account</div>
+          <h1 className="auth-title">Create your password</h1>
+          <p className="auth-sub">You'll use it with <b>{email}</b> to sign in to Hermes.</p>
+          <label className="auth-label" htmlFor="sp-new">New password</label>
+          <AuthField id="sp-new" icon={LockIcon} type={show ? "text" : "password"} placeholder="New password" value={newPassword}
+            onChange={(e) => { setNewPassword(e.target.value); setError(""); }} autoFocus autoComplete="new-password" disabled={isLoading}
+            reveal revealed={show} onReveal={() => setShow((v) => !v)} />
+          {strength > 0 && (
+            <div className={`auth-strength s${strength}`}><span /><span /><span /><em>{strengthLabel}</em></div>
+          )}
+          <label className="auth-label" htmlFor="sp-confirm">Confirm password</label>
+          <AuthField id="sp-confirm" icon={LockIcon} error={!!error} type={show ? "text" : "password"} placeholder="Confirm password" value={confirm}
+            onChange={(e) => { setConfirm(e.target.value); setError(""); }} autoComplete="new-password" disabled={isLoading} />
+          <AuthError>{error}</AuthError>
+          <AuthButton type="submit" busy={isLoading} busyLabel="Saving…">Save password</AuthButton>
+        </form>
+      )}
 
-            <form onSubmit={handlePasswordSubmit} style={{ width: "100%" }}>
-              <div className="form-group" style={{ marginBottom: "15px" }}>
-                <input
-                  type="password"
-                  className="form-input"
-                  placeholder="New password"
-                  value={newPassword}
-                  onChange={(e) => { setNewPassword(e.target.value); setError(""); }}
-                  required
-                  autoFocus
-                />
-              </div>
-              <div className="form-group" style={{ marginBottom: "20px" }}>
-                <input
-                  type="password"
-                  className={`form-input ${error ? "input-error" : ""}`}
-                  placeholder="Confirm password"
-                  value={confirm}
-                  onChange={(e) => { setConfirm(e.target.value); setError(""); }}
-                  required
-                />
-                {error && <div className="error-text">{error}</div>}
-              </div>
-              <button type="submit" className="btn-primary" style={{ width: "100%" }} disabled={isLoading}>
-                {isLoading ? "Saving..." : "Set Password & Continue"}
-              </button>
-            </form>
-          </>
-        )}
-
-        {step === "security" && (
-          <>
-            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#10b981" strokeWidth="2" style={{ marginBottom: 20 }}>
-              <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
-              <polyline points="22 4 12 14.01 9 11.01" />
-            </svg>
-            <h2 style={{ color: "#1e293b", marginBottom: 10, fontWeight: 900 }}>Security Question</h2>
-            <p style={{ color: "#64748b", fontSize: "0.9rem", marginBottom: 5 }}>
-              Choose a question for account recovery.
-            </p>
-            <p style={{ color: "#4355f1", fontWeight: 700, fontSize: "0.8rem", marginBottom: 20 }}>
-              This will be used if you forget your password.
-            </p>
-
-            {/* Step indicator */}
-            <div className="login-step-indicator">
-              <div className="login-step-dot completed" />
-              <div className="login-step-dot active" />
-            </div>
-
-            <form onSubmit={handleSecuritySubmit} style={{ width: "100%" }}>
-              <div className="form-group" style={{ marginBottom: "15px" }}>
-                <Select
-                  className="security-question-select"
-                  value={selectedQuestion}
-                  onChange={(v) => { setSelectedQuestion(v); setError(""); }}
-                  placeholder="Select a security question..."
-                  options={SECURITY_QUESTIONS.map((q) => ({ value: q, label: q }))}
-                  ariaLabel="Security question"
-                  required
-                />
-              </div>
-              <div className="form-group" style={{ marginBottom: "20px" }}>
-                <input
-                  type="text"
-                  className={`form-input ${error ? "input-error" : ""}`}
-                  placeholder="Your answer"
-                  value={securityAnswer}
-                  onChange={(e) => { setSecurityAnswer(e.target.value); setError(""); }}
-                  required
-                  autoFocus
-                />
-                {error && <div className="error-text">{error}</div>}
-              </div>
-              <button type="submit" className="btn-primary" style={{ width: "100%" }} disabled={isLoading}>
-                {isLoading ? "Saving..." : "Complete Setup"}
-              </button>
-              {mode === "security-only" && (
-                <button 
-                  type="button" 
-                  className="btn-secondary" 
-                  style={{ width: "100%", marginTop: "12px", background: "none", border: "1px solid #e2e8f0" }} 
-                  onClick={onComplete}
-                >
-                  Skip for now
-                </button>
-              )}
-            </form>
-          </>
-        )}
-      </div>
-    </div>
+      {step === "security" && (
+        <form onSubmit={handleSecuritySubmit} noValidate>
+          <div className="auth-eyebrow">{onboarding ? "Set up your account" : "One more thing"}</div>
+          <h1 className="auth-title">Pick a security question</h1>
+          <p className="auth-sub">If you ever forget your password, answering it lets you set a new one yourself.</p>
+          <label className="auth-label">Question</label>
+          <div className="auth-select">
+            <Select
+              className="security-question-select"
+              value={selectedQuestion}
+              onChange={(v) => { setSelectedQuestion(v); setError(""); }}
+              placeholder="Choose a question…"
+              options={SECURITY_QUESTIONS.map((q) => ({ value: q, label: q }))}
+              ariaLabel="Security question"
+              required
+            />
+          </div>
+          <label className="auth-label" htmlFor="sp-answer">Your answer</label>
+          <AuthField id="sp-answer" icon={KeyIcon} error={!!error} type="text" placeholder="Your answer" value={securityAnswer}
+            onChange={(e) => { setSecurityAnswer(e.target.value); setError(""); }} autoComplete="off" disabled={isLoading} />
+          <AuthError>{error}</AuthError>
+          <AuthButton type="submit" busy={isLoading} busyLabel="Saving…">{onboarding ? "Finish setup" : "Save question"}</AuthButton>
+          {!onboarding && <button type="button" className="auth-back" onClick={onComplete} disabled={isLoading}>Skip for now</button>}
+        </form>
+      )}
+    </AuthShell>
   );
 }

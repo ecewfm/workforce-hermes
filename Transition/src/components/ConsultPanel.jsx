@@ -2,10 +2,13 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import DatePicker from "./ui/DatePicker";
 import MultiSelect from "./ui/MultiSelect";
 import EditableText from "./ui/EditableText";
-import { useQuery } from "../data/react";
+import Select from "./ui/Select";
+import { useQuery, useConvex } from "../data/react";
 import { api } from "../data/api";
 import { planTask } from "../utils/taskPlanner";
+import { buildKnowledgeBrief } from "../utils/sopKnowledge";
 import { daysBetweenISO, fitMilestonesToDays } from "../utils/deadlines";
+import "../styles/knowledge.css";
 
 /**
  * ConsultPanel — the AI-first step of New Task (rendered inline, not a modal).
@@ -33,8 +36,15 @@ import { daysBetweenISO, fitMilestonesToDays } from "../utils/deadlines";
 export default function ConsultPanel({
   department, workspace, workspaceLabel, template, onApply, onSkip, seed, onSeedUsed,
   startDate = "", onStartDateChange, deadline = "", onDeadlineChange, assignees = [], onAssigneesChange, staffOptions = [],
+  // Operations: the client account — its SOPs and notes shape the plan.
+  usesAccounts = false, accountId = "", onAccountChange, accountOptions = [], showAccountPicker = false,
 }) {
   const setDeadline = (v) => onDeadlineChange?.(v);
+  const convex = useConvex();
+  const kbOverview = useQuery(api.knowledge.getOverview, usesAccounts ? { workspace } : "skip");
+  const kbInfo = (Array.isArray(kbOverview) ? kbOverview : []).find((a) => a.accountId === accountId) || null;
+  const kbHas = !!kbInfo && (Number(kbInfo.docs) > 0 || kbInfo.hasNotes);
+  const [kbUsed, setKbUsed] = useState(null); // the account whose knowledge the current plan used
   const [brief, setBrief] = useState(seed?.brief || "");
   const setStartDate = (v) => onStartDateChange?.(v);
   const [phase, setPhase] = useState("idle"); // "idle" | "thinking" | "ready"
@@ -105,13 +115,23 @@ export default function ConsultPanel({
     abortRef.current?.abort();
     const ctrl = new AbortController();
     abortRef.current = ctrl;
-    setBusyLabel(isRefine ? "Revising the plan" : "Planning");
+    setBusyLabel(isRefine ? "Revising the plan" : kbHas ? `Reading ${kbInfo.name}'s SOPs and planning` : "Planning");
     setPhase("thinking");
     setError("");
     setSteps([]);
     setDraft(null);
     try {
+      // The account's SOPs + notes: every SOP's digest, plus the full text of
+      // the ones that matter most for this brief.
+      let knowledge = null;
+      if (usesAccounts && accountId && kbHas) {
+        const pack = await convex.query(api.knowledge.getPack, { accountId });
+        const kb = buildKnowledgeBrief(pack, theBrief);
+        if (!kb.empty) knowledge = { accountName: pack.name, text: kb.text };
+      }
+      if (ctrl.signal.aborted) return;
       const { plan: next, thoughts } = await planTask({
+        knowledge,
         department,
         workspaceLabel,
         brief: theBrief,
@@ -127,6 +147,7 @@ export default function ConsultPanel({
         onRestart: () => { setSteps([]); setDraft(null); },
       });
       if (ctrl.signal.aborted) return;
+      setKbUsed(knowledge ? knowledge.accountName : null);
       setPlan(next);
       setReasoning(thoughts);
       setRefinement("");
@@ -266,6 +287,23 @@ export default function ConsultPanel({
                   ))}
                 </div>
               )}
+              {usesAccounts && (showAccountPicker || accountId) && (
+                <div className="consult-account-row">
+                  {showAccountPicker && (
+                    <>
+                      <label htmlFor="consult-account">Client account</label>
+                      <Select id="consult-account" size="sm" value={accountId} onChange={(v) => onAccountChange?.(v)} options={accountOptions} placeholder="Pick an account" disabled={busy} ariaLabel="Client account" />
+                    </>
+                  )}
+                  {accountId && kbOverview !== undefined && (
+                    <span className={`consult-kb-hint ${kbHas ? "has" : ""}`}>
+                      {kbHas
+                        ? `The AI will plan from ${kbInfo.name}'s ${Number(kbInfo.docs) ? `${kbInfo.docs} SOP${Number(kbInfo.docs) === 1 ? "" : "s"}` : ""}${Number(kbInfo.docs) && kbInfo.hasNotes ? " and " : ""}${kbInfo.hasNotes ? "notes" : ""}.`
+                        : `${kbInfo?.name || "This account"} has no SOPs yet. Add them in Settings → Account Knowledge.`}
+                    </span>
+                  )}
+                </div>
+              )}
               <div className={`consult-start-row ${needDates && (!startDate || !deadline) ? "needs" : ""}`}>
                 <label htmlFor="consult-start">Start date <b>*</b></label>
                 <DatePicker id="consult-start" size="sm" className={`consult-date-picker ${needDates && !startDate ? "missing" : ""}`} value={startDate} onChange={setStartDate} disabled={busy} allowClear placeholder="Pick a date" required />
@@ -310,6 +348,13 @@ export default function ConsultPanel({
                 {plan.size && <span className={`cs-chip cs-chip--size cs-size-${plan.size.toLowerCase()}`}>{plan.size}</span>}
                 <span className="cs-chip">{plan.milestones.length} steps · {totalDays} days{totalDays >= 7 ? ` (~${Math.round(totalDays / 7)} wk)` : ""}</span>
               </div>
+              {kbUsed && (
+                <div className="consult-sops">
+                  {plan.sopsUsed?.length
+                    ? <>Built from {kbUsed}'s{plan.sopsUsed.map((t) => <span key={t} className="sop">{t}</span>)}</>
+                    : <>None of {kbUsed}'s SOPs applied to this task, so it's planned the usual way.</>}
+                </div>
+              )}
 
               <EditableText as="h2" className="consult-plan-title" value={plan.title} onChange={(v) => setPlanField("title", v)} placeholder="Double-click to name the project" ariaLabel="Plan title" />
               <EditableText as="p" multiline className="consult-plan-desc" value={plan.description} onChange={(v) => setPlanField("description", v)} placeholder="Double-click to describe it" ariaLabel="Plan description" />
