@@ -226,3 +226,13 @@
   .fm-shell, .fm-hero-orb, .fm-hero-icon, .fm-hero-eyebrow, .fm-hero-title, .fm-hero-project, .fm-tips li, .fm-meta div,
   .fm-main > *, .fm-slot.fresh, .fm-zoom, .fm-zoom img, .fm-status::before { animation: none; }
 }
+
+/* ── Ongoing: the middle status (pending → ongoing → completed) ── */
+.fm-status.ongoing::before { background: #93c5fd; box-shadow: 0 0 0 3px rgba(147, 197, 253, 0.35); animation: fmPulseBlue 1.4s ease-in-out infinite; }
+@keyframes fmPulseBlue { 50% { box-shadow: 0 0 0 6px rgba(147, 197, 253, 0); } }
+.fm-meta-sub { font-size: 0.78rem; font-weight: 600; opacity: 0.8; }
+.fm-footer-space { flex: 1; }
+.fm-btn.primary.ongoing { background: linear-gradient(135deg, #3b82f6, #1d4ed8); box-shadow: 0 12px 24px -12px rgba(59, 130, 246, 0.8); }
+.fm-btn.link { padding-inline: 10px; color: var(--color-text-secondary); background: transparent; }
+.fm-btn.link:hover:not(:disabled) { color: var(--color-text-primary); background: var(--color-bg-subtle); }
+@media (prefers-reduced-motion: reduce) { .fm-status.ongoing::before { animation: none; } }

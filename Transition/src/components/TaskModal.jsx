@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useLayoutEffect } from "react";
 import { createPortal } from "react-dom";
 import { useQuery, useMutation } from "../data/react";
 import { api } from "../data/api";
-import { notifyNoteAdded, notifyMilestoneCompleted } from "../utils/notifications";
+import { notifyNoteAdded, notifyMilestoneCompleted, notifyFeatureCompleted } from "../utils/notifications";
 import { isAdminPlusOrAbove, isAdminLevel as isAdminLevelRole, canEditAnyCard } from "../utils/roles";
 import { milestoneAnchor, DAY_MS } from "../utils/deadlines";
 import FeatureModal from "./FeatureModal";
@@ -128,6 +128,7 @@ export default function TaskModal({ taskId, isEditMode, initialNotesOpen, userRo
   const deleteTask = useMutation(api.tasks.deleteTask);
   const updateTaskDetails = useMutation(api.tasks.updateTaskDetails);
   const deleteTaskFeature = useMutation(api.tasks.deleteTaskFeature);
+  const updateFeatureStatus = useMutation(api.tasks.updateFeatureStatus);
   const markTaskAsViewed = useMutation(api.tasks.markTaskAsViewed);
   const toggleNoteReaction = useMutation(api.tasks.toggleNoteReaction);
   const deleteNotesBulk = useMutation(api.tasks.deleteTaskNotesBulk);
@@ -721,6 +722,17 @@ export default function TaskModal({ taskId, isEditMode, initialNotesOpen, userRo
     setFeatureContextMenu(null);
   }
 
+  // Right-click → move an item along pending → ongoing → completed (or back).
+  async function handleFeatureStatus(f, status) {
+    setFeatureContextMenu(null);
+    try {
+      await updateFeatureStatus({ taskId, featureId: f.id, status, writer: userName });
+      if (status === "completed") notifyFeatureCompleted(task?.title || "Task", f.name, f.type || "feature");
+    } catch (err) {
+      showModal({ title: "Couldn't change it", message: err.message || "Please try again.", type: "alert" });
+    }
+  }
+
   function handleFeatureDelete(f) {
     setFeatureContextMenu(null);
     showModal({
@@ -905,6 +917,7 @@ export default function TaskModal({ taskId, isEditMode, initialNotesOpen, userRo
             const look = KIND_LOOK[featureView] || KIND_LOOK.feature;
             const items = (task.features || []).filter((f) => (f.type || "feature") === featureView);
             const openCount = items.filter((f) => f.status === "pending").length;
+            const ongoingCount = items.filter((f) => f.status === "ongoing").length;
             const [selected, setSelected] = featureView === "bug" ? [selectedBugs, setSelectedBugs] : [selectedFeatures, setSelectedFeatures];
             const bulkKey = featureView === "bug" ? "bugs" : "features";
             return (
@@ -954,6 +967,7 @@ export default function TaskModal({ taskId, isEditMode, initialNotesOpen, userRo
                       {openCount} OPEN
                     </span>
                   )}
+                  {ongoingCount > 0 && <span className="tm-ongoing-pill">{ongoingCount} ONGOING</span>}
                 </div>
                 {canManageFeatures && (
                   <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
@@ -994,13 +1008,15 @@ export default function TaskModal({ taskId, isEditMode, initialNotesOpen, userRo
               {[...items].reverse().map((f) => {
                 const isSelected = selected.has(f.id);
                 const open = f.status !== "completed";
+                const ongoing = f.status === "ongoing";
+                const stripe = ongoing ? "#3b82f6" : open ? look.stripe : null;
                 return (
                   <div
                     key={f.id}
-                    className={`feature-card ${f.status === "completed" ? "completed" : ""} ${isSelected ? "bulk-selected-item" : ""}`}
+                    className={`feature-card ${f.status === "completed" ? "completed" : ""} ${ongoing ? "ongoing" : ""} ${isSelected ? "bulk-selected-item" : ""}`}
                     onClick={(e) => handleRowClickToggle(e, setSelected, f.id)}
                     onContextMenu={(e) => handleFeatureContextMenu(e, f)}
-                    style={{ cursor: "pointer", userSelect: "none", borderLeft: look.stripe && open ? `3px solid ${look.stripe}` : undefined, display: "flex", alignItems: "center" }}
+                    style={{ cursor: "pointer", userSelect: "none", borderLeft: stripe ? `3px solid ${stripe}` : undefined, display: "flex", alignItems: "center" }}
                   >
                     <div style={{ flex: 1, display: "flex", gap: "12px", alignItems: "flex-start" }} onClick={(e) => {
                       if (e.ctrlKey || e.metaKey) return;
@@ -1014,10 +1030,11 @@ export default function TaskModal({ taskId, isEditMode, initialNotesOpen, userRo
                         <p>{f.description}</p>
                         <div style={{ display: "flex", gap: "8px", fontSize: "0.65rem", color: "#64748b", marginBottom: "4px" }}>
                           <span>{featureView === "roadblock" ? "Raised" : "Created"}: {f.createdAt || "N/A"}</span>
+                          {ongoing && f.startedAt && <span>Started: {f.startedAt}{f.startedBy ? ` by ${f.startedBy}` : ""}</span>}
                           {f.completedAt && <span>{featureView === "roadblock" ? "Cleared" : "Completed"}: {f.completedAt}</span>}
                         </div>
-                        <span className={`feature-badge ${f.status}`} style={{ background: open ? look.badgeBg : undefined, color: open ? look.badgeFg : undefined }}>
-                          {open ? W.open : W.done}
+                        <span className={`feature-badge ${f.status}`} style={{ background: open && !ongoing ? look.badgeBg : undefined, color: open && !ongoing ? look.badgeFg : undefined }}>
+                          {ongoing ? W.ongoing : open ? W.open : W.done}
                         </span>
                       </div>
                     </div>
@@ -2074,8 +2091,27 @@ export default function TaskModal({ taskId, isEditMode, initialNotesOpen, userRo
               onMouseLeave={e => e.currentTarget.style.background = "none"}
               onClick={() => handleFeatureEdit(featureContextMenu.feature)}
             >
-              ✏️ {featureContextMenu.feature?.type === "bug" ? "Edit Bug" : "Edit Feature"}
+              ✏️ Edit {itemWords(featureContextMenu.feature?.type).title}
             </button>
+            <div style={{ height: 1, background: "var(--glass-border)", margin: "2px 0" }} />
+            {(() => {
+              const f = featureContextMenu.feature;
+              const W = itemWords(f?.type);
+              const moves = [
+                f?.status !== "ongoing" && { status: "ongoing", label: "Mark ongoing", dot: "#3b82f6" },
+                f?.status !== "completed" && { status: "completed", label: f?.type === "roadblock" ? "Mark cleared" : "Mark completed", dot: "#10b981" },
+                f?.status !== "pending" && { status: "pending", label: f?.status === "completed" ? "Reopen" : `Back to ${W.open.toLowerCase()}`, dot: "#94a3b8" },
+              ].filter(Boolean);
+              return moves.map((m) => (
+                <button
+                  key={m.status}
+                  className="tm-ctx-status"
+                  onClick={() => handleFeatureStatus(f, m.status)}
+                >
+                  <span style={{ background: m.dot }} aria-hidden="true" />{m.label}
+                </button>
+              ));
+            })()}
             <div style={{ height: 1, background: "var(--glass-border)", margin: "2px 0" }} />
             <button
               style={{ width: "100%", padding: "9px 16px", textAlign: "left", background: "none", border: "none", fontSize: "0.82rem", cursor: "pointer", display: "flex", alignItems: "center", gap: 8, color: "#ef4444", fontWeight: 700 }}
@@ -2083,7 +2119,7 @@ export default function TaskModal({ taskId, isEditMode, initialNotesOpen, userRo
               onMouseLeave={e => e.currentTarget.style.background = "none"}
               onClick={() => handleFeatureDelete(featureContextMenu.feature)}
             >
-              🗑️ {featureContextMenu.feature?.type === "bug" ? "Delete Bug" : "Delete Feature"}
+              🗑️ Delete {itemWords(featureContextMenu.feature?.type).title}
             </button>
           </div>
         </>

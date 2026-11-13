@@ -2174,6 +2174,43 @@ html:has(.profile-popover-overlay) {
   color: #059669;
 }
 
+/* Ongoing — the middle status, between pending and completed */
+.feature-badge.ongoing {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+.feature-badge.ongoing::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #3b82f6;
+  animation: featureOngoing 1.4s ease-in-out infinite;
+}
+@keyframes featureOngoing { 50% { opacity: 0.35; transform: scale(0.7); } }
+.feature-card.ongoing { background: color-mix(in srgb, #3b82f6 5%, var(--color-card-bg, #fff)); }
+.tm-ongoing-pill {
+  font-size: 0.58rem; padding: 2px 7px; border-radius: 20px; font-weight: 800; letter-spacing: 0.4px;
+  color: #1d4ed8; background: rgba(59, 130, 246, 0.14);
+}
+[data-theme="dark"] .tm-ongoing-pill { color: #93c5fd; background: rgba(59, 130, 246, 0.2); }
+.tm-ctx-status {
+  width: 100%; padding: 9px 16px; text-align: left; background: none; border: none; cursor: pointer;
+  display: flex; align-items: center; gap: 10px; font: inherit; font-size: 0.82rem; font-weight: 700; color: var(--color-text-primary);
+  transition: background-color 0.15s;
+}
+.tm-ctx-status:hover { background: var(--color-bg-subtle); }
+.tm-ctx-status > span { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+/* Task sidebar: tabs on their own row, then the title + counts + Add row (side by side they squeezed Add off the edge). */
+.features-sidebar > .features-header { flex-direction: column; align-items: stretch; }
+.features-sidebar > .features-header > .taskmodal-tabs { margin-bottom: 12px; }
+.features-sidebar > .features-header > div:last-child > div:first-child { flex-wrap: wrap; row-gap: 4px; }
+[data-theme="dark"] .feature-badge.ongoing { background: rgba(59, 130, 246, 0.18); color: #93c5fd; }
+@media (prefers-reduced-motion: reduce) { .feature-badge.ongoing::before { animation: none; } }
+
 .modal-title {
   font-size: 1.25rem;
   font-weight: 900;

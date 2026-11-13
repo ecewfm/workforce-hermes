@@ -186,16 +186,17 @@ export default function FeatureModal({ mode, feature, taskId, onClose, canEdit, 
     }
   }
 
-  async function handleMarkComplete() {
-    setIsSubmitting(true);
+  // pending → ongoing → completed; any step can go back.
+  async function setStatus(next) {
+    setIsSubmitting(next); // which button is working
     try {
       await updateFeatureStatus({
         taskId,
         featureId: feature.id,
-        status: "completed",
+        status: next,
         writer: userName,
       });
-      notifyFeatureCompleted(taskTitle || "Task", feature.name, feature.type || type);
+      if (next === "completed") notifyFeatureCompleted(taskTitle || "Task", feature.name, feature.type || type);
       onClose();
     } catch (err) {
       console.error(err);
@@ -239,8 +240,10 @@ export default function FeatureModal({ mode, feature, taskId, onClose, canEdit, 
   const imageCount = files.length + existingActiveCount;
   const kind = isBug ? "bug" : isRoadblock ? "roadblock" : "feature";
   const editing = mode === "add" || mode === "edit";
-  const done = feature?.status === "completed";
-  const eyebrow = mode === "add" ? `New ${W.one}` : mode === "edit" ? `Editing ${W.one}` : `${W.title} · ${done ? W.done.toLowerCase() : W.open.toLowerCase()}`;
+  const status = feature?.status || "pending";
+  const done = status === "completed";
+  const statusWord = done ? W.done : status === "ongoing" ? W.ongoing : W.open;
+  const eyebrow = mode === "add" ? `New ${W.one}` : mode === "edit" ? `Editing ${W.one}` : `${W.title} · ${statusWord.toLowerCase()}`;
   const heading = mode === "add" ? W.add : mode === "edit" ? (name.trim() || W.title) : feature?.name;
   // Slots for the image grid: what's attached (existing + new), then empty ones up to 3.
   const slots = [
@@ -277,10 +280,14 @@ export default function FeatureModal({ mode, feature, taskId, onClose, canEdit, 
               <dl className="fm-meta">
                 <div>
                   <dt>Status</dt>
-                  <dd><span className={`fm-status ${done ? "done" : "open"}`}>{done ? W.done : W.open}</span></dd>
+                  <dd><span className={`fm-status ${done ? "done" : status === "ongoing" ? "ongoing" : "open"}`}>{statusWord}</span></dd>
                 </div>
                 <div><dt>{W.by}</dt><dd>{feature.suggestedBy || "System"}</dd></div>
                 {feature.createdAt && <div><dt>Added</dt><dd>{feature.createdAt}</dd></div>}
+                {status !== "pending" && feature.startedBy && (
+                  <div><dt>Started</dt><dd>{feature.startedBy}{feature.startedAt ? <span className="fm-meta-sub"> · {feature.startedAt}</span> : null}</dd></div>
+                )}
+                {done && feature.completedAt && <div><dt>{isRoadblock ? "Cleared" : "Completed"}</dt><dd>{feature.completedAt}</dd></div>}
                 {initialStorageIds.length > 0 && <div><dt>Images</dt><dd>{initialStorageIds.length}</dd></div>}
               </dl>
             ) : (
@@ -389,11 +396,23 @@ export default function FeatureModal({ mode, feature, taskId, onClose, canEdit, 
                 )}
 
                 <footer className="fm-footer">
+                  {canEdit && status !== "pending" && (
+                    <button type="button" className="fm-btn link" onClick={() => setStatus("pending")} disabled={!!isSubmitting}>
+                      {isSubmitting === "pending" ? "Updating…" : done ? "Reopen" : `Back to ${W.open.toLowerCase()}`}
+                    </button>
+                  )}
+                  <span className="fm-footer-space" />
                   <button type="button" className="fm-btn ghost" onClick={onClose}>Close</button>
+                  {canEdit && status === "pending" && (
+                    <button type="button" className="fm-btn primary ongoing" onClick={() => setStatus("ongoing")} disabled={!!isSubmitting}>
+                      {isSubmitting === "ongoing" && <span className="fm-spinner" aria-hidden="true" />}
+                      {isSubmitting === "ongoing" ? "Updating…" : "Mark ongoing"}
+                    </button>
+                  )}
                   {canEdit && !done && (
-                    <button type="button" className="fm-btn primary success" onClick={handleMarkComplete} disabled={isSubmitting}>
-                      {isSubmitting && <span className="fm-spinner" aria-hidden="true" />}
-                      {isSubmitting ? "Updating…" : isRoadblock ? "Mark cleared" : "Mark completed"}
+                    <button type="button" className="fm-btn primary success" onClick={() => setStatus("completed")} disabled={!!isSubmitting}>
+                      {isSubmitting === "completed" && <span className="fm-spinner" aria-hidden="true" />}
+                      {isSubmitting === "completed" ? "Updating…" : isRoadblock ? "Mark cleared" : "Mark completed"}
                     </button>
                   )}
                 </footer>

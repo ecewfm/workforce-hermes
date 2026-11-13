@@ -47,7 +47,7 @@ function makeClient() {
  *   POST   /api/task?taskId=X&resource=roadblock     → flag a roadblock (Operations/Executives) { name, description?, author }
  *   POST   /api/task?taskId=X&resource=note          → add an update  { text, author }
  *   PATCH  /api/task?taskId=X&resource=feature&id=F  → edit/complete  { name?, description?, status?, author }
- *          (resource=bug / resource=roadblock work the same; "completed" = fixed / cleared)
+ *          (resource=bug / resource=roadblock work the same; status pending | ongoing | completed — "completed" = fixed / cleared)
  *   PATCH  /api/task?taskId=X&resource=links         → set links      { appscriptLink?, webappLink?, projectLink? }
  *   DELETE /api/task?taskId=X&resource=feature&id=F  → delete a feature/bug
  *
@@ -124,7 +124,7 @@ function buildUsage(base, taskId) {
     notes: [
       "author is how the update shows up in the app (note writer / 'suggested by'). Use the person's name.",
       "resource must be one of: bug, feature, roadblock, note (for POST); feature/bug/roadblock or links (for PATCH).",
-      "status (PATCH on a feature/bug) is 'pending' or 'completed'.",
+      "status (PATCH on a feature/bug/roadblock) is 'pending', 'ongoing' (being worked on) or 'completed'.",
       "Writes fire the same notifications as the app (assignees, managers, @mentions).",
     ],
   };
@@ -270,8 +270,8 @@ export default async function handler(req, res) {
         }
 
         if (body.status !== undefined) {
-          if (!["pending", "completed"].includes(body.status)) {
-            return res.status(400).json({ error: "'status' must be 'pending' or 'completed'.", usage });
+          if (!["pending", "ongoing", "completed"].includes(body.status)) {
+            return res.status(400).json({ error: "'status' must be 'pending', 'ongoing' or 'completed'.", usage });
           }
           await client.mutation(api.tasks.updateFeatureStatus, {
             taskId,

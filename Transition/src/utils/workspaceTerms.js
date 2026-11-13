@@ -27,17 +27,17 @@ export const ITEM_WORDS = {
   feature: {
     kind: "feature", one: "feature", many: "features", title: "Feature", heading: "Features", tab: "Features",
     add: "Add Feature", nameLabel: "Feature Name", placeholder: "e.g. Advanced Analytics",
-    describe: "Describe the feature...", by: "Suggested By", open: "PENDING", done: "COMPLETED", empty: "No features added yet.",
+    describe: "Describe the feature...", by: "Suggested By", open: "PENDING", ongoing: "ONGOING", done: "COMPLETED", empty: "No features added yet.",
   },
   bug: {
     kind: "bug", one: "bug", many: "bugs", title: "Bug", heading: "Bug Reports", tab: "Bugs",
     add: "Report Bug", nameLabel: "Bug Name", placeholder: "e.g. Broken login button",
-    describe: "Describe the bug...", by: "Reported By", open: "PENDING", done: "COMPLETED", empty: "No bugs added yet.",
+    describe: "Describe the bug...", by: "Reported By", open: "PENDING", ongoing: "ONGOING", done: "COMPLETED", empty: "No bugs added yet.",
   },
   roadblock: {
     kind: "roadblock", one: "roadblock", many: "roadblocks", title: "Roadblock", heading: "Roadblocks", tab: "Roadblocks",
     add: "Add Roadblock", nameLabel: "What's blocking progress?", placeholder: "e.g. Waiting on client sign-off",
-    describe: "What's blocked, who can unblock it, and what's needed...", by: "Raised By", open: "OPEN", done: "CLEARED",
+    describe: "What's blocked, who can unblock it, and what's needed...", by: "Raised By", open: "OPEN", ongoing: "ONGOING", done: "CLEARED",
     empty: "No roadblocks — nothing is in the way.",
   },
 };
